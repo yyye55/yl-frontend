@@ -14,6 +14,7 @@
       </el-input>
 
       <!-- 仅 cadb（/province/report/list）有「类别」筛选；其余 4 个模块的模板里没有这个 el-select -->
+      <!-- 【第十二届改造】更新为五个正式组别 -->
       <el-select
         v-if="cfg.group === 'filter'"
         v-model="group"
@@ -22,10 +23,11 @@
         @change="getData"
       >
         <el-option label="全部" :value="null" />
-        <el-option label="中小学组" :value="0" />
-        <el-option label="大学组" :value="1" />
-        <el-option label="中小学教师组" :value="2" />
-        <el-option label="高校教师组" :value="3" />
+        <el-option label="管乐团-小学组" :value="0" />
+        <el-option label="管乐团-中学组" :value="1" />
+        <el-option label="管乐团-大学组" :value="2" />
+        <el-option label="铜管乐团-小学组" :value="3" />
+        <el-option label="铜管乐团-中学组" :value="4" />
       </el-select>
 
       <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">

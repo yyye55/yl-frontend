@@ -10,18 +10,19 @@
           <p>学校名称：{{ data.school_name }}</p>
         </div>
         <div class="fall-info">
-          <p>类型：{{ data.establishment }}</p>
+          <p>乐团类型：{{ data.establishment }}</p>
+          <p>参演组别：{{ data.group }}</p>
           <p>自选曲目：{{ data.name }}</p>
-          <p>指定曲目：{{ data.name1 }}</p>
         </div>
         <div class="fall-info">
+          <p>指定曲目：{{ data.name1 || '未填写' }}</p>
           <p>领队姓名：{{ data.contact_name }}</p>
           <p>领队电话：{{ data.contact_phone }}</p>
-          <p>联系地址：{{ data.contact_way }}</p>
         </div>
         <div class="fall-info">
-          <p>作品总时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
-          <p>乐团简介：{{ data.desc }}</p>
+          <p>联系地址：{{ data.contact_way }}</p>
+          <p>展示时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
+          <p>乐团简介：{{ data.desc || '未填写' }}</p>
         </div>
         <div
           v-if="data.spectrum"

@@ -348,6 +348,9 @@ import { getM, getS } from '@/utils/date'
 import { rename } from '@/utils/excel'
 import { useTabs } from '@/composables/useTabs'
 
+// 【第十二届改造】导入人员规则校验
+import { validatePersonCount, validateDuration, getPersonStatusText, getDurationLimit } from '@/config/personRules'
+
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
 import FileCover from '@/components/common/FileCover.vue'
@@ -457,13 +460,14 @@ function nameValidator(rule, value, callback) {
 }
 
 /**
- * dist 的时长校验器 `t`，逐行照搬。判定顺序（不可调整，先调用者胜出）：
- *   请输入分钟数 → 请输入秒数 → 分钟数只能是正整数 → 秒数只能是正整数
- *   → 管乐团?(12/15/18 分钟档):(10 分钟档) → 秒数只能在0-60之间 → 分钟数只能在0-60之间
- * 【注意】秒数取自 `form.second`（dist 用 this.$refs.second.value，见文件头迁移说明 2）。
- * 【注意】dist 里比较用的是**字符串** `>`：`t>12` 会做数值强制转换，
- *   而等值判断显式写成 `12===Number(t)`。本实现逐字保留这一写法。
- * 【注意】establishment 不是"管乐团"时（含 铜管乐团 / 未选择）一律走 10 分钟档 —— dist 的 else 分支。
+ * 第十二届展示时长校验器
+ * 【官方明确 - 第十二届红头文件】
+ *   管乐团-小学组 ≤ 12分钟
+ *   管乐团-中学组 ≤ 15分钟
+ *   管乐团-大学组 ≤ 18分钟
+ *   铜管乐团 ≤ 10分钟
+ * 
+ * 校验顺序：分钟数 → 秒数 → 格式 → 时长限制 → 范围
  */
 function minuteValidator(rule, value, callback) {
   const second = form.value.second
@@ -472,19 +476,21 @@ function minuteValidator(rule, value, callback) {
   if (!/(^[0-9]\d*$)/.test(value)) callback(new Error('分钟数只能是正整数'))
   if (!/(^[0-9]\d*$)/.test(second)) callback(new Error('秒数只能是正整数'))
 
+  // 【第十二届改造】根据乐团类型和组别动态校验时长
   if (form.value.establishment === '管乐团') {
     if (form.value.group === '小学组' && (value > 12 || (12 === Number(value) && second > 0))) {
-      callback(new Error('时长须在12分钟以内'))
+      callback(new Error('管乐团小学组展示时长须在12分钟以内'))
     }
     if (form.value.group === '中学组' && (value > 15 || (15 === Number(value) && second > 0))) {
-      callback(new Error('时长须在15分钟以内'))
+      callback(new Error('管乐团中学组展示时长须在15分钟以内'))
     }
     if (form.value.group === '大学组' && (value > 18 || (18 === Number(value) && second > 0))) {
-      callback(new Error('时长须在18分钟以内'))
+      callback(new Error('管乐团大学组展示时长须在18分钟以内'))
     }
   } else {
+    // 铜管乐团 ≤ 10分钟
     if (value > 10 || (10 === Number(value) && second > 0)) {
-      callback(new Error('时长须在10分钟以内'))
+      callback(new Error('铜管乐团展示时长须在10分钟以内'))
     }
   }
 
@@ -846,18 +852,16 @@ function onSubmit() {
       })
     }
 
-    // 乐团人数区间：管乐团 35–70 / 预备队≤5；其余（铜管乐团或未选择）20–48 / 预备队≤3 / 打击乐≤8
-    if (form.value.establishment === '管乐团') {
-      if (studentCount < 35 || studentCount > 70) {
-        return ElMessage.error('乐团不少于35人，不超过70人!')
-      }
-      if (reserveCount > 5) return ElMessage.error('预备队员最多5人！')
-    } else {
-      if (studentCount < 20 || studentCount > 48) {
-        return ElMessage.error('乐团不少于20人，不超过48人!')
-      }
-      if (reserveCount > 3) return ElMessage.error('预备队员最多3人！')
-      if (percussionCount > 8) return ElMessage.error('打击乐不超过8人！')
+    // 【第十二届改造】使用统一的人员规则校验
+    const personValidation = validatePersonCount(
+      form.value.establishment,
+      form.value.group,
+      form.value.person || []
+    )
+    
+    if (!personValidation.valid) {
+      // 返回第一个错误
+      return ElMessage.error(personValidation.errors[0])
     }
 
     if (form.value.person === undefined) form.value.person = []
@@ -869,6 +873,17 @@ function onSubmit() {
     // 【dist 原文】本族**没有** ProgramForm 族那样的 t.file 守卫，直接取 [0].id
     t.file = fileList.value[0].id
     t.time_length = 60 * form.value.minute + parseInt(form.value.second)
+
+    // 【第十二届改造】使用统一的时长校验规则
+    const durationValidation = validateDuration(
+      form.value.minute,
+      form.value.second,
+      form.value.establishment,
+      form.value.group
+    )
+    if (!durationValidation.valid) {
+      return ElMessage.error(durationValidation.error)
+    }
 
     ElMessageBox.confirm('请仔细核对填写内容，审核通过后将不可修改!', '提示', {
       confirmButtonText: '确定',

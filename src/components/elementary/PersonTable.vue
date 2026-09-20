@@ -67,7 +67,7 @@
           <button ref="uploadAvatar" type="button">click</button>
         </el-upload>
 
-        <p style="color: red; margin-bottom: 10px">注： 电子照片要求为蓝底、免冠、证件照、JPG格式,每张照片文件大小不超过100K；批量上传文件名格式为<i style="color: blue">身份证后6位+姓名.jpg</i> 例如：<i style="color: blue">123456张三.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456</i> 且姓名为 <i style="color: blue">张三</i> 的人员对应。 </p>
+        <p style="color: red; margin-bottom: 10px">注： 电子照片要求为蓝底、免冠、证件照、JPG格式,每张照片文件大小不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位+姓名.jpg</i> 例如：<i style="color: blue">123456张三.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456</i> 且姓名为 <i style="color: blue">张三</i> 的人员对应。 </p>
       </el-upload>
     </div>
 

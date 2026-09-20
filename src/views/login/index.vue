@@ -7,7 +7,7 @@
 <template>
   <div class="login_container">
     <div class="login_box">
-      <p class="title">「意林杯」四川省第十一届管乐展示活动</p>
+      <p class="title">「意林杯」四川省第十二届管乐展示活动</p>
 
       <el-form
         ref="loginFormRef"
@@ -37,12 +37,12 @@
         </el-form-item>
 
         <p>
-          「意林杯」四川省第十一届管乐展示活动报名系统已正式启用，各单位填报时请一定核对好信息后再进行填写，保证活动顺利进行。
+          「意林杯」四川省第十二届管乐展示活动报名系统已正式启用，各单位填报时请一定核对好信息后再进行填写，保证活动顺利进行。
         </p>
       </el-form>
     </div>
 
-    <div class="footer">Copyright ©2024 四川省教育厅版权所有</div>
+    <div class="footer">Copyright ©2026 四川省教育厅版权所有</div>
   </div>
 </template>
 
@@ -95,7 +95,7 @@ const loginFormRules = {
   ]
 }
 
-const INITIAL_PASSWORD = 'xbyy@2024' // 【确定】从 dist 中提取的初始密码
+const INITIAL_PASSWORD = 'scylb@2026' // 【第十二届】初始密码
 
 // 不同角色登录后跳转路径
 const ROLE_HOME = {

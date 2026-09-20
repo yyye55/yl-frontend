@@ -790,6 +790,12 @@ function getQiniuToken() {
 }
 
 /**
+ * 【第十二届改造】视频格式：MP4 / MOV，视频大小：≤700MB
+ * 【注意】伴奏形式(accompany)、原创(origin)、中国作品(territory)等字段在本届仍保留
+ * 用于兼容历史数据和现有后端API
+ */
+
+/**
  * dist:
  *   beforeUpload(e){
  *     this.QiniuData.token||this.getQiniuToken(), this.QiniuData.key="ylbxt/",
@@ -798,8 +804,7 @@ function getQiniuToken() {
  *     return n ? (t ? void 0 : (Message.error("文件大小不能超过1G"),!1))
  *              : (Message.error("请上传 MP4 或 MPG2 格式的视频文件"),!1)
  *   }
- * 【保留 dist 缺陷】QiniuData.key 是**累加**（只有 uploadSuccess 才把它重置回 "ylbxt/"），
- * 与 UploadScanDialog.vue 里记录的是同一处问题，此处照搬不改。
+ * 【第十二届改造】视频格式改为MP4/MOV，大小限制改为700MB
  */
 function beforeUpload(file) {
   if (!QiniuData.token) getQiniuToken()
@@ -807,15 +812,17 @@ function beforeUpload(file) {
   filename.value = file.name
   QiniuData.key += rename(file.name)
 
-  const sizeOk = file.size / 1024 / 1024 < 1024
-  const isVideo = file.type === 'video/mpeg' || file.type === 'video/mp4'
+  // 【第十二届改造】视频大小限制：≤700MB
+  const sizeOk = file.size / 1024 / 1024 < 700
+  // 【第十二届改造】视频格式：MP4 或 MOV (video/quicktime)
+  const isVideo = file.type === 'video/mp4' || file.type === 'video/quicktime'
 
   if (!isVideo) {
-    ElMessage.error('请上传 MP4 或 MPG2 格式的视频文件')
+    ElMessage.error('请上传 MP4 或 MOV 格式的视频文件')
     return false
   }
   if (!sizeOk) {
-    ElMessage.error('文件大小不能超过1G')
+    ElMessage.error('文件大小不能超过700MB')
     return false
   }
   return undefined

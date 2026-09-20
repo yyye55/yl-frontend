@@ -36,8 +36,22 @@
  * 效果与不写 keep-alive 相同。这里按原样保留结构，不额外启用缓存。
  */
 
-/** 意林杯系列 layout 共用的品牌标题（dist 原文含全角右引号，故意保留原样） */
-const YILINBEI_TITLE = ['意林杯”四川省第十一届', '管乐展示活动']
+/**
+ * 【第十二届改造说明】
+ * 1. 标题从"第十一届"改为"第十二届"
+ * 2. 教师组菜单已在本届隐藏（代码保留，不删除）
+ *    - province: teacher/create, teacher1/create 已隐藏
+ *    - city: 无教师组入口
+ *    - school: 无教师组入口
+ *    - committee: teacher, teacher1 已隐藏
+ * 3. 第十二届组别待后端确认后，将用于：
+ *    - 组委会审核页面筛选
+ *    - 统计页面显示
+ */
+
+/** 意林杯系列 layout 共用的品牌标题
+ * 【第十二届改造】2024年改为2026年 */
+const YILINBEI_TITLE = ['意林杯"四川省第十二届', '管乐展示活动']
 /** 西部学校音乐周系列 layout 的品牌标题 */
 const XIBU_TITLE = ['西部学校音乐周', '展演活动']
 
@@ -65,9 +79,13 @@ export const LAYOUT_MENUS = {
       { index: '/committee/elementary1', text: '小学组报名审核', label: '小学组报名审核', icon: 'el-icon-info' },
       { index: '/committee/elementary2', text: '中学组报名审核', label: '中学组报名审核', icon: 'el-icon-s-data' },
       { index: '/committee/elementary3', text: '大学组报名审核', label: '大学组报名审核', icon: 'el-icon-s-grid' },
-      // dist 原文：菜单显示「扫描件列表」，但 tab 标题是「参展扫描件列表」
+      // 【第十二届隐藏】铜管乐团审核入口待后端确认后添加
+      // { index: '/committee/elementary4', text: '铜管乐团审核', label: '铜管乐团审核', icon: 'el-icon-s-data' },
+      // 【第十二届隐藏】教师组已隐藏，不再显示
+      // { index: '/committee/teacher', text: '教师组报名审核', label: '教师组报名审核', icon: 'el-icon-s-grid' },
+      // { index: '/committee/teacher1', text: '教师1组报名审核', label: '教师1组报名审核', icon: 'el-icon-s-grid' },
+      { type: 'line', text: '—— 扫描件与账号 ——' },
       { index: '/committee/scan', text: '扫描件列表', label: '参展扫描件列表', icon: 'el-icon-picture-outline' },
-      { type: 'line', text: '—— 账号管理 ——' },
       { index: '/committee/user', text: '用户管理', label: '用户管理', icon: 'el-icon-user' }
     ]
   },
@@ -80,10 +98,14 @@ export const LAYOUT_MENUS = {
     items: [
       { index: '/province/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
       { type: 'line', text: '—— 网上报名 ——' },
-      { index: '/province/elementary/create', text: '中小学组节目报名', label: '中小学组节目报名', icon: 'el-icon-s-flag' },
-      { index: '/province/teacher/create', text: '中小学教师组节目报名', label: '中小学教师组节目报名', icon: 'el-icon-s-shop' },
+      // 【第十二届改造】组别待后端确认后调整文案
+      { index: '/province/elementary/create', text: '小学组节目报名', label: '小学组节目报名', icon: 'el-icon-s-flag' },
+      // 【第十二届隐藏】教师组已隐藏
+      // { index: '/province/teacher/create', text: '中小学教师组节目报名', label: '中小学教师组节目报名', icon: 'el-icon-s-shop' },
       { index: '/province/school/create', text: '大学组节目报名', label: '大学组节目报名', icon: 'el-icon-s-flag' },
-      { index: '/province/teacher1/create', text: '高校教师组节目报名', label: '高校教师组节目报名', icon: 'el-icon-star-off' },
+      // 【第十二届新增】铜管乐团报名待后端确认后添加
+      // { index: '/province/brass/create', text: '铜管乐团报名', label: '铜管乐团报名', icon: 'el-icon-s-flag' },
+      // { index: '/province/teacher1/create', text: '高校教师组节目报名', label: '高校教师组节目报名', icon: 'el-icon-star-off' },
       { type: 'line', text: '—— 报名信息 ——' },
       { index: '/province/report/list', text: '节目统计', label: '节目统计', icon: 'el-icon-help' },
       { index: '/province/recommend/index', text: '优秀组织奖申报', label: '优秀组织奖申报', icon: 'el-icon-s-goods' }
@@ -99,6 +121,8 @@ export const LAYOUT_MENUS = {
       { index: '/city/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
       { type: 'line', text: '—— 网上报名 ——' },
       { index: '/city/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag' },
+      // 【第十二届新增】铜管乐团报名待后端确认后添加
+      // { index: '/city/brass/create', text: '铜管乐团报名', label: '铜管乐团报名', icon: 'el-icon-s-flag' },
       { type: 'line', text: '—— 报名信息 ——' },
       { index: '/city/elementary/list', text: '报名汇总', label: '报名汇总', icon: 'el-icon-help' }
     ]
@@ -113,6 +137,8 @@ export const LAYOUT_MENUS = {
       { index: '/school/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
       { type: 'line', text: '—— 网上报名 ——' },
       { index: '/school/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag' },
+      // 【第十二届新增】铜管乐团报名待后端确认后添加
+      // { index: '/school/brass/create', text: '铜管乐团报名', label: '铜管乐团报名', icon: 'el-icon-s-flag' },
       { type: 'line', text: '—— 报名信息 ——' },
       { index: '/school/elementary/list', text: '报名汇总', label: '报名汇总', icon: 'el-icon-help' }
     ]

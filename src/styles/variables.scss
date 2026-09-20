@@ -1,0 +1,39 @@
+/* 全局 SCSS 变量
+ *
+ * 【可信度：B】基于 Element UI 默认主题色推断
+ * - 主色 #409EFF (Element UI 默认蓝)
+ * - 辅色 #67C23A (成功) / #E6A23C (警告) / #F56C6C (危险)
+ * - 文字 #303133 / #606266 / #909399
+ * - 边框 #DCDFE6 / #E4E7ED
+ * - 背景 #F2F6FC / #F5F7FA
+ */
+
+$primary-color: #409EFF;
+$success-color: #67C23A;
+$warning-color: #E6A23C;
+$danger-color:  #F56C6C;
+$info-color:    #909399;
+
+$text-primary:   #303133;
+$text-regular:   #606266;
+$text-secondary: #909399;
+$text-placeholder: #C0C4CC;
+
+$border-base:  #DCDFE6;
+$border-light: #E4E7ED;
+$border-lighter: #EBEEF5;
+
+$bg-base:  #F5F7FA;
+$bg-light: #F2F6FC;
+
+$radius-base: 4px;
+$radius-small: 2px;
+$radius-round: 20px;
+$radius-circle: 100%;
+
+$font-size-extra-large: 20px;
+$font-size-large: 18px;
+$font-size-medium: 16px;
+$font-size-base: 14px;
+$font-size-small: 13px;
+$font-size-extra-small: 12px;

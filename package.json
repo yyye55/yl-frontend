@@ -1,0 +1,35 @@
+{
+  "name": "yl-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "「意林杯」四川省第十一届管乐展示活动报名系统 - Vue 3 前端",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "concurrently -n mock,web -c magenta,cyan \"node mock-api/server.mjs\" \"vite\"",
+    "mock": "node mock-api/server.mjs",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.6.0",
+    "element-plus": "^2.5.0",
+    "face-api.js": "^0.22.2",
+    "nprogress": "^0.2.0",
+    "pinia": "^2.1.7",
+    "qiniu-js": "^3.4.4",
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^9.1.2",
+    "playwright": "^1.63.0",
+    "sass": "^1.69.5",
+    "unplugin-auto-import": "^0.17.0",
+    "unplugin-vue-components": "^0.26.0",
+    "vite": "^5.0.0"
+  }
+}

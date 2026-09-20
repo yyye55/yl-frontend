@@ -1,0 +1,63 @@
+/* 登录页样式
+ *
+ * 【可信度：A】从 dist 中 chunk-a46a18bc 的 render 函数反推
+ * - .login_container: 全屏容器，背景图为 /login-bg.png
+ * - .login_box: 表单白色盒子，居中
+ * - .title: 标题 "「意林杯」四川省第十一届管乐展示活动"
+ * - .login_form: 表单
+ * - .btns: 按钮容器
+ * - .mybtn: 自定义登录按钮
+ * - .footer: 底部版权 "Copyright ©2024 四川省教育厅版权所有"
+ */
+
+.login_container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: url('/login-bg.png') center center / cover no-repeat;
+  position: relative;
+}
+.login_container::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+}
+.login_box {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  padding: 36px 32px 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.login_box .title {
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 24px;
+  color: #303133;
+}
+.login_form { width: 100%; }
+.login_form .btns { text-align: center; margin-top: 8px; }
+.login_form .btns .mybtn { width: 100%; }
+.login_form .el-form-item__content { display: flex; justify-content: center; }
+.login_form .el-input__inner { height: 40px; line-height: 40px; }
+.login_form .el-button { width: 100%; height: 40px; font-size: 16px; }
+.login_form > p {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
+  margin-top: 16px;
+  text-align: center;
+}
+.footer {
+  position: absolute;
+  bottom: 16px; left: 0; right: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
+  z-index: 1;
+}

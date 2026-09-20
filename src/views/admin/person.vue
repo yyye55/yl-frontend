@@ -1,0 +1,191 @@
+﻿<!--
+  /admin/person —— 人员管理
+
+  【可信度：A】
+    dist 证据：chunk-857e91e8 模块 1727
+    父路由：/admin (meta.role = 3 → type=3 管理员)
+
+  业务说明（基于 dist 模块 1727）：
+    - 标题：人员管理
+    - 表格 5 列：序号 / 姓名 / 身份证号码 / 学校名称 / 操作（修改按钮）
+    - 修改 dialog：el-form（name + card），含验证规则
+    - 无新增、无删除、无导出
+    - 分页 page-sizes=[10,20,50,100]（limit 默认 10）
+    - keyword 搜索（name 或 card 模糊匹配）
+
+  API（来自 dist）：
+    - GET  /api/admin/person/list  → adminApi.person.list({page,limit,keyword})
+      后端：Person.objects.all().order_by("id") → filter(name__icontains|k | card__icontains|k)
+    - PUT  /api/admin/person      → adminApi.person.update(editForm)
+      后端：改 Person 字段（id 除外）
+
+  【权限】后端 role_error(request, 3) 要求 type=3 管理员
+
+  【Vue2 → Vue3 特殊迁移点】
+    - this.$set(obj, key, val) → 直接赋值 obj[key] = val（Proxy 响应式自动追踪）
+    - validator rules 直接用普通对象（dist 在 data() 里定义了 editRules）
+
+  【无 Tabs】dist 不使用 tabsStore
+-->
+<template>
+  <div class="bg">
+    <div class="options">
+      <el-input
+        v-model="keyword"
+        class="input-with-select"
+        placeholder="请输入内容"
+        size="mini"
+        @change="getData"
+      >
+        <template #append>
+          <el-button :icon="Search" />
+        </template>
+      </el-input>
+
+      <el-button type="primary" size="mini" @click="reflush">
+        刷新
+      </el-button>
+    </div>
+
+    <div class="content">
+      <div class="bg-list">
+        <p class="title">人员管理</p>
+
+        <el-table :data="data" border size="mini" style="width: 100%">
+          <el-table-column type="index" label="序号" align="center" />
+          <el-table-column prop="name" label="姓名" align="center" />
+          <el-table-column prop="card" label="身份证号码" align="center" />
+          <el-table-column prop="school" label="学校名称" align="center" />
+          <el-table-column label="操作" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="modify(row)">修改</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-pagination
+          class="my-pagination"
+          v-model:current-page="page"
+          v-model:page-size="limit"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
+    </div>
+
+    <!-- 修改 dialog -->
+    <el-dialog v-model="showEditInfo" title="修改用户" width="40%">
+      <el-form
+        ref="ruleEditForm"
+        :model="editForm"
+        :rules="editRules"
+        inline
+        label-width="120px"
+        size="mini"
+      >
+        <el-form-item label="姓名" prop="name">
+          <el-input v-model="editForm.name" />
+        </el-form-item>
+        <el-form-item label="身份证号码" prop="card">
+          <el-input v-model="editForm.card" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button size="mini" @click="showEditInfo = false">取 消</el-button>
+        <el-button type="primary" size="mini" @click="editSubmit">确 定</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
+
+import { adminApi } from '@/api/admin'
+
+const keyword = ref(null)
+const showInfo = ref(false)
+const showEditInfo = ref(false)
+const status = ref(0)
+const page = ref(1)
+const limit = ref(10)
+const total = ref(0)
+const data = ref([])
+const ruleEditForm = ref(null)
+
+// 【Vue2 → Vue3】this.$set(e.editForm,"name",t) → 直接 v-model 双向绑定
+// Vue3 的 Proxy 响应式系统会自动追踪对象的属性赋值，无需 $set
+const editForm = reactive({
+  id: null,
+  name: '',
+  card: ''
+})
+
+// 【直接照搬 dist editRules】不做业务修改
+const editRules = {
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+  ],
+  card: [
+    { required: true, message: '请输入身份证号码', trigger: 'blur' }
+  ]
+}
+
+function handleSizeChange(size) { page.value = 1; limit.value = size; getData() }
+function reflush() { page.value = 1; getData() }
+function handleCurrentChange(current) { page.value = current; getData() }
+
+function getData() {
+  adminApi.person.list({ page: page.value, limit: limit.value, keyword: keyword.value }).then((res) => {
+    const body = res?.data
+    if (!body) { ElMessage.error('响应为空'); return }
+    if (body.code === 0) { total.value = body.count; data.value = body.data }
+    else ElMessage.error(body.msg || '获取失败')
+  })
+}
+
+function modify(row) {
+  // 【Vue2 → Vue3】JSON.parse(JSON.stringify(e)) 替代 this.$set 深拷贝
+  editForm.id = row.id
+  editForm.name = row.name
+  editForm.card = row.card
+  showEditInfo.value = true
+}
+
+function editSubmit() {
+  // 【Vue2 → Vue3】el-form ref 调用 validate()；dist 用 this.$refs.ruleEditForm.validate()
+  ruleEditForm.value.validate((valid) => {
+    if (!valid) return
+    adminApi.person.update({ id: editForm.id, name: editForm.name, card: editForm.card }).then((res) => {
+      const body = res?.data
+      if (!body) { ElMessage.error('响应为空'); return }
+      if (body.code === 0) { ElMessage.success('修改成功'); showEditInfo.value = false; getData() }
+      else ElMessage.error(body.msg || '修改失败')
+    })
+  })
+}
+
+onMounted(() => { getData() })
+</script>
+
+<style lang="scss" scoped>
+.bg { padding: 10px; }
+.options {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;
+  > * { width: 220px !important; }
+  > .el-button { width: auto !important; }
+}
+.content { display: flex; flex-direction: column; }
+.title {
+  font-size: 16px; font-weight: 600; margin: 10px 0; position: relative; padding-left: 12px;
+  &::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 16px; background-color: #036; border-radius: 2px; }
+}
+.my-pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+</style>

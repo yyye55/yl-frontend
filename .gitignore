@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vite/
+.DS_Store
+*.log
+.env.local
+.env.*.local
+.idea/
+.vscode/
+
+# 本地验收 / 截图回归产物
+.ref/
+.ref-new/
+.scratch/
+scripts/.scratch/

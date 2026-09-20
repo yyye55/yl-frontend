@@ -1,0 +1,16 @@
+/* dist 已确认存在的全局样式
+ *
+ * 【dist 已确认 / 样式缺失修复】
+ *
+ * 来源：dist 中 app.34b18b78.css 首段规则
+ * 用途：被 ProgramForm.vue 与 OrchestraForm.vue 中 .bg1/.bg2/.bg3/.bg4 引用
+ *      作为表单页面的区块内边距与定位上下文
+ * 严格保持 dist 原值，不做任何数值/颜色/间距的调整。
+ */
+.bg1,
+.bg2,
+.bg3,
+.bg4 {
+  padding: 10px;
+  position: relative;
+}

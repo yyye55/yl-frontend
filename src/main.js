@@ -32,6 +32,17 @@ import pinia from './store'
 // 不在上面两个插件的解析范围内。
 import { ElLoading } from 'element-plus'
 
+// 【修复】脚本式调用的 Element Plus 组件，样式必须显式引 —— 上面两个插件都覆盖不到：
+//   - unplugin-vue-components 只看模板里的 <el-xxx>，看不到 ElMessage(...) 这种函数调用；
+//   - unplugin-auto-import 只给「它自己自动导入」的标识符注入样式，
+//     而本项目各处是 `import { ElMessage } from 'element-plus'` 显式导入，它不会插手。
+// 后果（实测）：产物 CSS 里完全没有 .el-message / .el-message-box 规则，
+// toast 与确认框退化成 #app 之后文档流里的普通 div —— 位置在视口下方，等于「点了没反应」。
+// 这里按 unplugin 的同款路径引样式，base 变量等依赖由这些入口自带。
+// 注：以后若用到 ElNotification / v-loading 指令，同样要在这里补对应 style/css。
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+
 // 全局样式
 import './styles/index.scss'
 

@@ -32,6 +32,10 @@
     - 无审核逻辑、无导出、无 keyword 搜索
     - 有七星云文件上传功能
     - 有 Tabs 联动
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
 -->
 <template>
   <div class="bg">
@@ -57,7 +61,14 @@
         <el-option label="中小学生组" value="中小学生组" />
       </el-select>
 
-      <el-button class="menu-button" type="primary" size="mini" @click="refresh">
+      <!-- dist 该页的按钮宽度走内联 style，本页 CSS 中没有 .menu-button 规则 -->
+      <el-button
+        class="menu-button"
+        style="width: 100px"
+        type="primary"
+        size="mini"
+        @click="refresh"
+      >
         刷新
       </el-button>
     </div>
@@ -98,7 +109,20 @@
       </div>
     </div>
 
-    <!-- 七星云 PDF 上传 dialog -->
+    <!--
+      七星云 PDF 上传 dialog
+
+      【存疑清单 · dist 该对话框不可达】dist c502 中 `openImageDialog()` 只有定义、无任何调用点，
+      `dialogImageVisible=!0` 在整个模块内仅出现 1 次（即 openImageDialog 内部），
+      因此这个 dialog 在 dist 中永远不会被打开。此处按 1:1 保留，绑定按 dist 原样补全。
+
+      dist 原文（el-upload）：
+        t("el-upload",{staticClass:"upload-demo",attrs:{drag:"",limit:5,
+          "on-success":e.uploadSuccess, data:e.QiniuData, "before-upload":e.beforeUpload,
+          action:e.domain, "file-list":e.fileList, "on-remove":e.removeSuccess,
+          "on-exceed":e.handleExceed}})
+      无 ref，无 auto-upload。
+    -->
     <el-dialog
       v-model="dialogImageVisible"
       title="上传审核图"
@@ -106,17 +130,22 @@
       @closed="beforeClose"
     >
       <el-upload
-        ref="uploadRef"
         class="upload-demo"
         drag
         :limit="5"
-        :auto-upload="false"
-        :file-list="fileList"
-        :on-exceed="handleExceed"
-        :on-remove="removeSuccess"
+        :on-success="uploadSuccess"
+        :data="QiniuData"
         :before-upload="beforeUpload"
+        :action="domain"
+        :file-list="fileList"
+        :on-remove="removeSuccess"
+        :on-exceed="handleExceed"
       >
-        <i class="el-icon-upload" />
+        <!-- 【Element UI → Element Plus 迁移】dist 原文 <i class="el-icon-upload" />。
+             Element Plus 移除了 el-icon-* 字体图标，改用官方等价写法；
+             拖拽区样式类 el-icon--upload 由 Element Plus 自身提供。
+             与 @/components/common/UploadScanDialog.vue 保持同一写法。 -->
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
       </el-upload>
       <div class="el-upload__tip">
@@ -157,7 +186,7 @@
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 
@@ -281,17 +310,66 @@ onMounted(() => { getData() })
 </script>
 
 <style lang="scss" scoped>
-.bg { padding: 10px; }
+/*
+ * 全量搬运自 css/chunk-30fc0b04.adf88d60.css（8 条规则，scoped id 73e737b9）。
+ * 仅去掉 [data-v-73e737b9] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
+ */
+.bg {
+  position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
+}
+
 .options {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;
-  > * { width: 220px !important; }
-  > .el-button { width: auto !important; }
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
 }
-.content { display: flex; flex-direction: column; }
+
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
+}
+
+.content {
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
+}
+
 .title {
-  font-size: 16px; font-weight: 600; margin: 10px 0; position: relative; padding-left: 12px;
-  &::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 16px; background-color: #036; border-radius: 2px; }
+  position: relative;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
 }
-.my-pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
-:deep(.enter-upload) { margin-left: 10px; }
+
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
+}
+
+.my-pagination {
+  margin-top: 10px;
+}
 </style>

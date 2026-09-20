@@ -45,17 +45,23 @@ const routes = [
     meta: { requiresAuth: true }
   },
   // 抽签系统（独立路由，不需要 layout）
+  //
+  // 【修复】补 meta.role = 3（管理员）。后端 4 个抽签接口都走 role_error(request, 3)，
+  // 非管理员拿到的是 403「无该页面操作权限！」；而前端响应拦截器把 403 当作
+  // 「登录态失效」处理（清 token + 跳 /login）。原先两条路由没有 meta.role，
+  // 于是学校/评委等账号可以进到页面，再被莫名其妙弹回登录页；
+  // 现在由守卫直接按角色拦下，跳该角色自己的首页（/middle），不误导用户。
   {
     path: '/chouqian/index',
     name: '/chouqian/index',
     component: () => import('@/views/chouqian/index.vue'),
-    meta: { title: '抽签首页', requiresAuth: true }
+    meta: { title: '抽签首页', requiresAuth: true, role: 3 }
   },
   {
     path: '/chouqian/do/:type',
     name: '/chouqian/do',
     component: () => import('@/views/chouqian/do.vue'),
-    meta: { title: '执行抽签', requiresAuth: true }
+    meta: { title: '执行抽签', requiresAuth: true, role: 3 }
   },
 
   // ============ 管理员 (type=3) ============

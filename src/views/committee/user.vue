@@ -27,6 +27,11 @@
 
   page-sizes：dist 原文是 [10,20,50,100]（与 teacher 的 [20,50,100,200] 不同），
   默认 limit=10 —— 这是 user 页独有的配置，按原样保留。
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
+    - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
 -->
 <template>
   <div class="bg">
@@ -107,7 +112,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
-import { downloadExcelFile } from '@/utils/excel'
 
 const keyword = ref(null)
 const page = ref(1)
@@ -231,8 +235,12 @@ function resetPassword(id) {
  *     })
  *   }
  *
- * 注意 dist 这里手写了 Blob + <a download> 流程，但项目内已有 utils/excel.js 的 downloadExcelFile
- * 实现同样的功能（且 dist 原始 utils 里也暴露了 downloadExcelFile）。这里用项目内的统一实现。
+ * 【本页不使用 downloadExcelFile】dist 该页是内联实现（本 chunk 内 downloadExcelFile
+ * 引用 0 次），且文件名不加扩展名（r.download=e）。utils/excel.js 的 downloadExcelFile
+ * 是 dist app.js 里另一个共享 helper（c.download=t+".xlsx"），供 colleges / elementary /
+ * teacher 等页使用 —— 两者不可互替，故此处按 dist 原样内联。
+ *
+ * 【本仓库增强，dist 无】exporting 防重复点击 + 按钮 :loading。
  *
  * 后端：GET /api/committee/user/export → xlsx
  * committee 用户看到所有 user；admin 用户只看到 type=0（apps/api/views.py:482 user_export_admin）
@@ -241,12 +249,17 @@ function download(name) {
   if (exporting.value) return
   exporting.value = true
   committeeApi.user.download().then((res) => {
-    const blob = res && res.data
-    if (!blob) {
-      ElMessage.error('响应为空')
-      return
-    }
-    downloadExcelFile(blob, name)
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8'
+    })
+    const a = document.createElement('a')
+    const url = window.URL.createObjectURL(blob)
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
   }).catch(() => {
     // 拦截器已处理
   }).finally(() => {
@@ -261,58 +274,65 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
- * 【CSS 证据等级：B】
- * dist CSS 文件未发现本页面专属样式（已 grep 全部 chunk-*.css）。
- * 与 teacher.vue 共用同一份布局样式以保持视觉一致。
+ * 全量搬运自 css/chunk-4a3bd144.de966eed.css（8 条规则，scoped id ad1cba42）。
+ * 仅去掉 [data-v-ad1cba42] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
  */
 .bg {
-  padding: 10px;
   position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
 }
 
 .options {
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
   display: flex;
-  align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
+  align-items: center;
+}
 
-  > * {
-    width: 220px !important;
-  }
-  > .el-button {
-    width: auto !important;
-  }
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
 }
 
 .content {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
 }
 
 .title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 10px 0;
   position: relative;
-  padding-left: 12px;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
 
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 4px;
-    height: 16px;
-    background-color: #036;
-    border-radius: 2px;
-  }
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
 }
 
 .my-pagination {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 10px;
 }
 </style>

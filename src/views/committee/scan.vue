@@ -8,7 +8,7 @@
   业务说明（基于 dist data()）：
     - 标题：报名列表
     - 表格仅 3 列：序号 / 学校名称(user.nickname) / 操作（ShowScFile 预览或"没有扫描文件上传"）
-    - 无 keyword 搜索 UI（keyword ref 存在但未在模板中渲染）
+    - 有 keyword 搜索 UI（el-input + #append 搜索按钮，@change 触发 getData）
     - 无 group select
     - 无 status select
     - 无审核/导出/上传
@@ -29,7 +29,9 @@
   用于 committee 查看各学校上报的盖章扫描文件（PDF/图片）。
   命名是 ScanFiles 扫描文件管理，不是 scan 扫描动作。
 
-  【DIST DEFECT】keyword ref 在 data() 中存在，但模板中未渲染搜索框；这是原版行为。
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
 -->
 <template>
   <div class="bg">
@@ -46,7 +48,8 @@
         </template>
       </el-input>
 
-      <el-button class="menu-button" type="primary" size="mini" @click="reflush">
+      <!-- dist 该页没有 menu-button 类，也没有对应 CSS 规则 -->
+      <el-button type="primary" size="mini" @click="reflush">
         刷新
       </el-button>
     </div>
@@ -56,9 +59,10 @@
         <p class="title">报名列表</p>
 
         <el-table :data="data" border size="mini" style="width: 100%">
-          <el-table-column type="index" prop="date" label="序号" header-align="center" align="center" />
-          <el-table-column prop="nickname" label="学校名称" header-align="center" align="center" />
-          <el-table-column label="操作" header-align="center" align="center">
+          <!-- dist 三列均无 align / header-align（与 log.vue 不同，勿照抄） -->
+          <el-table-column type="index" prop="date" label="序号" />
+          <el-table-column prop="nickname" label="学校名称" />
+          <el-table-column label="操作">
             <template #default="{ row }">
               <ShowScFile v-if="row.scanfile && row.scanfile.length > 0" :data="row.scanfile" :is-show="true" />
               <el-button
@@ -155,7 +159,9 @@ function download(url, name) {
   const a = document.createElement('a')
   a.href = url
   a.download = name
-  a.target = '_blank'
+  // dist 原文即 '_black'（拼写错误）。浏览器视为无效值，行为等同未设置 target，
+  // 但按规则7「保留常量」1:1 保留，不做"顺手修正"。
+  a.target = '_black'
   a.click()
 }
 
@@ -163,16 +169,72 @@ onMounted(() => { getData() })
 </script>
 
 <style lang="scss" scoped>
-.bg { padding: 10px; }
+/*
+ * 全量搬运自 css/chunk-5e98f976.b414b21d.css（9 条规则，scoped id 50989091）。
+ * 仅去掉 [data-v-50989091] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
+ */
+.bg {
+  position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
+}
+
 .options {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;
-  > * { width: 220px !important; }
-  > .el-button { width: auto !important; }
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
 }
-.content { display: flex; flex-direction: column; }
+
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
+}
+
+.content {
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
+}
+
 .title {
-  font-size: 16px; font-weight: 600; margin: 10px 0; position: relative; padding-left: 12px;
-  &::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 16px; background-color: #036; border-radius: 2px; }
+  position: relative;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
 }
-.my-pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
+}
+
+.my-pagination {
+  margin-top: 10px;
+}
+
+.detail-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  grid-row-gap: 10px;
+}
 </style>

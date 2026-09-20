@@ -1,3 +1,9 @@
+<!--
+  /login —— 登录页
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
+-->
 <template>
   <div class="login_container">
     <div class="login_box">

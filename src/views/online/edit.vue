@@ -100,6 +100,9 @@
  *
  * 提交 payload 结构：
  *   { id, name, is_other_show, other_show_message, leader, crew }
+ *
+ * 【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+ *   - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
  */
 import { ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

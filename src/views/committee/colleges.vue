@@ -25,6 +25,11 @@
   API：committee.report.getList({page,limit,keyword,group:1,status}) → /api/committee/report/list
         committee.report.check({id,status,remark?}) → /api/committee/report/check
         exportApi.exportGroupData({group:1}) → /api/export/data?group=1
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
+    - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
 -->
 <template>
   <div class="bg">
@@ -185,16 +190,74 @@ onMounted(() => { getData() })
 </script>
 
 <style lang="scss" scoped>
-.bg { padding: 10px; }
+/*
+ * 全量搬运自 css/chunk-2280a150.64bebd19.css（10 条规则，scoped id 76fa03ee）。
+ * 仅去掉 [data-v-76fa03ee] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
+ */
+.bg {
+  position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
+}
+
 .options {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;
-  > * { width: 220px !important; }
-  > .el-button { width: auto !important; }
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
 }
-.content { display: flex; flex-direction: column; }
+
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
+}
+
+.content {
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
+}
+
 .title {
-  font-size: 16px; font-weight: 600; margin: 10px 0; position: relative; padding-left: 12px;
-  &::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 16px; background-color: #036; border-radius: 2px; }
+  position: relative;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
 }
-.my-pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
+}
+
+.my-pagination {
+  margin-top: 10px;
+}
+
+.menu-button {
+  width: 100px;
+}
+
+.enter-upload {
+  margin-top: 20px;
+}
 </style>

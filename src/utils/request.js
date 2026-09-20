@@ -141,5 +141,32 @@ export function unwrap(res) {
   return null
 }
 
+/**
+ * 把请求失败转成一句用户可见的提示（与 unwrap 对称：unwrap 管成功，本函数管失败）
+ *
+ * 【为什么需要它】上面的响应拦截器只对 401/403/404/500 和「无响应」做了提示，
+ * 其余状态（405/422 等）走 default 分支，仅 console.log 就 reject ——
+ * 调用方若不写 .catch，用户看到的就是「按钮点了没反应」。本函数补上这一段。
+ *
+ * 【入参 err 是什么】拦截器默认分支 reject 的是 `response || error`：
+ *   - 有响应（405/422/…）-> 传进来的是 response 对象，带 status / data
+ *   - 无响应（断网/超时）-> 传进来的是 axios error，拦截器已提示「网络异常…」
+ * 【返回】实际弹出的文案；返回 null 表示拦截器已经提示过/已跳转，调用方不必再处理。
+ *
+ * 【为什么不读 body.detail】detail 是 Django / django-ninja 框架自带的英文原文
+ * （如 "Method not allowed"、"value is not a valid integer"），不适合直接给用户看；
+ * 只取后端业务信封里的 msg（failure/success）与 error（role_error）。
+ */
+export function showApiError(err, fallback = '操作失败') {
+  const res = err && err.response ? err.response : err
+  if (!res || !res.status) return null                       // 网络异常：拦截器已提示
+  if ([401, 403, 404, 500].includes(res.status)) return null // 拦截器已提示并跳转
+  const body = res.data
+  const detail = body && typeof body === 'object' ? (body.msg || body.error) : ''
+  const message = detail || `${fallback}（HTTP ${res.status}）`
+  ElMessage.error(message)
+  return message
+}
+
 export { HOST }
 export default request

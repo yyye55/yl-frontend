@@ -16,6 +16,11 @@
   - GET  /api/committee/report/list   → { code, msg, data, count }
   - PUT  /api/committee/report/check  body { id, status, remark? } → 改 Report.status
   - GET  /api/export/data?group=2|3   → Blob xlsx (committee 任意登录均可)
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
+    - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
 -->
 <template>
   <div class="bg">
@@ -308,59 +313,73 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
- * 【CSS 证据等级：B】
- * dist CSS 文件未发现本页面专属样式（已 grep 全部 chunk-*.css）。
- * 这里的 .bg / .options / .content / .title / .my-pagination 是项目内统一的页面容器
- * 样式，沿用 src/components/elementary/ReportList.vue 的局部写法以保持视觉一致。
+ * 全量搬运自 css/chunk-d5f8d9e2.d2979d40.css（10 条规则，scoped id fff39dcc）。
+ * 仅去掉 [data-v-fff39dcc] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
  */
 .bg {
-  padding: 10px;
   position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
 }
 
 .options {
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
   display: flex;
-  align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
+  align-items: center;
+}
 
-  > * {
-    width: 220px !important;
-  }
-  > .el-button {
-    width: auto !important;
-  }
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
 }
 
 .content {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
 }
 
 .title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 10px 0;
   position: relative;
-  padding-left: 12px;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
 
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 4px;
-    height: 16px;
-    background-color: #036;
-    border-radius: 2px;
-  }
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
 }
 
 .my-pagination {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.menu-button {
+  width: 100px;
+}
+
+.enter-upload {
+  margin-top: 20px;
 }
 </style>

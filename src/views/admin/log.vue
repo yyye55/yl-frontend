@@ -23,6 +23,10 @@
   【无 Tabs】dist 不使用 tabsStore
 
   【无 Vue3 特殊迁移】结构简单，this.$message → ElMessage；this.$api.admin.log.list → adminApi.log.list
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
 -->
 <template>
   <div class="bg">
@@ -39,7 +43,8 @@
         </template>
       </el-input>
 
-      <el-button type="primary" size="mini" @click="reflush">
+      <!-- dist 该按钮只有 {attrs:{type:"primary"}}，无 size -->
+      <el-button type="primary" @click="reflush">
         刷新
       </el-button>
     </div>
@@ -49,7 +54,8 @@
         <p class="title">日志记录</p>
 
         <el-table :data="data" border size="mini" style="width: 100%">
-          <el-table-column type="index" prop="name" label="序号" align="center" header-align="center" />
+          <!-- dist 原文即 label:"id"（疑为笔误，按规则7 保留常量 1:1 不动） -->
+          <el-table-column type="index" prop="name" label="id" align="center" header-align="center" />
           <el-table-column prop="content" label="内容" align="center" header-align="center" show-overflow-tooltip />
           <el-table-column prop="user.nickname" label="操作账号" align="center" header-align="center" />
           <el-table-column prop="created_at" label="时间" align="center" header-align="center" />
@@ -85,7 +91,8 @@ const total = ref(0)
 const data = ref([])
 
 function handleSizeChange(size) { page.value = 1; limit.value = size; getData() }
-function reflush() { page.value = 1; getData() }
+// dist: reflush(){this.getData()} —— 不重置页码
+function reflush() { getData() }
 function handleCurrentChange(current) { page.value = current; getData() }
 
 function getData() {
@@ -101,16 +108,59 @@ onMounted(() => { getData() })
 </script>
 
 <style lang="scss" scoped>
-.bg { padding: 10px; }
+/*
+ * 全量搬运自 css/chunk-9b9e14e0.869b1786.css（6 条规则，scoped id 37597d4b）。
+ * 仅去掉 [data-v-37597d4b] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
+ */
+.bg {
+  position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
+}
+
 .options {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;
-  > * { width: 220px !important; }
-  > .el-button { width: auto !important; }
+  height: 50px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: 200px 150px 180px 100px 100px;
+  justify-content: flex-start;
+  gap: 20px;
+  align-items: center;
 }
-.content { display: flex; flex-direction: column; }
+
+.content {
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
+}
+
 .title {
-  font-size: 16px; font-weight: 600; margin: 10px 0; position: relative; padding-left: 12px;
-  &::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 16px; background-color: #036; border-radius: 2px; }
+  position: relative;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
 }
-.my-pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #d80e0e;
+}
+
+.my-pagination {
+  margin-top: 10px;
+}
 </style>

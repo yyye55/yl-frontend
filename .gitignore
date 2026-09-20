@@ -13,3 +13,6 @@ dist/
 .ref-new/
 .scratch/
 scripts/.scratch/
+
+# 线上原版 dist 产物（还原比对用，只读参考，不入库）
+.orig-dist/

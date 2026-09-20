@@ -2,26 +2,40 @@
   Committee 报名列表共用组件
 
   【可信度：A】
-    dist 证据：以下 4 条路由都基于同一份 dist 模块模板（group/列集合/title 略有不同）：
-      - /committee/teacher      → chunk-d5f8d9e2   模块 b23d   group=2     columns=I  title="报名列表"
-      - /committee/teacher1     → chunk-23580f5a   模块 75c1   group=3     columns=I  title="报名列表"
-      - /committee/elementary   → chunk-96fa5cf6   模块 f841   group=0     columns=I  title="报名列表"
-      - /committee/elementary1  → chunk-6e3f572b   模块 260e   group="小学组" columns=II title="小学组报名审核"
+    dist 证据：committee 下共 6 条路由基于同一份 dist 模块模板（渲染结构、methods、
+    API 调用逐字一致，仅 group / 列集合 / title / 导出文件名后缀不同）：
+      - /committee/teacher      → chunk-d5f8d9e2  模块 b23d
+      - /committee/teacher1     → chunk-23580f5a  模块 75c1
+      - /committee/elementary   → chunk-96fa5cf6  模块 f841
+      - /committee/elementary1  → chunk-6e3f572b  模块 260e
+      - /committee/elementary2  → chunk-7d7cca8f  模块 6245
+      - /committee/elementary3  → chunk-1b3c6962  模块 0e3c
 
-  4 份 dist 模块共性：
-    - 顶部工具栏：keyword input + status select(0 待审核/-1 未通过/1 组委会通过) + 导出 + 刷新
+  这 6 条路由在**本仓库**被拆成两个组件承载：
+      - TeacherList.vue          → /committee/teacher、/committee/teacher1        （2 页）
+      - CommitteeReportList.vue  → /committee/elementary  ~ elementary3          （4 页，即本文件）
+
+  ⚠ 组件拆分是本仓库的实现选择，dist 并无此划分。核对调用方请以
+    `grep -rln '<CommitteeReportList' src/` 与 `grep -rln '<TeacherList' src/` 为准。
+
+  各页参数（本仓库传入）：
+      elementary   group=0        columns="I"   pageTitle="报名列表"
+      elementary1  group="小学组"  columns="II"  pageTitle="小学组报名审核"
+      elementary2  group="中学组"  columns="II"  pageTitle="中学组报名审核"
+      elementary3  group="大学组"  columns="II"  pageTitle="大学组报名审核"
+
+  6 份 dist 模块共性：
+    - 顶部工具栏：keyword input + status select(slot="prepend") + 导出 + 刷新
     - 表格 + 分页（page-sizes=[20,50,100,200]）
-    - methods 完全一致：getData / check / returnBack / exportXlsx / handleSizeChange / handleCurrentChange / refresh
+    - methods 一致：getData / check / returnBack / exportXlsx / handleSizeChange / handleCurrentChange / refresh
     - 操作列：ShowContent + Remark + 审核通过 / 驳回
-    - API 完全一致：committee.report.{getList,check} + communal.exportGroupData（→ exportApi.exportGroupData）
+    - API 一致：committee.report.{getList,check} + communal.export*（→ exportApi.exportGroupData）
 
-  4 份 dist 模块差异：
-    - group 值（用于过滤）
+  6 份 dist 模块差异：
+    - group 值（用于过滤；注意 elementary 传数字 0，其余传字符串）
     - 列集合（I：合唱团 / 节目；II：乐团 / 自选曲目 / 学校 / 领队姓名/电话）
     - 页 title
     - 导出文件名后缀
-
-  本组件通过 props 控制全部差异。teacher / teacher1 / elementary / elementary1 4 页共用。
 
   后端契约（A）：见 yilinbei/apps/api/views.py
     - GET  /api/committee/report/list   → { code, msg, data, count }
@@ -31,6 +45,11 @@
   【注意】group 类型：elementary / teacher / teacher1 用数字 (0/2/3)；
   elementary1 用字符串 "小学组"。后端 Report.group 是 CharField，请求会被 axios 自动 stringify，
   数据库中存的字符串必须精确匹配。本组件不强制类型，原样发送 props.group。
+
+    【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
+    - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
+    - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
+    - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
 -->
 <template>
   <div class="bg">
@@ -294,57 +313,73 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
- * 【CSS 证据等级：B】
- * dist CSS 文件未发现本页面专属样式。沿用 ReportList.vue 的局部样式保持视觉一致。
+ * 全量搬运自 css/chunk-96fa5cf6.d5eec5ed.css（10 条规则，scoped id 51be727d）。
+ * 仅去掉 [data-v-51be727d] 属性选择器（由 Vue SFC 编译期生成等价的 scoped 属性）。
+ * 声明顺序、属性值均与 dist 逐字一致。
  */
 .bg {
-  padding: 10px;
   position: relative;
+  background: #fff;
+  padding: 10px;
+  min-height: calc(100% - 20px);
+  width: calc(100% - 20px);
 }
 
 .options {
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  padding: 10px 20px 0 20px;
   display: flex;
-  align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
+  align-items: center;
+}
 
-  > * {
-    width: 220px !important;
-  }
-  > .el-button {
-    width: auto !important;
-  }
+.options > * {
+  margin-bottom: 10px;
+  margin-right: 10px;
+}
+
+.options > .el-input {
+  width: 220px !important;
 }
 
 .content {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  background-color: #fff;
+  padding: 10px;
+  margin-top: 20px;
+  box-shadow: 1px 1px 5px 1px #8c939d;
+  min-height: calc(100% - 150px);
+  width: calc(100% - 20px);
 }
 
 .title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 10px 0;
   position: relative;
-  padding-left: 12px;
+  border-bottom: 1px solid #dcdcdc;
+  line-height: 30px;
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
 
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 4px;
-    height: 16px;
-    background-color: #036;
-    border-radius: 2px;
-  }
+.title:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 3px;
+  height: 20px;
+  background-color: #036;
 }
 
 .my-pagination {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.menu-button {
+  width: 100px;
+}
+
+.enter-upload {
+  margin-top: 20px;
 }
 </style>

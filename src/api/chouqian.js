@@ -22,9 +22,14 @@
  * 与上述后端路径**逐条吻合**，是当前后端下抽签功能的正确入口：
  *     adminApi.chouqian.getByType / update / exportOne / exportAll
  *
- * 【当前状态】src 下没有页面引用本模块；而 /chouqian/index、/chouqian/do
- * 两个视图目前仍是占位页（el-empty）。也就是说抽签功能是「前端页面未还原」，
- * 而不是「接口不可用」——后续还原时应走 adminApi.chouqian，不要用本模块。
+ * 【当前状态：死代码】本模块 7 个方法的调用点均为 0。
+ *   - src 下没有任何页面引用；
+ *   - dist 的活跃代码同样不走这里 —— d2ab / b9ad 两个模块实际调用的是
+ *     adminApi.chouqian.*（新前缀），只有 d2ab 里那几个从未被模板绑定的
+ *     死方法才引用本模块（$api.chouqian.school.*），而那些死方法指向的
+ *     /api/chouqian/school/export 等后端根本没有。
+ *   - /chouqian/index、/chouqian/do 两个视图已完整还原（不是占位页），
+ *     走的是 adminApi.chouqian，与本模块无关。
  *
  * 【处理决定：保留，不删除】理由同 v2.js —— 它是 dist 的忠实组成部分。
  */

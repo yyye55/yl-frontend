@@ -4,7 +4,7 @@
 <template>
   <div class="login_container">
     <div class="login_box">
-      <p class="title">「意林杯」四川省第十二届管乐展示活动</p>
+      <p class="title">“意林杯”四川省第十二届管乐展示活动</p>
 
       <el-form
         ref="loginFormRef"
@@ -34,7 +34,7 @@
         </el-form-item>
 
         <p>
-          「意林杯」四川省第十二届管乐展示活动报名系统已正式启用，各单位填报时请一定核对好信息后再进行填写，保证活动顺利进行。
+          “意林杯”四川省第十二届管乐展示活动报名系统已正式启用，各单位填报时请一定核对好信息后再进行填写，保证活动顺利进行。
         </p>
       </el-form>
     </div>
@@ -165,19 +165,19 @@ async function submit() {
 .login_box {
   position: relative;
   z-index: 1;
-  width: 400px;
+  width: 460px;
   background-color: rgba(255, 255, 255, 0.96);
-  border-radius: 15px;
-  padding: 40px;
+  border-radius: 12px;
+  padding: 36px 40px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
 }
 
 .title {
   text-align: center;
-  font-size: 18px;
+  font-size: 28px;
   font-weight: bold;
-  color: #000;
-  margin-bottom: 20px;
+  color: #1a1a1a;
+  margin-bottom: 32px;
 }
 
 .login_form {
@@ -185,21 +185,46 @@ async function submit() {
     text-align: center;
     .mybtn {
       width: 100%;
-      background-color: #003366;
-      border-color: #003366;
+      height: 48px;
+      background-color: #004088;
+      border-color: #004088;
+      font-size: 16px;
+      font-weight: bold;
     }
   }
   p {
-    font-size: 12px;
-    color: #999;
-    line-height: 20px;
+    font-size: 13px;
+    color: #333333;
+    line-height: 1.6;
     margin-top: 16px;
   }
+  :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px #dde0e8 !important;
+    padding: 0 !important;
+    border-radius: 6px;
+  }
   :deep(.el-input__inner) {
-    height: 40px;
+    height: 44px;
+    border: none !important;
+    border-radius: 6px;
+    padding-left: 14px;
+    padding-right: 14px;
+    box-shadow: none !important;
+  }
+  :deep(.el-input__suffix) {
+    padding-right: 10px;
+  }
+  :deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 1px #004088 !important;
+  }
+  :deep(.el-input__wrapper.is-focus:hover) {
+    box-shadow: 0 0 0 1px #004088 !important;
+  }
+  :deep(.el-input__wrapper:hover) {
+    box-shadow: 0 0 0 1px #c0c4cc !important;
   }
   :deep(.el-form-item) {
-    margin-bottom: 18px;
+    margin-bottom: 20px;
   }
 }
 
@@ -208,9 +233,8 @@ async function submit() {
   bottom: 20px;
   width: 100%;
   text-align: center;
-  color: #fff;
+  color: #000;
   font-size: 12px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   z-index: 1;
 }
 </style>

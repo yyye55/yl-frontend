@@ -1,14 +1,14 @@
 <template>
   <div class="layout-root">
     <el-container class="layout-container">
-      <!-- ?????dist ? el-menu ??? el-container ??????? el-aside ??? -->
+      <!-- 左侧菜单（dist 中 el-menu 直接是 el-container 的子元素，没有 el-aside 包裹） -->
       <Sidebar :collapse="isCollapse" :active="active" />
 
       <el-container>
-        <!-- ????? / ???? / ???? -->
+        <!-- 顶部：昵称 / 修改信息 / 退出登录 -->
         <Header @modify="openModify" @help="showHelp = true" />
 
-        <!-- ?????dist ?? v-if="tabs.length>0" -->
+        <!-- 标签页栏：dist 中为 v-if="tabs.length>0" -->
         <div v-if="tabs.length > 0" class="indexs">
           <div
             v-for="(tab, i) in tabs"
@@ -32,25 +32,25 @@
         </el-main>
 
         <el-footer class="layout-footer">
-          @copyright "???"?????????????
+          @copyright “意林杯”四川省第十一届管乐展示活动
         </el-footer>
       </el-container>
     </el-container>
 
-    <!-- ???? -->
+    <!-- 修改信息 -->
     <ModifyUserInfo ref="modifyRef" :user="user" />
 
-    <!-- ??????????????? -->
+    <!-- 帮助弹窗（点击右上角昵称打开） -->
     <el-dialog v-model="showHelp">
       <p style="line-height:25px;">
-        ??????????????????????????????????????????????<br />
-        ?????????XXXXXXXX?XXXXXXXX??????<br />
-        ??????QQ?XXXXXXXX??????????+???<br />
-        ???XXXXXXXX@qq.com<br />
+        在系统使用过程中，如遇技术操作问题，请联系运维实施人员，其他问题请联系展演活动相关负责人员。<br />
+        运维实施人员电话：XXXXXXXX、XXXXXXXX（工作时间）<br />
+        运维实施人员QQ：XXXXXXXX（添加请备注单位名称+姓名）<br />
+        邮箱：XXXXXXXX@qq.com<br />
       </p>
       <p style="padding:5px 0;">
-        ???
-        <el-button size="mini" type="primary"> ???? </el-button>
+        下载：
+        <el-button size="mini" type="primary"> 操作手册 </el-button>
       </p>
     </el-dialog>
   </div>
@@ -58,39 +58,39 @@
 
 <script setup>
 /**
- * MainLayout ???
+ * MainLayout 主布局
  *
- * ?????A?DOM ???? dist ? 6 ? layout chunk????????????????
- * ???????????????? admin ????
+ * 【可信度：A】DOM 结构照搬 dist 中 6 个 layout chunk（除菜单与品牌标题按各自配置外，
+ * 其余结构完全一致）。原文骨架（以 admin 为例）：
  *
  *   t("div",{attrs:{id:"app"}},[
  *     t("el-container",[
- *       t("el-menu",{staticClass:"my-el-menu", ...}),          // ? ???
+ *       t("el-menu",{staticClass:"my-el-menu", ...}),          // ← 侧边栏
  *       t("el-container",[
- *         t("el-header",[ ...????? div... ]),
+ *         t("el-header",[ ...三个可点击 div... ]),
  *         e.tabs.length>0 ? t("div",{staticClass:"indexs"}, e._l(e.tabs,(n,o)=>
  *             t("div",{key:o,staticClass:"index-item",class:{tabactive:n.name===e.$route.path}},[
  *               t("span",{on:{click:()=>e.$router.push(n.name)}},[e._v(" "+e._s(n.label))]),
  *               t("i",{staticClass:"el-icon-close",on:{click:t=>{t.stopPropagation(),e.closeWindow(n.name)}}})
  *             ])),0) : e._e(),
  *         t("el-main",[t("router-view")],1),
- *         t("el-footer",[e._v(" @copyright "???"?????????????")])
+ *         t("el-footer",[e._v(" @copyright “意林杯”四川省第十一届管乐展示活动")])
  *       ],1)
  *     ],1),
  *     t("ModifyUserInfo",{ref:"modify",attrs:{user:e.user}}),
- *     t("el-dialog",{attrs:{visible:e.showHelp},on:{"update:visible":t=>{e.showHelp=t}}},[ ...??????... ])
+ *     t("el-dialog",{attrs:{visible:e.showHelp},on:{"update:visible":t=>{e.showHelp=t}}},[ ...运维联系信息... ])
  *   ],1)
  *
  * data(){ return { isCollapse:false, showHelp:false, active:this.$route.path, user:this.getUser() } }
  * updated(){ this.active = this.$route.path }
  *
- * ??????????????? ?? ????????
- *  1. ???? el-aside ?? Sidebar?dist ?? el-aside?el-menu ? el-container ???????
- *  2. ??????????P1-7????? dist ???
- *  3. ????? el-footer???? dist ???
- *  4. ???? router-view ?? <transition name="fade" mode="out-in"> ? :key="route.fullPath"?
- *     dist ? el-main ???? router-view????????????? dist ????
- *  5. ???? Header ????? / ??? / ?????dist ?? ?? ? Header.vue?
+ * 【与原实现（本仓库旧版）的差异 —— 均为照证据修正】
+ *  1. 原实现用 el-aside 包裹 Sidebar，dist 没有 el-aside，el-menu 是 el-container 的直接子元素。
+ *  2. 原实现没有标签页栏（P1-7），这里按 dist 恢复。
+ *  3. 原实现没有 el-footer，这里按 dist 恢复。
+ *  4. 原实现给 router-view 加了 <transition name="fade" mode="out-in"> 和 :key="route.fullPath"，
+ *     dist 的 el-main 里只有裸 router-view，因此移除（移除后行为才与 dist 一致）。
+ *  5. 原实现的 Header 有折叠按钮 / 面包屑 / 下拉菜单，dist 均无 —— 见 Header.vue。
  */
 
 import { ref, computed } from 'vue'
@@ -109,12 +109,12 @@ const userStore = useUserStore()
 const tabsStore = useTabsStore()
 const { closeWindow } = useTabs()
 
-// dist: data.isCollapse ?? false ?? ???????????? true?????????
+// dist: data.isCollapse 恒为 false —— 全文没有任何地方把它置为 true，原版没有折叠开关
 const isCollapse = ref(false)
 const showHelp = ref(false)
 const modifyRef = ref(null)
 
-// dist: updated(){ this.active = this.$route.path }??? computed????????
+// dist: updated(){ this.active = this.$route.path }。改用 computed，等价且更直接。
 const active = computed(() => route.path)
 
 // dist: computed: mapState(['tabsActive','tabs'])
@@ -123,13 +123,13 @@ const tabs = computed(() => tabsStore.tabs)
 // dist: data(){ user: this.getUser() }
 const user = computed(() => userStore.user)
 
-// dist: province / city / school / online ? el-main ?? keep-alive?admin / committee ??
+// dist: province / city / school / online 的 el-main 包了 keep-alive，admin / committee 没有
 const keepAlive = computed(() => {
   const m = getLayoutMenu(route.path)
   return !!(m && m.keepAlive)
 })
 
-// dist: ??"????" -> this.$refs.modify.show()
+// dist: 点击"修改信息" -> this.$refs.modify.show()
 function openModify() {
   if (modifyRef.value) modifyRef.value.show()
 }
@@ -137,14 +137,14 @@ function openModify() {
 
 <style lang="scss" scoped>
 /**
- * ???? dist CSS ???????????[data-v-580db96a]??
- * ???dist/css/chunk-40286ec0.c29eca32.css?6 ? layout ?????
+ * 样式照搬 dist CSS 中该组件的作用域规则（[data-v-580db96a]）。
+ * 来源：dist/css/chunk-40286ec0.c29eca32.css（6 个 layout 内容一致）
  *
- * ??????????????????? DOM ???????????
- *   .el-aside{...}                ?? ???????? el-aside??????
- *   .el-submenu / .el-menu-item-group ?? ??????????
- *   [class^=el-icon-] ??         ?? Element Plus ???????????
- *   body > .el-container{margin-bottom:40px} ?? ??????????
+ * 【未迁移项】原版还有以下规则，因对应的 DOM 在本项目不存在而未搬：
+ *   .el-aside{...}                —— 原版模板里并没有 el-aside，属遗留样式
+ *   .el-submenu / .el-menu-item-group —— 菜单只有一层，未使用
+ *   [class^=el-icon-] 相关         —— Element Plus 图标是组件而非字体类名
+ *   body > .el-container{margin-bottom:40px} —— 选择器在原版也不成立
  */
 
 .layout-root {
@@ -168,7 +168,7 @@ function openModify() {
   text-align: center;
 }
 
-/* ?????dist: .indexs / .index-item / .tabactive? */
+/* 标签页栏（dist: .indexs / .index-item / .tabactive） */
 .indexs {
   position: relative;
   display: flex;

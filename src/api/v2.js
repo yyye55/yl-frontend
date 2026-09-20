@@ -56,12 +56,12 @@ export const v2committeeApi = {
   report: {
     getList: (params) => request.get(HOST + '/api/v2/committee/report/list', { params }),
     getById: (id)     => request.get(HOST + '/api/v2/committee/report/' + id),
-    check:   (data)   => request.put(HOST + '/api/v2/committee/reportcheck', data)
+    check:   (data)   => request.put(HOST + '/api/v2/committee/report/check', data)
   },
   team: {
     getList: (params) => request.get(HOST + '/api/v2/committee/team/list', { params }),
     getById: (id)     => request.get(HOST + '/api/v2/committee/team/' + id),
-    check:   (data)   => request.put(HOST + '/api/v2/committee/teamcheck', data)
+    check:   (data)   => request.put(HOST + '/api/v2/committee/team/check', data)
   }
 }
 

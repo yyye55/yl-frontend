@@ -9,7 +9,6 @@
         label-position="left"
         :rules="rules"
         label-width="120px"
-        size="mini"
       >
         <div class="bg1">
           <!-- ============ 第 1 行：乐团名称 / 类型 ============ -->
@@ -134,7 +133,7 @@
                   placeholder="请输入内容"
                   maxlength="300"
                   show-word-limit
-                  rows="15"
+                  :rows="15"
                 />
               </el-form-item>
             </el-col>
@@ -337,8 +336,10 @@
  * 7) dist 的 `openWindow/closeWindow` 是 layout 上的方法（走 vuex tabs 模块），
  *    这里复用项目已有的等价实现 @/composables/useTabs。
  *
- * 【保留未改】`size="mini"`：Element Plus 只认 large/default/small，"mini" 会静默回退，
- * 留到设计系统轮统一处理。
+ * 【已移除】`size="mini"`：Element Plus 的合法尺寸是 large/default/small，不含 "mini"，
+ * 该 prop 每次渲染都会触发一次校验告警。EP 里并不存在 `.el-*--mini` 规则，这个属性
+ * 本来就不产生任何样式，删掉是零视觉变化。**未**改成 small —— `--small` 是真实尺寸规则
+ * （按钮 32→24px、表格单元格 padding 8px→4px、字号变小），会改动界面。
  * 【保留未改】`oninput="value=value.replace(...)"`：dist 原文（在原生 input 上过滤非数字），
  * 与 ProgramForm 保持同一写法，实际效果在浏览器中验证。
  */

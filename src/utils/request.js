@@ -58,6 +58,8 @@ request.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = token
     }
+    // 绕过 ngrok 内网穿透的浏览器拦截提示页（对非 ngrok 后端无副作用，会被正常忽略）
+    config.headers['ngrok-skip-browser-warning'] = '1'
     return config
   },
   (error) => {

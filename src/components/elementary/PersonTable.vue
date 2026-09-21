@@ -22,7 +22,8 @@
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
       <el-upload
-        style="margin: 10px; display: inline-block"
+        class="import-bar"
+        style="margin: 10px; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
         action="/"
         :show-file-list="false"
         :on-change="importExcel"
@@ -44,7 +45,7 @@
         <el-button style="color: #1890ff" type="text" @click="flush">清空</el-button>
 
         <el-upload
-          style="margin: 10px; display: inline-block"
+          style="display: inline-block"
           :on-success="uploadSuccessBatch"
           :data="QiniuData"
           :before-upload="beforeUpload"
@@ -67,7 +68,7 @@
           <button ref="uploadAvatar" type="button">click</button>
         </el-upload>
 
-        <p style="color: red; margin-bottom: 10px">注： 电子照片要求为蓝底、免冠、证件照、JPG格式,每张照片文件大小不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位+姓名.jpg</i> 例如：<i style="color: blue">123456张三.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456</i> 且姓名为 <i style="color: blue">张三</i> 的人员对应。 </p>
+        <p style="color: red; margin-bottom: 10px; flex-basis: 100%">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位.jpg</i> 例如：<i style="color: blue">123456.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456 </i>的人员对应。 </p>
       </el-upload>
     </div>
 
@@ -671,5 +672,15 @@ defineExpose({ getData, getCacheData })
   background-color: #fff;
   z-index: 10;
   border-right: 1px solid #ddd;
+}
+
+/* 「下载模板 / 批量导入 / 添加一行 / 清空 / 批量上传头像」这一排按钮。
+   它们分散在 Upload 根 / UploadContent / 内层 Upload 三种容器里，改前实测间距是
+   0 / 8 / 8 / 10px，且「批量导入」「批量上传头像」比中间三个高 1.2px —— 前者因为在
+   inline-flex 的 UploadContent 里，后者因为 el-button 的相邻 margin-left 只对相邻兄弟生效。
+   现在由 .import-bar 的 flex + gap:8px 统一发间距、align-items:center 对齐基线，
+   所以必须把 el-button 自带的相邻 margin-left:8px 清掉，否则会变成 8+8=16px。 */
+.import-bar > .el-button {
+  margin-left: 0;
 }
 </style>

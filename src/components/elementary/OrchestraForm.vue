@@ -140,7 +140,7 @@
             </el-col>
           </el-row>
 
-          <el-form-item label="乐团集体电子照">
+          <el-form-item label="乐团集体电子照片">
             <el-upload
               class="upload-demo"
               drag
@@ -166,7 +166,7 @@
                     原 dist 提示有 typo「JEPG」，已订正。
                     600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
                   -->
-                  电子照片要求分辨率不低于600dpi、JPEG或TIFF格式（用于制作秩序册）
+                  乐团集体电子照片用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
                 </div>
               </template>
             </el-upload>
@@ -193,7 +193,7 @@
               <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
               <template #tip>
                 <div class="el-upload__tip">
-                  视频要求格式为MP4或MOV，大小不超过700M。
+                  视频格式为MP4或MOV，大小不超过700MB。
                 </div>
               </template>
             </el-upload>
@@ -210,7 +210,7 @@
             <Teacher ref="teacherRef" :showdata="form.teacher" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
             <p style="font-size: 14px; color: #ff0000">
-              管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（在报名时可报预备队员3人）。
+              管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（报名时可报预备队员3人）。
             </p>
             <Person ref="personRef" :showdata="form.person" />
           </div>
@@ -1022,5 +1022,12 @@ function onSubmit() {
 .request {
   color: #8c939d;
   margin-bottom: 20px;
+}
+
+/* 上传区（乐团集体电子照 / 上传视频）宽度原本由 #tip 文案长度撑出（shrink-to-fit），
+   导致「乐团集体电子照」比「上传视频」宽 13px。撑满内容列后两者完全一致。
+   必须用 :deep()：.el-upload 根节点上没有 data-v 属性，裸选择器命中不了。 */
+:deep(.upload-demo) {
+  width: 40%;
 }
 </style>

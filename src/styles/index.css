@@ -6,10 +6,13 @@
  * - 自定义字体: 系统中文字体栈
  */
 
-/* 引入变量与 mixin */
-@use './variables.scss' as *;
-@use './reset.scss';
-@use './bg.scss';
+/* 引入变量、重置与表单容器样式
+ * 注意：下面三条 @import 必须位于本文件所有规则之前（注释可以放在它们上面），
+ * 否则浏览器会忽略该条导入，Vite 也会告警 "@import must precede all other statements"。
+ */
+@import './variables.css';
+@import './reset.css';
+@import './bg.css';
 
 /* 全局工具类 */
 .text-center { text-align: center; }
@@ -18,8 +21,8 @@
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 
 /* NProgress 顶部进度条配色 */
-#nprogress .bar { background: $primary-color; height: 3px; }
-#nprogress .peg { box-shadow: 0 0 10px $primary-color, 0 0 5px $primary-color; }
+#nprogress .bar { background: var(--primary-color); height: 3px; }
+#nprogress .peg { box-shadow: 0 0 10px var(--primary-color), 0 0 5px var(--primary-color); }
 
 /* Element Plus 微调 */
 .el-table th { background-color: #fafafa !important; color: #333; }

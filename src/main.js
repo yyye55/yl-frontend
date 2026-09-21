@@ -44,7 +44,7 @@ import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 
 // 全局样式
-import './styles/index.scss'
+import './styles/index.css'
 
 // 路由守卫
 import './router/guard'

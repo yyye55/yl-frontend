@@ -91,11 +91,10 @@ yl-frontend/
 │   │       ├── tabs.js             # 多 tab 状态
 │   │       └── user.js             # 用户状态
 │   ├── styles/
-│   │   ├── index.scss              # 全局样式入口
-│   │   ├── variables.scss          # 颜色变量
-│   │   ├── reset.scss              # 重置
-│   │   ├── bg.scss                 # 背景
-│   │   └── login.scss              # 登录页样式
+│   │   ├── index.css               # 全局样式入口
+│   │   ├── variables.css           # 颜色变量（:root 自定义属性）
+│   │   ├── reset.css               # 重置
+│   │   └── bg.css                  # 背景
 │   ├── utils/
 │   │   ├── auth.js                 # token/user localStorage
 │   │   ├── request.js              # axios 封装

@@ -30,6 +30,6 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 </script>
 
 <style>
-/* 全局重置（最简，细节在 styles/index.scss 中） */
+/* 全局重置（最简，细节在 styles/index.css 中） */
 #app { height: 100%; }
 </style>

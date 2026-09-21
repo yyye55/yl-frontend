@@ -17,6 +17,9 @@
           <span v-else-if="row.name === '中学组报名情况'" style="color:#888;font-size:12px">
             （含管乐中学+铜管中学）
           </span>
+          <span v-else-if="row.name === '大学组报名情况'" style="color:#888;font-size:12px">
+            （含管乐大学）
+          </span>
         </template>
       </el-table-column>
       <!--

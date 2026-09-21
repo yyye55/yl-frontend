@@ -6,8 +6,6 @@
   "description": "「意林杯」四川省第十一届管乐展示活动报名系统 - Vue 3 前端",
   "scripts": {
     "dev": "vite",
-    "dev:mock": "concurrently -n mock,web -c magenta,cyan \"node mock-api/server.mjs\" \"vite\"",
-    "mock": "node mock-api/server.mjs",
     "build": "vite build",
     "preview": "vite preview --port 4173"
   },
@@ -25,7 +23,6 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "concurrently": "^9.1.2",
     "playwright": "^1.63.0",
     "sass": "^1.69.5",
     "unplugin-auto-import": "^0.17.0",

@@ -44,8 +44,8 @@
 
       <template #footer>
         <span class="dialog-footer">
-          <el-button size="mini" @click="showInfo = false">取 消</el-button>
-          <el-button type="primary" size="mini" :loading="submitting" @click="submit">确 定</el-button>
+          <el-button @click="showInfo = false">取 消</el-button>
+          <el-button type="primary" :loading="submitting" @click="submit">确 定</el-button>
         </span>
       </template>
     </el-dialog>
@@ -110,8 +110,9 @@
  *   - 弹窗里「修改信息后，修改的账号需要重新登录」这句文案原样保留，且**不加任何强制登出**。
  *     后端 user_update 只调 set_password，不会使既有 PersonalAccessToken 失效，
  *     用户不会被踢出 —— 提示语与行为不符属于既知现状，不在本次范围内。
- *   - 不动 size="mini" 等样式：size="mini" 在全仓有 180 处、覆盖 33 个文件，
- *     是 Element UI 迁移遗留的既成事实，单独改这一个弹窗反而与全仓不一致。
+ *   - footer 里的两个 size="mini" 已移除：Element Plus 不认 "mini"、每次渲染都会告警，
+ *     而 EP 中并不存在 `.el-button--mini` 规则，删掉是零视觉变化。**未**改成 small ——
+ *     `.el-button--small` 会把按钮从 32px 压到 24px。
  *     （模板里的 label-width / size="default" 是用户自行调整的，予以保留。）
  * ==========================================================================
  */

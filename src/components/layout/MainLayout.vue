@@ -50,7 +50,7 @@
       </p>
       <p style="padding:5px 0;">
         下载：
-        <el-button size="mini" type="primary"> 操作手册 </el-button>
+        <el-button type="primary"> 操作手册 </el-button>
       </p>
     </el-dialog>
   </div>

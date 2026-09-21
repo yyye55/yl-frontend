@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <p class="title">报名一览</p>
-    <el-table :data="tableData" size="mini" style="width:100%">
+    <el-table :data="tableData" style="width:100%">
       <el-table-column prop="name" label="类型" width="240" />
       <!--
         dist 原文写的是 prop="data[0]" .. prop="data[3]"。

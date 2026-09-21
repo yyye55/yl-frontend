@@ -2,16 +2,16 @@
   <div class="container">
     <div v-if="success" class="container-text">
       <div class="export-demo" style="padding: 5px 0 20px 0">
-        <el-button type="primary" :disabled="!pass" size="mini" @click="exportReport('报名信息表')">
+        <el-button type="primary" :disabled="!pass" @click="exportReport('报名信息表')">
           报名信息表导出
         </el-button>
-        <el-button type="primary" :disabled="!pass" size="mini" @click="dialogRef.open()">
+        <el-button type="primary" :disabled="!pass" @click="dialogRef.open()">
           报名信息表表盖章扫描件上传
         </el-button>
       </div>
     </div>
 
-    <el-table :data="data" size="mini" style="width:100%">
+    <el-table :data="data" style="width:100%">
       <el-table-column header-align="center" align="center" prop="name" label="类型" width="180" />
       <el-table-column header-align="center" align="center" prop="total" label="合计" />
       <el-table-column header-align="center" align="center" prop="data1" label="驳回" />

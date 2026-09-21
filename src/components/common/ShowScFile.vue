@@ -1,12 +1,12 @@
 <template>
   <div style="display:inline-block;margin:5px">
-    <el-button size="mini" @click="showFile">文件下载</el-button>
+    <el-button @click="showFile">文件下载</el-button>
 
     <el-dialog v-model="dialogTableVisible">
       <div class="detail-content">
         <h2>文件列表</h2>
         <div class="files">
-          <el-table :data="files" border size="mini" style="width:100%">
+          <el-table :data="files" border style="width:100%">
             <!-- dist 原文：type="index" 与 prop="date" 同时存在；type=index 时 prop 不生效，
                  Element UI 与 Element Plus 行为一致，保留原样不改。 -->
             <el-table-column type="index" prop="date" label="序号" />

@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <p class="title">报名一览</p>
-    <el-table :data="tableData" size="mini" style="width:100%">
+    <el-table :data="tableData" style="width:100%">
       <!--
         【第十二届改造】后端 stats_admin() 返回 "小学组报名情况"/"中学组报名情况"/"大学组报名情况"
         这些是 11 届遗留字符串。对 12 届，组委会首页展示新 5 组统计暂无完整后端支持，

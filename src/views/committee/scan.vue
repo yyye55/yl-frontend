@@ -40,7 +40,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -49,7 +48,7 @@
       </el-input>
 
       <!-- dist 该页没有 menu-button 类，也没有对应 CSS 规则 -->
-      <el-button type="primary" size="mini" @click="reflush">
+      <el-button type="primary" @click="reflush">
         刷新
       </el-button>
     </div>
@@ -58,7 +57,7 @@
       <div class="bg-list">
         <p class="title">报名列表</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
+        <el-table :data="data" border style="width: 100%">
           <!-- dist 三列均无 align / header-align（与 log.vue 不同，勿照抄） -->
           <el-table-column type="index" prop="date" label="序号" />
           <el-table-column prop="nickname" label="学校名称" />
@@ -67,7 +66,6 @@
               <ShowScFile v-if="row.scanfile && row.scanfile.length > 0" :data="row.scanfile" :is-show="true" />
               <el-button
                 v-else
-                size="mini"
                 type="danger"
                 disabled
                 style="margin-left: 10px"

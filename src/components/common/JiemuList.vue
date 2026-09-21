@@ -1,7 +1,7 @@
 <template>
   <div class="bg">
     <div class="options">
-      <el-button class="menu-button" style="width: 100px" type="primary" size="mini" @click="refresh">
+      <el-button class="menu-button" style="width: 100px" type="primary" @click="refresh">
         刷新
       </el-button>
 
@@ -24,7 +24,7 @@
     <div class="content">
       <div class="bg-list">
         <p class="title">报名列表</p>
-        <el-table :data="data" border size="mini" style="width: 100%">
+        <el-table :data="data" border style="width: 100%">
           <el-table-column
             type="index"
             prop="date"
@@ -55,7 +55,7 @@
             :align="center ? 'center' : ''"
           >
             <template #default="{ row }">
-              <el-button size="mini" type="primary" @click="downloadFile(fileNameOf(row), row.file)">
+              <el-button type="primary" @click="downloadFile(fileNameOf(row), row.file)">
                 下载
               </el-button>
             </template>

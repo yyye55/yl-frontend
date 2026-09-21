@@ -1,6 +1,6 @@
 <template>
   <div class="main">
-    <el-button size="mini" style="font-size:12px;margin-right:6px" @click="dialogTableVisible = true">
+    <el-button style="font-size:12px;margin-right:6px" @click="dialogTableVisible = true">
       查看驳回信息
     </el-button>
     <el-dialog v-model="dialogTableVisible" title="驳回原因">

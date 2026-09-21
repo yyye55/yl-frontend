@@ -5,22 +5,21 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
-      <el-button type="primary" size="mini" @click="reflush"> 刷新 </el-button>
-      <el-button type="primary" size="mini" @click="add"> 添加账号 </el-button>
-      <el-button type="primary" size="mini" @click="download('账号列表')"> 导出所有账号 </el-button>
+      <el-button type="primary" @click="reflush"> 刷新 </el-button>
+      <el-button type="primary" @click="add"> 添加账号 </el-button>
+      <el-button type="primary" @click="download('账号列表')"> 导出所有账号 </el-button>
     </div>
 
     <div class="content">
       <div class="bg-list">
         <p class="title">账号列表</p>
-        <el-table :data="data" border size="mini" style="width:100%">
+        <el-table :data="data" border style="width:100%">
           <el-table-column type="index" label="序号" />
           <el-table-column prop="username" label="账号" />
           <el-table-column prop="nickname" label="名称" />
@@ -57,7 +56,6 @@
         :rules="rules"
         inline
         label-width="120px"
-        size="mini"
       >
         <el-form-item label="账号" prop="username">
           <el-input v-model="form.username" />
@@ -86,8 +84,8 @@
         />
       </el-form>
       <template #footer>
-        <el-button size="mini" @click="showInfo = false">取 消</el-button>
-        <el-button type="primary" size="mini" @click="submit">确 定</el-button>
+        <el-button @click="showInfo = false">取 消</el-button>
+        <el-button type="primary" @click="submit">确 定</el-button>
       </template>
     </el-dialog>
 
@@ -100,7 +98,6 @@
         :rules="editRules"
         inline
         label-width="120px"
-        size="mini"
       >
         <el-form-item label="账号" prop="username">
           <el-input v-model="editForm.username" />
@@ -113,8 +110,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button size="mini" @click="showEditInfo = false">取 消</el-button>
-        <el-button type="primary" size="mini" @click="editSubmit">确 定</el-button>
+        <el-button @click="showEditInfo = false">取 消</el-button>
+        <el-button type="primary" @click="editSubmit">确 定</el-button>
       </template>
     </el-dialog>
   </div>

@@ -38,7 +38,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -46,18 +45,24 @@
         </template>
       </el-input>
 
-      <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
+      <!--
+        placeholder 写「全部」而不是「审核状态」：
+        「全部」这一项的 value 是 null，对 el-select 来说就是空值，它会回头显示 placeholder。
+        所以只有把 placeholder 本身写成「全部」，选中「全部」时框里才会出现「全部」两个字。
+        这只是显示文案，status 仍然是 null，axios 会丢弃空值参数 —— 也就是「全部」= 不传 status。
+      -->
+      <el-select v-model="status" placeholder="全部" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
         <el-option label="未通过" :value="-1" />
         <el-option label="组委会通过" :value="1" />
       </el-select>
 
-      <el-button class="menu-button" type="primary" size="mini" :loading="exporting" @click="exportXlsx">
+      <el-button class="menu-button" type="primary" :loading="exporting" @click="exportXlsx">
         导出数据
       </el-button>
 
-      <el-button class="menu-button" type="primary" size="mini" @click="refresh">
+      <el-button class="menu-button" type="primary" @click="refresh">
         刷新
       </el-button>
     </div>
@@ -66,7 +71,7 @@
       <div class="bg-list">
         <p class="title">报名列表</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
+        <el-table :data="data" border style="width: 100%">
           <el-table-column type="index" prop="date" label="序号" header-align="center" align="center" />
           <el-table-column prop="choir_name" label="合唱团名称" header-align="center" align="center" show-overflow-tooltip />
           <el-table-column prop="name" label="节目名称" header-align="center" align="center" show-overflow-tooltip />
@@ -89,11 +94,11 @@
               <ShowContent :data="row" />
               <template v-if="row.status < 1">
                 <Remark v-if="row.status === -1" :data="row.remark" />
-                <el-button size="mini" @click="check(row.id, 1)">审核通过</el-button>
-                <el-button v-if="row.status === 0" size="mini" @click="returnBack(row.id)">驳回</el-button>
+                <el-button @click="check(row.id, 1)">审核通过</el-button>
+                <el-button v-if="row.status === 0" @click="returnBack(row.id)">驳回</el-button>
               </template>
               <template v-else-if="row.status === 1">
-                <el-button size="mini" @click="returnBack(row.id)">驳回</el-button>
+                <el-button @click="returnBack(row.id)">驳回</el-button>
               </template>
             </template>
           </el-table-column>

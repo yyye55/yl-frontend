@@ -5,7 +5,7 @@
  * - 辅色 #67C23A (成功) / #E6A23C (警告) / #F56C6C (危险)
  * - 文字 #303133 / #606266 / #909399
  * - 边框 #DCDFE6 / #E4E7ED
- * - 背景 #F2F6FC / #F5F7FA
+ * - 背景 #F2F6FC / #F5F7FA / #F0F2F5(页面底色)
  *
  * 原为 SCSS 变量（$primary-color ...），改为 CSS 自定义属性后用法是 var(--primary-color)。
  * 注意：SCSS 变量是编译期的，编译后不占产物体积；自定义属性是运行期的，会实际进入 CSS。
@@ -29,6 +29,7 @@
 
   --bg-base:  #F5F7FA;
   --bg-light: #F2F6FC;
+  --bg-page:  #F0F2F5;  /* 页面底色，被 styles/reset.css 的 body 引用 */
 
   --radius-base: 4px;
   --radius-small: 2px;

@@ -26,10 +26,8 @@
 //      注意它判的是 meta.KeepAlive（大写 K），而各 layout 判的是 meta.keepAlive（小写 k）。
 //      本项目路由里两者都没有设置，因此这两个分支在 dist 和本项目中都恒为「不缓存」，
 //      行为一致。此处保留本项目的等价写法，不为了逐字对应而引入一个恒 false 的大写键。
+//   4. 本组件原先还有一个 <style>#app { height: 100% }</style>，已删除：
+//      index.html 头部的内联 <style> 里已经写了 `html, body, #app { height: 100%; ... }`，
+//      两处声明重复且取值相同，保留哪一条结果都一样，故只留 index.html 那一处。
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 </script>
-
-<style>
-/* 全局重置（最简，细节在 styles/index.css 中） */
-#app { height: 100%; }
-</style>

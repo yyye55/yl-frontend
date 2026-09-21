@@ -7,6 +7,14 @@
     <link rel="icon" href="/ylbxt/logo.png" />
     <!-- 「意林杯」四川省第十二届管乐展示活动报名系统 -->
     <title>「意林杯」四川省第十二届管乐展示活动报名系统</title>
+    <!--
+      这里的内联 <style> 是刻意的，不要当成重复声明删掉：
+      1. 它是 FOUC 防线 —— 这段样式随 HTML 一起到达，在 JS 注入/加载打包 CSS 之前就已生效，
+         否则首屏会有一瞬间的无样式白闪。
+      2. `#nprogress .bar` 是进度条配色的唯一有效来源：nprogress 自带的 CSS 由 router/guard.js
+         引入，加载顺序在 styles/index.css 之后，写在那边同特异性的声明不会生效（已实测）。
+      3. html/body 这几条与 styles/reset.css 取值相同，是有意的双重保险，不改。
+    -->
     <style>
       html, body, #app { height: 100%; margin: 0; padding: 0; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }

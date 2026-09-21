@@ -14,15 +14,25 @@
 @import './reset.css';
 @import './bg.css';
 
-/* 全局工具类 */
+/* 全局工具类
+ * 【现状】下面这 8 个类（本组 4 个 + 下方「通用页面容器」「通用搜索栏」4 个）
+ * 在全项目 .vue / .js 中零引用，grep 核实过，只在本文件里出现。
+ * 保留原因：它们是从 dist 的 app.css 还原出来的全局约定类，属于对外可用的公共样式，
+ * 删掉会丢失信息。若日后确认要清理，删掉这两整段即可，不会影响任何现有页面。
+ */
 .text-center { text-align: center; }
 .text-right  { text-align: right; }
 .flex-center { display: flex; align-items: center; justify-content: center; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 
-/* NProgress 顶部进度条配色 */
-#nprogress .bar { background: var(--primary-color); height: 3px; }
-#nprogress .peg { box-shadow: 0 0 10px var(--primary-color), 0 0 5px var(--primary-color); }
+/* NProgress 顶部进度条配色统一由 index.html 头部内联 <style> 提供，这里不要再写。
+ *
+ * 原因：nprogress 自带的 CSS 由 router/guard.js 引入，加载位置在本文件之后，
+ * 而 #nprogress .bar / #nprogress .peg 与本文件的选择器特异性完全相同（都是 1,1,0）——
+ * 同特异性下后加载者胜，所以写在这里的声明永远不会生效（已实测确认）。
+ * 实测结果：.bar 高度是 nprogress 的 2px（不是这里写的 3px）；
+ *          .peg 的光晕是 nprogress 默认的 #2299dd（不是主题色）。
+ */
 
 /* Element Plus 微调 */
 .el-table th { background-color: #fafafa !important; color: #333; }

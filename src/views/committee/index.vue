@@ -2,7 +2,23 @@
   <div class="container">
     <p class="title">报名一览</p>
     <el-table :data="tableData" size="mini" style="width:100%">
-      <el-table-column prop="name" label="类型" width="240" />
+      <!--
+        【第十二届改造】后端 stats_admin() 返回 "小学组报名情况"/"中学组报名情况"/"大学组报名情况"
+        这些是 11 届遗留字符串。对 12 届，组委会首页展示新 5 组统计暂无完整后端支持，
+        目前做友好展示：保留原名 + 括号说明。
+        完整 12 届统计（管乐/铜管 x 小学/中学/大学）需要后端按 establishment+group 联合分组（BE-01）。
+      -->
+      <el-table-column label="类型" width="280">
+        <template #default="{ row }">
+          <span>{{ row.name }}</span>
+          <span v-if="row.name === '小学组报名情况'" style="color:#888;font-size:12px">
+            （含管乐小学+铜管小学）
+          </span>
+          <span v-else-if="row.name === '中学组报名情况'" style="color:#888;font-size:12px">
+            （含管乐中学+铜管中学）
+          </span>
+        </template>
+      </el-table-column>
       <!--
         dist 原文写的是 prop="data[0]" .. prop="data[3]"。
         Element UI 的 getPropByPath 认识中括号下标；Element Plus 的 getProp 只按 "." 拆分路径，

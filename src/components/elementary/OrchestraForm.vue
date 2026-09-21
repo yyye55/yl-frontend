@@ -59,7 +59,7 @@
               <el-form-item label="参演组别" prop="group">
                 <el-select v-model="form.group" style="width: 100%" placeholder="参赛组别选择">
                   <el-option
-                    v-for="opt in cfg.groupOptions"
+                    v-for="opt in groupOptionsForCurrent()"
                     :key="opt"
                     :label="opt"
                     :value="opt"
@@ -158,7 +158,15 @@
               <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
               <template #tip>
                 <div class="el-upload__tip">
-                  电子照片要求解析度为600dpi、JEPG或TIFF格式）
+                  <!--
+                    【第十二届改造】红头文件要求：
+                      - 分辨率不低于 600dpi
+                      - JPEG 或 TIFF 格式
+                      - 用于制作秩序册
+                    原 dist 提示有 typo「JEPG」，已订正。
+                    600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
+                  -->
+                  电子照片要求分辨率不低于600dpi、JPEG或TIFF格式（用于制作秩序册）
                 </div>
               </template>
             </el-upload>
@@ -334,7 +342,7 @@
  * 【保留未改】`oninput="value=value.replace(...)"`：dist 原文（在原生 input 上过滤非数字），
  * 与 ProgramForm 保持同一写法，实际效果在浏览器中验证。
  */
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -395,8 +403,16 @@ const VARIANTS = {
     mode: 'edit', title: '报名修改',
     api: { getById: 'city', update: 'city' },
     establishmentOptions: ['管乐团', '铜管乐团'],
-    // 【非对称】city 新增只有 2 个组别，编辑却有 3 个 —— dist 原文
-    groupOptions: ['小学组', '中学组', '大学组'],
+    /*
+     * 【第十二届修正】dist 原文是 ['小学组', '中学组', '大学组']，但红头文件第十二届
+     * 明确「铜管乐团分为小学组、中学组」（无大学组），因此这里需要按 establishment
+     * 联动 group 选项。
+     *
+     * 实现策略：用函数 `groupOptionsFor(establishment)` 在运行时返回正确列表，
+     * 模板调用方式 v-for="opt in groupOptionsFor(form.establishment)"。
+     */
+    groupOptions: ['小学组', '中学组', '大学组'], // 兼容旧 dist 默认值（实际不用）
+    groupOptionsFor: (est) => (est === '铜管乐团' ? ['小学组', '中学组'] : ['小学组', '中学组', '大学组']),
     name1VIf: false,
     formDefaults: {}
   },
@@ -412,6 +428,23 @@ const VARIANTS = {
 }
 
 const cfg = VARIANTS[props.variant]
+
+/**
+ * 【第十二届改造】按当前 establishment 返回可选的 group 列表。
+ *
+ * 背景：dist 原文 30d4（city 编辑）的 cfg.groupOptions 是硬编码的
+ * ['小学组', '中学组', '大学组']，与红头文件第十二届「铜管乐团无大学组」冲突。
+ *
+ * 优先级：
+ *   1) 若 cfg.groupOptionsFor 存在（即 dist 30d4 这条），按 establishment 联动
+ *   2) 否则用 cfg.groupOptions（其余三个变体都是 dist 原文定义死的，无需联动）
+ */
+function groupOptionsForCurrent() {
+  if (typeof cfg.groupOptionsFor === 'function') {
+    return cfg.groupOptionsFor(form.value.establishment)
+  }
+  return cfg.groupOptions
+}
 
 const route = useRoute()
 const formRef = ref(null)
@@ -542,6 +575,24 @@ const rules = reactive({
 /** 集体照缺失的提示文案：新增页是「未上传乐团集体照」，编辑页是「未上传集体照」（dist 原文） */
 const photoMissingMsg = computed(() =>
   cfg.mode === 'create' ? '未上传乐团集体照' : '未上传集体照'
+)
+
+/**
+ * 【第十二届改造】当 establishment 变化时，若当前 group 不在新可选列表中，
+ * 自动清空 group，让用户重新选择。
+ *
+ * 例：用户选「铜管乐团」，当前 group=「大学组」 → 清空 group 并触发校验提示。
+ * 反之：用户从「铜管乐团」切回「管乐团」时，若 group 是「小学组/中学组」，保留即可。
+ */
+watch(
+  () => form.value.establishment,
+  (newEst) => {
+    if (!newEst || typeof cfg.groupOptionsFor !== 'function') return
+    const allowed = cfg.groupOptionsFor(newEst)
+    if (!allowed.includes(form.value.group)) {
+      form.value.group = ''
+    }
+  }
 )
 
 /* ------------------------- 上传逻辑（逐行照搬 dist） ------------------------- */

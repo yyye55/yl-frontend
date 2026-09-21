@@ -13,23 +13,6 @@
         </template>
       </el-input>
 
-      <!-- 仅 cadb（/province/report/list）有「类别」筛选；其余 4 个模块的模板里没有这个 el-select -->
-      <!-- 【第十二届改造】更新为五个正式组别 -->
-      <el-select
-        v-if="cfg.group === 'filter'"
-        v-model="group"
-        placeholder="类别"
-        size="mini"
-        @change="getData"
-      >
-        <el-option label="全部" :value="null" />
-        <el-option label="管乐团-小学组" :value="0" />
-        <el-option label="管乐团-中学组" :value="1" />
-        <el-option label="管乐团-大学组" :value="2" />
-        <el-option label="铜管乐团-小学组" :value="3" />
-        <el-option label="铜管乐团-中学组" :value="4" />
-      </el-select>
-
       <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
@@ -61,7 +44,7 @@
             align="center"
           />
 
-          <!-- 列集合 I：cadb / 4b6a / 67bc（教师组与省级列表） -->
+          <!-- 列集合 I：4b6a / 67bc（教师组列表） -->
           <template v-if="cfg.columns === 'I'">
             <el-table-column
               prop="choir_name"
@@ -169,7 +152,7 @@
 
 <script setup>
 /**
- * ReportList —— 报名列表（5 条路由共用）
+ * ReportList —— 报名列表（4 条路由共用）
  *
  * ===========================================================================
  * 一、为什么是一个组件 + 变体表
@@ -189,7 +172,6 @@
  * ===========================================================================
  * | 路由 | dist 模块 | 表格标题 | api | 类别筛选 | 列集合 | 操作列宽 | group | 编辑跳转 |
  * |---|---|---|---|---|---|---|---|---|
- * | /province/report/list  | cadb | 报名列表 | province | 有 | I  | 440 | 有 select，初值 null | 按 row.group 字符串分发（管乐团-小学/中学/大学） |
  * | /city/teacher/list     | 4b6a | 报名列表 | city     | 无 | I  | 500 | **固定 2** | /city/teacher/edit/:id 中小学教师组节目修改 |
  * | /school/teacher/list   | 67bc | 报名列表 | school   | 无 | I  | 500 | **固定 3** | /school/teacher/edit/:id 高校教师组节目修改 |
  * | /city/elementary/list  | 1c73 | 报名汇总 | city     | 无 | II | 500 | **无此参数** | /city/elementary/edit/:id 报名修改 |
@@ -197,14 +179,13 @@
  *
  * 【更正 1 · 表格标题】不是「一套文案」。已用
  *     /staticClass:"title"\},\[e\._v\("([^"]*)"\)/
- * 逐个模块精确提取：cadb / 4b6a / 67bc = 「报名列表」，1c73 / cd09 = 「报名汇总」。
+ * 逐个模块精确提取：4b6a / 67bc = 「报名列表」，1c73 / cd09 = 「报名汇总」。
  *
  * 【更正 2 · group 参数 —— 本条曾判断错误，由运行时对照纠正】
  * 先前只看 `group:null` 的匹配结果，误判为「4b6a / 67bc 的 data() 里没有 group，
  * 所以 `group:this.group` 发出去是 undefined，等于没发」。**这是错的。**
  * 用 scripts 级别的双跑探针（.scratch/probe2.mjs）分别对原始 dist 与本次重建产物加载页面、
  * 记录真实外发请求后，实测结果为：
- *     /province/report/list   → GET .../report/list?limit=20&page=1
  *     /city/teacher/list      → GET .../report/list?group=2&limit=20&page=1
  *     /school/teacher/list    → GET .../report/list?group=3&limit=20&page=1
  *     /city/elementary/list   → GET .../report/list?limit=20&page=1
@@ -213,25 +194,15 @@
  *     data(){return{keyword:null,isDelete:null,status:null,page:1,limit:20,total:0,data:[],group:2,...}}
  *     data(){return{keyword:null,isDelete:null,status:null,page:1,limit:20,total:0,data:[],group:3,...}}
  * 即 group 是**写死的常量**（4b6a=2、67bc=3），只是模板里没有对应的 select 控件（用户看不到、也改不了）。
- * cadb 则是 `group:null` + 一个绑定到 this.group 的「类别」select。
  * 1c73 / cd09 的 data() 里**根本没有 group**，getData 里也没有 `group:this.group`，
  * 所以它们确实不发这个参数。
- * 本组件按上述实测结果实现：`cfg.group === 'filter'`（cadb）用 select 的值；
+ * 本组件按上述实测结果实现：
  * 数字（4b6a=2 / 67bc=3）为固定值；缺省则完全不发该参数。
  *
  * ===========================================================================
  * 三、dist 已知缺陷（保持原行为，仅记录）
  * ===========================================================================
- * 【中】cadb 的 edit() 只处理 group 0/1/2 三个分支，**没有 group === 3 的分支**：
- *     edit(e){
- *       if(0===e.group){.../province/elementary/edit/...}
- *       else if(1===e.group){.../province/school/edit/...}
- *       else if(2===e.group){.../province/teacher/edit/...}
- *     }
- *   即 group===3 的行点「编辑」不会有任何反应。已核对：所有会写入 group=3 的页面都在
- *   school 作用域（4be7 / 7fcd），不会进入省级列表，所以这条缺陷**目前不可达**，按原样保留。
- *
- * 【低】5 个模块都定义了 openImageDialog / updateFile / beforeUpload / uploadSuccess /
+ * 【低】4 个模块都定义了 openImageDialog / updateFile / beforeUpload / uploadSuccess /
  *   removeSuccess / handleExceed / getQiniuToken / beforeClose 一整套「上传审核图」逻辑，
  *   模板里也有对应的 el-dialog（title="上传审核图"、:limit=5）。但**模板中没有任何控件
  *   调用 openImageDialog**（已逐个模块检索模板区：`openImageDialog` 出现 0 次，
@@ -252,7 +223,7 @@
  * ===========================================================================
  * 四、Vue 2 -> Vue 3 / Element UI -> Element Plus 迁移说明
  * ===========================================================================
- * 1) `this.$api.<scope>.report.*` -> 从 @/api/{province,city,school} 具名导入（与 UploadScanDialog 一致）。
+ * 1) `this.$api.<scope>.report.*` -> 从 @/api/{city,school} 具名导入（与 UploadScanDialog 一致）。
  * 2) `slot="append"` / `slot="prepend"` -> `<template #append>` / `<template #prepend>`。
  *    dist 把 el-select 写在 el-input 的 `slot="prepend"` 里；Element Plus 的 el-input 已不再
  *    渲染 prepend 插槽为同行前置元素（Input 只有 prepend/append 两个插槽，但语义是
@@ -273,7 +244,6 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
-import { provinceApi } from '@/api/province'
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
 import { useTabs } from '@/composables/useTabs'
@@ -283,19 +253,12 @@ import Status from '@/components/common/Status.vue'
 import Remark from '@/components/common/Remark.vue'
 import ShowContent from '@/components/common/ShowContent.vue'
 
-const MODULES = { province: provinceApi, city: cityApi, school: schoolApi }
+const MODULES = { city: cityApi, school: schoolApi }
 
 /* =========================================================================
  * 逐路由变体表
  * ========================================================================= */
 const VARIANTS = {
-  '/province/report/list': {
-    title: '报名列表', api: 'province',
-    // 'filter' = 模板里有「类别」select，绑定 this.group（data() 初值 null）
-    group: 'filter', columns: 'I', actionWidth: 440,
-    // cadb 的 edit 按 row.group 分发
-    editByGroup: true
-  },
   '/city/teacher/list': {
     title: '报名列表', api: 'city',
     // data() 里写死 group:2，模板中无对应控件
@@ -322,7 +285,7 @@ const VARIANTS = {
 }
 
 const props = defineProps({
-  /** 变体键，取值为路由 path（例如 '/province/report/list'），由薄封装页显式传入 */
+  /** 变体键，取值为路由 path（例如 '/city/teacher/list'），由薄封装页显式传入 */
   variant: { type: String, required: true }
 })
 
@@ -336,7 +299,6 @@ const { openWindow } = useTabs()
 /* ------------------------- dist data() ------------------------- */
 const keyword = ref(null)
 const status = ref(null)
-const group = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -363,7 +325,7 @@ function handleCurrentChange(current) {
 /**
  * dist:
  *   getData(){
- *     const e={page,limit,keyword,status}            // cadb/4b6a/67bc 还带 group
+ *     const e={page,limit,keyword,status}            // 4b6a/67bc 还带 group
  *     this.$api.<scope>.report.getList(e).then(({data:e})=>{
  *       0===e.code ? (this.total=e.count, this.data=e.data) : Message.error(e.msg)
  *     })
@@ -373,11 +335,9 @@ function handleCurrentChange(current) {
  */
 function getData() {
   const params = { page: page.value, limit: limit.value, keyword: keyword.value, status: status.value }
-  // cadb: 取 select 的值（初值 null，axios 会把 null/undefined 从 query 中丢弃）
   // 4b6a / 67bc: 固定常量 2 / 3
   // 1c73 / cd09: 不发该参数
-  if (cfg.group === 'filter') params.group = group.value
-  else if (cfg.group !== undefined) params.group = cfg.group
+  if (cfg.group !== undefined) params.group = cfg.group
 
   MODULES[cfg.api].report.getList(params).then(({ data: res }) => {
     if (res.code === 0) {
@@ -417,31 +377,12 @@ function remove(id) {
 
 /**
  * dist edit()：
- *   cadb（省级列表）按 row.group 分发到三个编辑页；其余 4 个模块是一条固定路径。
+ *   4 个模块都是一条固定路径。
  *   dist 的写法是 this.addTab({name,label}).then(t=>{null!=t&&this.$router.push({path:...})})，
  *   与 @/composables/useTabs 的 openWindow(name, label) 语义逐行一致。
- * 【保留 dist 缺陷】cadb 没有 group===3 的分支，此时不跳转（见文件头第三节）。
  */
 function edit(row) {
-  let target = null
-
-  if (cfg.editByGroup) {
-    // 【第十二届改造】后端 Report.group 为 CharField，存字符串（如 "管乐团-小学组"）
-    // row.group 来自后端 API 响应，故改为字符串比较
-    if (row.group === '管乐团-小学组') {
-      target = { path: `/province/elementary/edit/${row.id}`, label: '中小学组节目修改' }
-    } else if (row.group === '管乐团-中学组') {
-      target = { path: `/province/school/edit/${row.id}`, label: '大学组节目修改' }
-    } else if (row.group === '管乐团-大学组') {
-      target = { path: `/province/teacher/edit/${row.id}`, label: '教师组节目修改' }
-    }
-    // 【保留 dist 缺陷】cadb 原先没有 row.group === 3 的分支，按原样保留
-  } else {
-    target = { path: cfg.editPath(row.id), label: cfg.editLabel }
-  }
-
-  if (!target) return
-  openWindow(target.path, target.label)
+  openWindow(cfg.editPath(row.id), cfg.editLabel)
 }
 
 onMounted(() => {

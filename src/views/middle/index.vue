@@ -17,12 +17,14 @@
 
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { getUser } from '@/utils/auth'
+import { useUserStore } from '@/store/modules/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const ROLE_HOME = {
-  4: '/province',
   3: '/admin',
   2: '/committee',
   1: '/city',
@@ -32,10 +34,19 @@ const ROLE_HOME = {
 onMounted(() => {
   const user = getUser()
   if (!user) {
+    // 未登录：静默跳回登录页，这是正常的守卫流程，不提示
     router.push('/login')
     return
   }
-  const target = ROLE_HOME[user.type] || '/login'
+  const target = ROLE_HOME[user.type]
+  // 已登录但该角色没有对应后台（例如已下线的省级 type=4）：
+  // 清掉登录态并明确提示，不再静默弹回登录页让用户以为「登录没反应」
+  if (!target) {
+    userStore.logout()
+    ElMessage.error('该账号类型无可用后台，请联系管理员')
+    router.replace('/login')
+    return
+  }
   router.replace(target)
 })
 </script>

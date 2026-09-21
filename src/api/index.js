@@ -17,7 +17,6 @@
 import { login, logout } from './auth'
 import { adminApi } from './admin'
 import { committeeApi } from './committee'
-import { provinceApi } from './province'
 import { cityApi } from './city'
 import { schoolApi } from './school'
 import { v2adminApi, v2committeeApi, v2schoolApi } from './v2'
@@ -31,7 +30,6 @@ export {
   logout,
   adminApi,
   committeeApi,
-  provinceApi,
   cityApi,
   schoolApi,
   v2adminApi,
@@ -50,7 +48,6 @@ export default {
   auth: { login, logout },
   admin: adminApi,
   committee: committeeApi,
-  province: provinceApi,
   city: cityApi,
   school: schoolApi,
   v2admin: v2adminApi,

@@ -129,46 +129,10 @@
             </el-col>
           </el-row>
 
-          <!-- ============ 第 6/7 行：三种形态（见 cfg.lastRow） ============ -->
-          <!-- 形态 stage：仅 5382 / 6129。阶段 + 学校名称 同行，伴奏形式 单独一行 -->
-          <template v-if="cfg.lastRow === 'stage'">
-            <el-row :gutter="40">
-              <el-col :span="12">
-                <el-form-item label="阶段" prop="group_type">
-                  <el-select v-model="form.group_type" placeholder="请选择">
-                    <el-option label="小学" :value="0" />
-                    <el-option label="中学" :value="1" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="学校名称" prop="school_name">
-                  <el-input v-model="form.school_name" placeholder="请填写学校全称" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="40">
-              <el-col :span="12">
-                <el-form-item label="伴奏形式" prop="accompany">
-                  <el-select v-model="form.accompany" placeholder="请选择伴奏形式">
-                    <el-option label="无伴奏" :value="0" />
-                    <el-option label="钢琴" :value="1" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </template>
-
-          <!-- 形态 paired：fbce / 4924 / 60d5 / b202 / aedc / c384 / c589 / 3fb9。
-               额外字段 + 伴奏形式 同行。
-               【列序】dist 里只有 60d5 / c589（两个校级页）是「伴奏形式 在前、组别 在后」，
-               其余 6 个都是「额外字段 在前、伴奏形式 在后」。由 cfg.extraFirst 控制，
-               见逐模块位置实测：fbce 所在区县@4720 < 伴奏形式@4988；
-               60d5 伴奏形式@4718 < 组别@5064。 -->
-          <el-row v-else-if="cfg.lastRow === 'paired'" :gutter="40">
-            <template
-              v-for="col of cfg.extraFirst === false ? ['accompany', 'extra'] : ['extra', 'accompany']"
-              :key="col"
+          <!-- ============ 第 6/7 行：两种形态（见 cfg.lastRow） ============ -->
+          <!-- 形态 paired：b202 / 3fb9。额外字段 + 伴奏形式 同行，额外字段在前。 -->
+          <el-row v-if="cfg.lastRow === 'paired'" :gutter="40">
+            <template v-for="col of ['extra', 'accompany']" :key="col"
             >
               <el-col v-if="col === 'extra'" :span="12">
                 <el-form-item :label="cfg.extra.label" :prop="cfg.extra.prop">
@@ -273,16 +237,7 @@
             <div style="font-size: 16px; font-weight: bold">指导教师</div>
             <Teacher ref="teacherRef" :showdata="form.teacher" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
-            <!--
-              【变体选择】dist 里「参展人员」有**两个**不同的 Student 组件，由路由所在模块决定：
-                5824（11 列，含「专业名称」，无头像上传）→ /province/school/create · /province/school/edit/:id
-                db6d（12 列，含「使用乐器」「电子照片」，有头像上传）→ 其余 10 条路由
-              依据：各 dist 模块的 `components:{…Person:<绑定>}` 反解 + 双跑探针实测（见 PersonTableMajor.vue 文件头）。
-              用 v-if/v-else 而非 <component :is>：同一时刻只挂载一个，personRef 始终指向存活的那个实例，
-              父组件的 getData()/getCacheData() 调用语义不变。
-            -->
-            <PersonMajor v-if="cfg.person === 'major'" ref="personRef" :showdata="form.person" />
-            <Person v-else ref="personRef" :showdata="form.person" />
+            <Person ref="personRef" :showdata="form.person" />
           </div>
         </div>
 
@@ -310,7 +265,7 @@
 
 <script setup>
 /**
- * ProgramForm —— 「节目报名」表单（Create I / Edit I 共 12 条路由共用）
+ * ProgramForm —— 「节目报名」表单（Create I / Edit I 共 4 条路由共用）
  *
  * ===========================================================================
  * 一、为什么是一个组件 + 变体表，而不是 12 个页面
@@ -331,51 +286,24 @@
  * 21 个路由文件与路由表本身保持不变（各自仍是一个独立的 .vue）。
  *
  * 本组件对应的是「节目报名 / 节目修改」这一形态（Create I / Edit I）。名字里不含 elementary
- * 只是因为这一族里首个被还原的是它；实际同时服务于 province/city/school 三个作用域。
+ * 只是因为这一族里首个被还原的是它；实际同时服务于 city / school 两个作用域。
  *
  * ===========================================================================
  * 二、逐路由差异表（全部来自 dist 原文，未做推断）
  * ===========================================================================
  * | 路由 | dist 模块 | 标题 | create/getById/update | lastRow | 额外字段 | 视频必填 | t.file 守卫 | 四川句 | 提交后跳转 |
  * |---|---|---|---|---|---|---|---|---|---|
- * | /province/elementary/create | 5382 | 中小学组节目报名 | province/-/- | stage | 阶段+学校名称 | N | Y | Y | /province/report/list 节目报名统计 |
- * | /province/teacher/create | fbce | 中小学教师组节目报名 | province/-/- | paired | 所在区县 district_name | N | Y | Y | 同上 |
- * | /province/teacher1/create | 4924 | 高校教师组节目报名 | province/-/- | paired | 高校名称 school_name | N | Y | Y | 同上 |
- * | /province/school/create | 60d5 | 大学组节目报名 | province/-/- | paired | 组别 tranches(专业组0/非专业组1) | Y | Y | Y | 同上 |
  * | /city/teacher/create | b202 | 教师组节目报名 | city/-/- | paired | 所在区县 district_name | Y | N | N | /city/teacher/list 教师组报名统计 |
  * | /school/teacher/create | 4be7 | 高校教师组节目报名 | school/-/- | alone | 无 | Y | N | N | /school/teacher/list 高校教师组报名统计 |
- * | /province/elementary/edit/:id | 6129 | 中小学组节目修改 | -/province/province | stage | 阶段+学校名称 | N | Y | N | 无 |
- * | /province/teacher/edit/:id | aedc | 中小学教师组节目修改 | -/province/**city** | paired | 所在区县 | N | Y | N | 无 |
- * | /province/teacher1/edit/:id | c384 | 高校教师组节目修改 | -/province/**city** | paired | 高校名称 | N | Y | N | 无 |
- * | /province/school/edit/:id | c589 | 大学组节目修改 | -/province/province | paired | 组别 tranches | N | Y | N | 无 |
  * | /city/teacher/edit/:id | 3fb9 | 中小学教师组节目修改 | -/city/city | paired | 所在区县 | Y | N | N | 无 |
  * | /school/teacher/edit/:id | 7fcd | 高校教师组节目修改 | -/school/school | alone | 无 | Y | N | N | 无 |
  *
  * 【注意】编辑页标题与对应的新增页标题**并不一致**，这是 dist 原文，照搬不改：
- *   fbce 新增=「中小学教师组节目报名」→ aedc 编辑=「中小学教师组节目修改」
  *   b202 新增=「教师组节目报名」    → 3fb9 编辑=「中小学教师组节目修改」
- *
- * 【注意】新增页与编辑页的「四川省以外的节目报送请联系技术支持人员。」只出现在**新增**页的
- * 视频提示里，编辑页没有这句（已对 12 个模块的两个 el-upload__tip 逐条比对）。
  *
  * ===========================================================================
  * 三、dist 已知缺陷 / 本轮已修复
  * ===========================================================================
- * 【高·影响用户操作】【本轮已修复】aedc / c384 的提交走的不是 province 而是 **city**：
- *     原 dist: aedc: this.$api.province.report.getById(...) + this.$api.city.report.update(t)
- *              c384: this.$api.province.report.getById(...) + this.$api.city.report.update(t)
- *   后端（yilinbei/apps/api/views.py:49 role_error）对角色做**严格相等**判定：
- *     register_scope_routes("/city",   1)   ->  /api/city/report/update   要求 user.type == 1
- *     register_scope_routes("/province", 4) ->  /api/province/report/update 要求 user.type == 4
- *   省级账号的 type 是 4，访问 /api/city/report/update 会得到 403
- *   {"error":"无该页面操作权限！"}，即**省级的「中小学教师组 / 高校教师组」编辑提交必然失败**。
- *   现象：页面能打开（getById 走 province，正常返回），表单能填，点「立即修改」后无成功提示。
- *
- *   【本轮修复】证据：
- *     - 后端 /api/province/report/update 接口在 dist 的 api/province.js 中已注册（PUT），是 dist 写错了。
- *     - 已在 VARIANTS 配置中将 aedc / c384 两条路由的 api.update 由 'city' 改为 'province'。
- *     - 仍按 dist 行为 getById 走 province。
- *
  * 【中·影响真实后端数据】3fb9 / 7fcd（city、school 的编辑页）的 name1/name2/origin1/origin2
  *   取不到值。原因：后端只有 province 分支会把 name 拆成 name1/name2 并映射 origin/territory
  *   （views.py:718 `if province:` + `_map_pair`），city/school 的 getById 返回的是 report_dict 原样。
@@ -447,13 +375,12 @@
  * 过滤非数字字符。Vue 3 对字面量 `on*` 属性的编译行为与 Vue 2 不同，本组件保持原文，
  * 其实际效果在浏览器中验证（见本轮报告的验证小节）。
  */
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { upload } from 'qiniu-js'
 
-import { provinceApi } from '@/api/province'
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
 import { fileApi, qiniuApi } from '@/api/misc'
@@ -464,72 +391,17 @@ import { useTabs } from '@/composables/useTabs'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
-import PersonMajor from './PersonTableMajor.vue'
 import FileCover from '@/components/common/FileCover.vue'
 import HaveToRead from '@/components/common/HaveToRead.vue'
 
-/** dist 里三个作用域各自一个 api 模块；dist 通过 this.$api.<scope>.report.* 访问 */
-const MODULES = { province: provinceApi, city: cityApi, school: schoolApi }
+/** dist 里各作用域各自一个 api 模块；dist 通过 this.$api.<scope>.report.* 访问 */
+const MODULES = { city: cityApi, school: schoolApi }
 
 /* =========================================================================
  * 逐路由变体表 —— 本组件的唯一事实来源，每一项都对应 dist 原文
  * ========================================================================= */
 const VARIANTS = {
   /* ---------------- 新增（Create I） ---------------- */
-  '/province/elementary/create': {
-    mode: 'create', title: '中小学组节目报名',
-    api: { create: 'province' },
-    formInit: { group: 0, group_type: 0 },
-    submitGroup: 0,
-    lastRow: 'stage',
-    rulesExtra: ['school_name', 'group_type'],
-    requireVideo: false, guardFile: true, sichuan: true,
-    redirect: { path: '/province/report/list', label: '节目报名统计' }
-  },
-  '/province/teacher/create': {
-    mode: 'create', title: '中小学教师组节目报名',
-    api: { create: 'province' },
-    formInit: { group: 2, group_type: 3 },
-    submitGroup: 2,
-    lastRow: 'paired',
-    extra: { label: '所在区县', prop: 'district_name', placeholder: '请填写区县全称', kind: 'input' },
-    rulesExtra: ['district_name'],
-    requireVideo: false, guardFile: true, sichuan: true,
-    redirect: { path: '/province/report/list', label: '节目报名统计' }
-  },
-  '/province/teacher1/create': {
-    mode: 'create', title: '高校教师组节目报名',
-    api: { create: 'province' },
-    formInit: { group: 3, group_type: 3 },
-    // 【dist 原文】4924 在曲目2 分支里 $set(t,"group",2)，与其 form 初值 group:3 不同。
-    // 属 dist 自身的不一致，按原样保留（见报告）。
-    submitGroup: 2,
-    lastRow: 'paired',
-    extra: { label: '高校名称', prop: 'school_name', placeholder: '请填写高校全称', kind: 'input' },
-    rulesExtra: ['school_name'],
-    requireVideo: false, guardFile: true, sichuan: true,
-    redirect: { path: '/province/report/list', label: '节目报名统计' }
-  },
-  '/province/school/create': {
-    mode: 'create', title: '大学组节目报名',
-    api: { create: 'province' },
-    formInit: { group: 1, group_type: 2, tranches: 0 },
-    submitGroup: 1,
-    submitGroupType: 2,
-    lastRow: 'paired',
-    // 【列序】60d5 是 8 个 paired 变体里仅有的两个「伴奏形式 在前、组别 在后」之一（另一个是 c589）
-    extraFirst: false,
-    // 【参展人员表】60d5 绑的是 dist 模块 5824（11 列含「专业名称」），不是 db6d
-    person: 'major',
-    extra: {
-      label: '组别', prop: 'tranches', placeholder: '请选择组别', kind: 'select',
-      options: [{ label: '专业组', value: 0 }, { label: '非专业组', value: 1 }]
-    },
-    // 60d5 的 rules 里还有 school_name 与 group_type 两个**孤立键**（无对应表单项），按原样保留
-    rulesExtra: ['school_name', 'tranches', 'group_type'],
-    requireVideo: true, guardFile: true, sichuan: true,
-    redirect: { path: '/province/report/list', label: '节目报名统计' }
-  },
   '/city/teacher/create': {
     mode: 'create', title: '教师组节目报名',
     api: { create: 'city' },
@@ -538,7 +410,7 @@ const VARIANTS = {
     lastRow: 'paired',
     extra: { label: '所在区县', prop: 'district_name', placeholder: '请填写区县全称', kind: 'input' },
     rulesExtra: ['district_name'],
-    requireVideo: true, guardFile: false, sichuan: false,
+    requireVideo: true,
     redirect: { path: '/city/teacher/list', label: '教师组报名统计' }
   },
   '/school/teacher/create': {
@@ -549,56 +421,11 @@ const VARIANTS = {
     lastRow: 'alone',
     // 4be7 无额外字段，但 rules 里有一条孤立的 district_name，按原样保留
     rulesExtra: ['district_name'],
-    requireVideo: true, guardFile: false, sichuan: false,
+    requireVideo: true,
     redirect: { path: '/school/teacher/list', label: '高校教师组报名统计' }
   },
 
   /* ---------------- 编辑（Edit I） ---------------- */
-  '/province/elementary/edit/:id': {
-    mode: 'edit', title: '中小学组节目修改',
-    api: { getById: 'province', update: 'province' },
-    formInit: { group: 0, group_type: 0 },
-    lastRow: 'stage',
-    rulesExtra: [],
-    requireVideo: false, guardFile: true, sichuan: false
-  },
-  '/province/teacher/edit/:id': {
-    mode: 'edit', title: '中小学教师组节目修改',
-    // 【重建阶段修复 / 业务缺陷】dist 原版 getById 走 province、update 却走 city，导致 type=4 的省级账号提交得到 403。
-    //   - /api/province/report/update 接口在后端存在（dist/app.js 中已注册），是 dist 自己写错了。
-    //   - 改为 province/province。
-    api: { getById: 'province', update: 'province' },
-    formInit: { group: 2, group_type: 3 },
-    lastRow: 'paired',
-    extra: { label: '所在区县', prop: 'district_name', placeholder: '请填写区县全称', kind: 'input' },
-    rulesExtra: [],
-    requireVideo: false, guardFile: true, sichuan: false
-  },
-  '/province/teacher1/edit/:id': {
-    mode: 'edit', title: '高校教师组节目修改',
-    // 【重建阶段修复 / 业务缺陷】同上，dist 写错了 city → 改回 province。
-    api: { getById: 'province', update: 'province' },
-    formInit: { group: 2, group_type: 3 },
-    lastRow: 'paired',
-    extra: { label: '高校名称', prop: 'school_name', placeholder: '请填写高校全称', kind: 'input' },
-    rulesExtra: [],
-    requireVideo: false, guardFile: true, sichuan: false
-  },
-  '/province/school/edit/:id': {
-    mode: 'edit', title: '大学组节目修改',
-    api: { getById: 'province', update: 'province' },
-    formInit: { group: 1, group_type: 2 },
-    lastRow: 'paired',
-    // 同 60d5：c589 也是「伴奏形式 在前、组别 在后」，参展人员表也是 5824
-    extraFirst: false,
-    person: 'major',
-    extra: {
-      label: '组别', prop: 'tranches', placeholder: '请选择组别', kind: 'select',
-      options: [{ label: '专业组', value: 0 }, { label: '非专业组', value: 1 }]
-    },
-    rulesExtra: [],
-    requireVideo: false, guardFile: true, sichuan: false
-  },
   '/city/teacher/edit/:id': {
     mode: 'edit', title: '中小学教师组节目修改',
     api: { getById: 'city', update: 'city' },
@@ -606,7 +433,7 @@ const VARIANTS = {
     lastRow: 'paired',
     extra: { label: '所在区县', prop: 'district_name', placeholder: '请填写区县全称', kind: 'input' },
     rulesExtra: [],
-    requireVideo: true, guardFile: false, sichuan: false
+    requireVideo: true
   },
   '/school/teacher/edit/:id': {
     mode: 'edit', title: '高校教师组节目修改',
@@ -614,13 +441,13 @@ const VARIANTS = {
     formInit: { group: 3, group_type: 3 },
     lastRow: 'alone',
     rulesExtra: [],
-    requireVideo: true, guardFile: false, sichuan: false
+    requireVideo: true
   }
 }
 
 const props = defineProps({
   /**
-   * 变体键。取值为路由 name（例如 '/province/elementary/create'）。
+   * 变体键。取值为路由 name（例如 '/city/teacher/create'）。
    * 由各路由的薄封装页显式传入，避免组件去猜自己的身份。
    */
   variant: { type: String, required: true }
@@ -667,8 +494,6 @@ function makeForm() {
     territory1: 0,
     accompany: 0
   }
-  // 仅 60d5 的缓存初值里带 tranches:0
-  if (cfg.formInit.tranches !== undefined) base.tranches = cfg.formInit.tranches
   return base
 }
 
@@ -751,16 +576,10 @@ function buildRules() {
 
   /** 各变体额外的（或孤立的）规则，文案逐字取自对应模块 */
   const extras = {
-    school_name: [
-      { required: true, message: '请输入学校名称 ', trigger: 'blur' },
-      { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
-    ],
     district_name: [
       { required: true, message: '请输入区县名称 ', trigger: 'blur' },
       { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
-    ],
-    tranches: [{ required: true, message: '请选择组别', trigger: 'blur' }],
-    group_type: [{ required: true, message: '请选择学校类型 ', trigger: 'blur' }]
+    ]
   }
 
   const rules = { ...base }
@@ -770,14 +589,11 @@ function buildRules() {
 
 const rules = reactive(buildRules())
 
-/** 视频提示文案：新增页（province）比其余多最后一句「四川省以外的节目报送…」 */
-const videoTip = computed(() => {
-  const base =
-    '视频录制采用MPG2或MP4格式（压缩带宽不低于10M，分辨率1920×1080），使用固定机位正面全景录制，' +
-    '声音和图像需同期录制，不得后期配音合成。每个节目视频文件大小不超过1G，' +
-    '并以“节目名称-合唱团名称（组别）”命名。'
-  return cfg.sichuan ? base + '四川省以外的节目报送请联系技术支持人员。' : base
-})
+/** 视频提示文案 */
+const videoTip =
+  '视频录制采用MPG2或MP4格式（压缩带宽不低于10M，分辨率1920×1080），使用固定机位正面全景录制，' +
+  '声音和图像需同期录制，不得后期配音合成。每个节目视频文件大小不超过1G，' +
+  '并以“节目名称-合唱团名称（组别）”命名。'
 
 /* ------------------------- 上传逻辑（逐行照搬 dist） ------------------------- */
 
@@ -1080,12 +896,8 @@ function onSubmit() {
     const t = JSON.parse(JSON.stringify(form.value))
     t.person = allPeople
     t.spectrum = fileList1.value[0].id
-    // province 系（guardFile=true）带守卫；city/school 系无守卫，但已由 requireVideo 保证非空
-    if (cfg.guardFile) {
-      if (fileList.value && fileList.value.length > 0) t.file = fileList.value[0].id
-    } else {
-      t.file = fileList.value[0].id
-    }
+    // 已由上方 requireVideo 保证 fileList 非空
+    t.file = fileList.value[0].id
     t.time_length = 60 * form.value.minute + parseInt(form.value.second)
 
     if (form.value.name2 === undefined || form.value.name2 === '') {
@@ -1114,12 +926,9 @@ function onSubmit() {
       t.name = form.value.name1 + '+' + form.value.name2
       t.origin = Number(form.value.origin1) + Number(form.value.origin2)
       t.territory = Number(form.value.territory1) + Number(form.value.territory2)
-      // 仅新增页会在此处回写 group（60d5 还回写 group_type）；编辑页 12 个模块中均无此语句
+      // 仅新增页会在此处回写 group；编辑页均无此语句
       if (cfg.submitGroup !== undefined && cfg.submitGroup !== null) {
         t.group = cfg.submitGroup
-      }
-      if (cfg.submitGroupType !== undefined && cfg.submitGroupType !== null) {
-        t.group_type = cfg.submitGroupType
       }
     }
 
@@ -1144,9 +953,9 @@ function onSubmit() {
             form.value.teacher = []
             form.value = makeForm()
             ElMessage.success(res.msg)
-            // dist 原文：
+            // dist 原文（以 b202 为例）：
             //   this.closeWindow(this.$route.path),
-            //   this.openWindow("/province/report/list","节目报名统计")
+            //   this.openWindow("/city/teacher/list","教师组报名统计")
             // 两个调用的顺序与目标（路径 + 标签文案）完全一致。
             closeWindow(route.path)
             openWindow(cfg.redirect.path, cfg.redirect.label)

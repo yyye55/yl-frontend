@@ -75,7 +75,6 @@ const loginFormRules = {
 const INITIAL_PASSWORD = "scylb@2026"
 
 const ROLE_HOME = {
-  4: "/province",
   3: "/admin",
   2: "/committee",
   1: "/city",
@@ -91,7 +90,14 @@ function resetLoginForm() {
 }
 
 function gotoByRole(type) {
-  const target = ROLE_HOME[type] || "/middle"
+  const target = ROLE_HOME[type]
+  // 登录成功但该角色没有对应后台（例如已下线的省级 type=4）。
+  // 此时 token 已在上方写入，必须先清掉，否则用户停在登录页却带着一个进不去的登录态。
+  if (!target) {
+    userStore.logout()
+    ElMessage.error("该账号类型无可用后台，请联系管理员")
+    return
+  }
   router.push(target)
 }
 

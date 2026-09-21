@@ -56,7 +56,7 @@ router.beforeEach((to, from, next) => {
 router.afterEach((to) => {
   NProgress.done()
   if (to.meta && to.meta.title) {
-    document.title = `${to.meta.title} - 「意林杯」管乐展示活动报名系统`
+    document.title = `${to.meta.title} - “意林杯”管乐展示活动报名系统`
   }
 })
 

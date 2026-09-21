@@ -6,7 +6,7 @@
       var n = function () {
         var e = this, t = e._self._c;
         return t("div", {staticClass: "content"}, [
-          t("p", {staticClass: "title"}, [e._v("“意林杯”四川省第十一届管乐展示活动顺序抽签")]),
+          t("p", {staticClass: "title"}, [e._v("“意林杯”四川省第十二届管乐展示活动顺序抽签")]),
           t("div", {staticClass: "box"}, [
             t("div", {staticClass: "box-item", on: {click: function (t) { return e.$router.push("/chouqian/do/1")}}},
               [t("div", {staticClass: "school-name"}, [e._v("大学组 (非专业组)")])]),
@@ -62,7 +62,7 @@
 -->
 <template>
   <div class="content">
-    <p class="title">“意林杯”四川省第十一届管乐展示活动顺序抽签</p>
+    <p class="title">“意林杯”四川省第十二届管乐展示活动顺序抽签</p>
     <div class="box">
       <div class="box-item" @click="goDo(1)">
         <div class="school-name">大学组 (非专业组)</div>

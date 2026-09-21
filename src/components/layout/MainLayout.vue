@@ -32,7 +32,7 @@
         </el-main>
 
         <el-footer class="layout-footer">
-          @copyright “意林杯”四川省第十一届管乐展示活动
+          @copyright “意林杯”四川省第十二届管乐展示活动
         </el-footer>
       </el-container>
     </el-container>

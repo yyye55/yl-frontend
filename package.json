@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "「意林杯」四川省第十一届管乐展示活动报名系统 - Vue 3 前端",
+  "description": "“意林杯”四川省第十二届管乐展示活动报名系统 - Vue 3 前端",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

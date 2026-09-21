@@ -3,7 +3,7 @@
     <div class="welcome-card">
       <div class="welcome-icon">🎵</div>
       <h1 class="welcome-title">欢迎使用西部音乐周展演活动填报系统</h1>
-      <p class="welcome-sub">意林杯·四川省第十二届管乐展示活动</p>
+      <p class="welcome-sub">“意林杯”四川省第十二届管乐展示活动</p>
       <div class="feature-grid">
         <div class="feature-item">
           <span class="feature-icon">📋</span>

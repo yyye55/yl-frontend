@@ -50,7 +50,7 @@
  *            collapse:e.isCollapse,"collapse-transition":""},
  *     on:{open:e.handleOpen,close:e.handleClose}},[
  *     t("div",{staticClass:"head-title"},[t("p",{staticStyle:{"line-height":"22px"}},
- *        [e._v("意林杯”四川省第十一届"),t("br"),e._v("管乐展示活动")])]),
+ *        [e._v("“意林杯”四川省第十二届"),t("br"),e._v("管乐展示活动")])]),
  *     t("el-menu-item",{attrs:{index:"/admin/index"},
  *        on:{click:()=>e.openWindow("/admin/index","首页")}},[...])
  *   ])

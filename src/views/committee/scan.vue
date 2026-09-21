@@ -59,7 +59,7 @@
 
         <el-table :data="data" border style="width: 100%">
           <!-- dist 三列均无 align / header-align（与 log.vue 不同，勿照抄） -->
-          <el-table-column type="index" prop="date" label="序号" />
+          <el-table-column type="index" prop="date" label="序号" width="60" />
           <el-table-column prop="nickname" label="学校名称" />
           <el-table-column label="操作">
             <template #default="{ row }">

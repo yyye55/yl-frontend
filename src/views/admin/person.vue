@@ -55,7 +55,7 @@
         <p class="title">人员管理</p>
 
         <el-table :data="data" border style="width: 100%">
-          <el-table-column type="index" label="序号" align="center" />
+          <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="name" label="姓名" align="center" />
           <el-table-column prop="card" label="身份证号码" align="center" />
           <el-table-column prop="school" label="学校名称" align="center" />

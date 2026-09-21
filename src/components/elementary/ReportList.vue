@@ -44,6 +44,7 @@
             type="index"
             prop="date"
             label="序号"
+            width="60"
             header-align="center"
             align="center"
           />

@@ -97,7 +97,7 @@
         <p class="title">{{ pageTitle }}</p>
 
         <el-table :data="data" border style="width: 100%">
-          <el-table-column type="index" prop="date" label="序号" header-align="center" align="center" />
+          <el-table-column type="index" prop="date" label="序号" width="60" header-align="center" align="center" />
 
           <!-- 列集合 I（teacher / elementary）：合唱团 + 节目 + 联系人/电话/地址 -->
           <template v-if="columns === 'I'">
@@ -116,7 +116,7 @@
             <el-table-column prop="user.nickname" label="提交单位" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="school_name" label="参展学校" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="contact_name" label="领队姓名" header-align="center" align="center" />
-            <el-table-column prop="contact_phone" label="领队联系电话" header-align="center" align="center" />
+            <el-table-column prop="contact_phone" label="领队联系电话" header-align="center" align="center" width="120"/>
           </template>
 
           <el-table-column label="人员信息" header-align="center" align="center">

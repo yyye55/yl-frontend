@@ -19,7 +19,7 @@
         <p class="title">报名列表</p>
         <el-table :data="data" border style="width:100%">
           <!-- dist 原文为 prop="date" + type="index"；type=index 时 prop 不生效，保留原样 -->
-          <el-table-column prop="date" type="index" label="序号" />
+          <el-table-column prop="date" type="index" label="序号" width="60" />
           <el-table-column prop="nickname" label="学校名称" />
           <el-table-column label="操作">
             <template #default="{ row }">

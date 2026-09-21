@@ -20,7 +20,7 @@
       <div class="bg-list">
         <p class="title">账号列表</p>
         <el-table :data="data" border style="width:100%">
-          <el-table-column type="index" label="序号" />
+          <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="username" label="账号" />
           <el-table-column prop="nickname" label="名称" />
           <el-table-column prop="leader" label="修改人姓名" />

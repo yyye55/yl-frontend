@@ -9,7 +9,7 @@
           <el-table :data="files" border style="width:100%">
             <!-- dist 原文：type="index" 与 prop="date" 同时存在；type=index 时 prop 不生效，
                  Element UI 与 Element Plus 行为一致，保留原样不改。 -->
-            <el-table-column type="index" prop="date" label="序号" />
+            <el-table-column type="index" prop="date" label="序号" width="60" />
             <el-table-column prop="type" label="文件类型" width="100px">
               <template #default="{ row }">
                 <p v-if="row.type === 0">单位扫描件</p>

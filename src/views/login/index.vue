@@ -39,7 +39,7 @@
       </el-form>
     </div>
 
-    <div class="footer">Copyright 2026 四川省教育厅版权所有</div>
+    <div class="footer">Copyright @2026 四川省教育厅版权所有</div>
   </div>
 </template>
 
@@ -148,18 +148,12 @@ async function submit() {
 
 <style lang="scss" scoped>
 .login_container {
-  background: url("/login-bg.png") center center / cover no-repeat;
+  background: url("@/assets/login-bg2.png") center center / cover no-repeat;
   height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-}
-.login_container::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
 }
 
 .login_box {

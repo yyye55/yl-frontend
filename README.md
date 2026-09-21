@@ -52,7 +52,7 @@ yl-frontend/
 │   ├── models/                     # face-api.js 人脸识别模型
 │   ├── static/                     # 参演人员导入模板.xlsx
 │   ├── logo.png                    # 网站 logo + favicon
-│   └── login-bg.png                # 登录页背景图
+│   └── login-bg1.png                # 登录页背景图
 ├── scripts/                         # 开发辅助脚本（非构建必需）
 │   ├── audit-api-paths.mjs         # 审计 API 路径一致性
 │   ├── dist-map.mjs                # 构建产物 chunk 映射

@@ -1,7 +1,7 @@
 /* 全局样式入口
  *
  * 【可信度：B】基于 dist 中 app.css (16684字节) 推断
- * - 登录页专用类: .login_container / .login_box / .login_form / .btns / .mybtn / .footer / .title
+ * - 登录页样式已全部收敛到 views/login/index.vue 与 views/middle/index.vue 的 scoped 块中
  * - Element UI 主题色: #409EFF
  * - 自定义字体: 系统中文字体栈
  */
@@ -9,7 +9,6 @@
 /* 引入变量与 mixin */
 @use './variables.scss' as *;
 @use './reset.scss';
-@use './login.scss';
 @use './bg.scss';
 
 /* 全局工具类 */

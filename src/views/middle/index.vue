@@ -39,3 +39,28 @@ onMounted(() => {
   router.replace(target)
 })
 </script>
+
+<style lang="scss" scoped>
+/**
+ * 本页原本没有自己的样式，靠全局 styles/login.scss 的 .login_container / .login_box 撑起。
+ * login.scss 已删除（它同时定义登录页背景，与登录页 scoped 样式冲突并叠出双遮罩），
+ * 这里收回这页需要的容器与卡片规则；遮罩层已按需求去掉，背景图与登录页统一。
+ */
+.login_container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: url("@/assets/login-bg1.png") center center / cover no-repeat;
+  position: relative;
+}
+.login_box {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  padding: 36px 32px 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+</style>

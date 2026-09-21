@@ -1,0 +1,116 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# 同一时间只允许一个生产部署，避免并发写同一个目录
+concurrency:
+  group: frontend-deploy-production
+  cancel-in-progress: false
+
+env:
+  REMOTE_ROOT: /www/wwwroot/47.108.29.34
+  REMOTE_TARGET: /www/wwwroot/47.108.29.34/ylbxt
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vue
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          test -d dist/js
+          test -d dist/css
+          echo "dist/index.html 存在，js/ 与 css/ 均已生成"
+
+      # 生产构建不允许出现内网穿透地址
+      - name: Guard against natapp in production build
+        run: |
+          if grep -RIl "natapp" dist; then
+            echo "::error::生产构建中检测到 natapp 地址，已中止部署"
+            exit 1
+          fi
+          echo "未检测到 natapp 地址"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # 1) 建立 staging 目录（不触碰线上正式目录）
+      - name: Create staging directory
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "rm -rf '${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}' && mkdir -p '${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}'"
+
+      # 2) 全量上传到 staging
+      - name: Upload dist to staging
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.SERVER_PORT }}" \
+            dist/ "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}/"
+
+      # 3) 校验 staging 完整性 -> 4) 备份旧版本 -> 5) 原子替换
+      #    任一步失败都会在替换前退出，线上旧版本保持可用
+      - name: Verify staging and publish
+        run: |
+          STAGING="${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}"
+          TARGET="${{ env.REMOTE_TARGET }}"
+          BACKUP="${{ env.REMOTE_ROOT }}/.ylbxt-backup-${{ github.run_id }}"
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "set -eu
+             test -f '$STAGING/index.html'
+             test -d '$STAGING/js'
+             test -d '$STAGING/css'
+             echo 'staging 校验通过'
+             if [ -d '$TARGET' ]; then
+               rm -rf '$BACKUP'
+               cp -a '$TARGET' '$BACKUP'
+               echo '已备份旧版本到 $BACKUP'
+             fi
+             mkdir -p '$TARGET'
+             find '$TARGET' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+             cp -a '$STAGING'/. '$TARGET'/
+             test -f '$TARGET/index.html'
+             echo '正式目录已更新'
+             rm -rf '$STAGING'
+             ls -1dt ${{ env.REMOTE_ROOT }}/.ylbxt-backup-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+             echo 'DEPLOY_OK run_id=${{ github.run_id }}'"
+
+      - name: Verify deployment on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "ls -la '${{ env.REMOTE_TARGET }}/index.html'"

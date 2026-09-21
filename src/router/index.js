@@ -6,6 +6,20 @@
  * - 5 个 layout：admin / committee / city / school / online（省级端已下线）
  * - 中转路由：/ 与 /middle，根据 user.type 重定向
  *
+ * 【第十二届：教师组路由已摘除（8 条），文件保留】
+ *   /city/teacher/{create, edit/:id, list}
+ *   /school/teacher/{create, edit/:id, list}
+ *   /committee/teacher、/committee/teacher1
+ * 依据：本届《通知》报名对象只有「管乐团（小学组/中学组/大学组）」与「铜管乐团（小学组/中学组）」，
+ * 全文无「教师组」。代码层面的佐证是前后端数据模型已分家 ——
+ * 本届表单 OrchestraForm 提交 group:'小学组'|'中学组'|'大学组'（字符串）+ establishment，
+ * 教师组那套提交的是 group:2|3（数字）+ group_type（第十一届模型），
+ * 后端 scoped_total() 的 city/school 分支也已改用字符串分组，只剩 province 兜底分支还在用数字。
+ * 处理方式：只摘路由，**对应的 .vue 页面文件与 ProgramForm/ReportList 的教师变体全部保留**，
+ * 原因是「教师组菜单已在本届隐藏（代码保留，不删除）」这一既有决定，且摘路由已能关掉
+ * 「手敲 URL 即可用 group=2|3 往 Report 表写脏数据、并混进报名汇总」这个入口。
+ * 若日后恢复教师组：把下列注释掉的路由行加回即可，无需改动任何页面文件。
+ *
  * 【路由命名规则】
  * 沿用 dist 中的 name 命名（如 "/login"、"/admin/index"），方便后续排查
  */
@@ -104,8 +118,9 @@ const routes = [
       { path: 'elementary2', name: '/committee/elementary2',component: () => import('@/views/committee/elementary2.vue'),meta: { title: '中学组报名审核', icon: 'School' } },
       { path: 'elementary3', name: '/committee/elementary3',component: () => import('@/views/committee/elementary3.vue'),meta: { title: '大学组报名审核', icon: 'School' } },
       { path: 'colleges',    name: '/committee/colleges',  component: () => import('@/views/committee/colleges.vue'),  meta: { title: '大学组', icon: 'Reading' } },
-      { path: 'teacher',     name: '/committee/teacher',   component: () => import('@/views/committee/teacher.vue'),   meta: { title: '教师组', icon: 'Avatar' } },
-      { path: 'teacher1',    name: '/committee/teacher1',  component: () => import('@/views/committee/teacher1.vue'),  meta: { title: '教师1组', icon: 'Avatar' } },
+      // 【第十二届摘除】教师组/教师1组审核（group=2|3，第十一届模型）。页面文件保留，见文件头说明。
+      // { path: 'teacher',  name: '/committee/teacher',  component: () => import('@/views/committee/teacher.vue'),  meta: { title: '教师组', icon: 'Avatar' } },
+      // { path: 'teacher1', name: '/committee/teacher1', component: () => import('@/views/committee/teacher1.vue'), meta: { title: '教师1组', icon: 'Avatar' } },
       { path: 'recommend',   name: '/committee/recommend', component: () => import('@/views/committee/recommend.vue'), meta: { title: '推荐', icon: 'Star' } },
       // 【修复】同 /admin/scan，标题由「扫码签到」订正为真实页面名。
       // 注意 dist 中本项菜单文字是「扫描件列表」、而打开后的标签页标题是「参展扫描件列表」
@@ -128,9 +143,12 @@ const routes = [
       { path: 'elementary/create',         name: '/city/elementary/create',      component: () => import('@/views/city/elementary-create.vue'),meta: { title: '小学组-新增' } },
       { path: 'elementary/edit/:id',       name: '/city/elementary/edit/:id',    component: () => import('@/views/city/elementary-edit.vue'), meta: { title: '小学组-编辑' } },
       { path: 'elementary/list',           name: '/city/elementary/list',        component: () => import('@/views/city/elementary-list.vue'),  meta: { title: '小学组-列表', icon: 'Document' } },
-      { path: 'teacher/create',            name: '/city/teacher/create',         component: () => import('@/views/city/teacher-create.vue'),   meta: { title: '教师组-新增' } },
-      { path: 'teacher/edit/:id',          name: '/city/teacher/edit/:id',       component: () => import('@/views/city/teacher-edit.vue'),    meta: { title: '教师组-编辑' } },
-      { path: 'teacher/list',              name: '/city/teacher/list',           component: () => import('@/views/city/teacher-list.vue'),     meta: { title: '教师组-列表', icon: 'Document' } },
+      // 【第十二届摘除】教师组新增/编辑/列表（group=2，第十一届模型）。页面文件保留，见文件头说明。
+      // 摘除理由之一：create 页会向 Report 写 group="2"，而本作用域报名汇总不带 group 参数（查全部），
+      // 该记录会混进正常报表。详见文件头。
+      // { path: 'teacher/create',   name: '/city/teacher/create',   component: () => import('@/views/city/teacher-create.vue'), meta: { title: '教师组-新增' } },
+      // { path: 'teacher/edit/:id', name: '/city/teacher/edit/:id', component: () => import('@/views/city/teacher-edit.vue'),   meta: { title: '教师组-编辑' } },
+      // { path: 'teacher/list',     name: '/city/teacher/list',     component: () => import('@/views/city/teacher-list.vue'),   meta: { title: '教师组-列表', icon: 'Document' } },
       { path: 'recommend/index',           name: '/city/recommend/index',        component: () => import('@/views/city/recommend.vue'),         meta: { title: '推荐', icon: 'Star' } }
     ]
   },
@@ -147,9 +165,10 @@ const routes = [
       { path: 'elementary/create',         name: '/school/elementary/create',    component: () => import('@/views/school/elementary-create.vue'),meta: { title: '小学组-新增' } },
       { path: 'elementary/edit/:id',       name: '/school/elementary/edit/:id',  component: () => import('@/views/school/elementary-edit.vue'), meta: { title: '小学组-编辑' } },
       { path: 'elementary/list',           name: '/school/elementary/list',      component: () => import('@/views/school/elementary-list.vue'),  meta: { title: '小学组-列表', icon: 'Document' } },
-      { path: 'teacher/create',            name: '/school/teacher/create',       component: () => import('@/views/school/teacher-create.vue'),   meta: { title: '教师组-新增' } },
-      { path: 'teacher/edit/:id',          name: '/school/teacher/edit/:id',     component: () => import('@/views/school/teacher-edit.vue'),    meta: { title: '教师组-编辑' } },
-      { path: 'teacher/list',              name: '/school/teacher/list',         component: () => import('@/views/school/teacher-list.vue'),     meta: { title: '教师组-列表', icon: 'Document' } },
+      // 【第十二届摘除】教师组新增/编辑/列表（group=3，第十一届模型）。页面文件保留，见文件头说明。
+      // { path: 'teacher/create',   name: '/school/teacher/create',   component: () => import('@/views/school/teacher-create.vue'), meta: { title: '教师组-新增' } },
+      // { path: 'teacher/edit/:id', name: '/school/teacher/edit/:id', component: () => import('@/views/school/teacher-edit.vue'),   meta: { title: '教师组-编辑' } },
+      // { path: 'teacher/list',     name: '/school/teacher/list',     component: () => import('@/views/school/teacher-list.vue'),   meta: { title: '教师组-列表', icon: 'Document' } },
       { path: 'recommend/index',           name: '/school/recommend/index',      component: () => import('@/views/school/recommend.vue'),         meta: { title: '推荐', icon: 'Star' } }
     ]
   },

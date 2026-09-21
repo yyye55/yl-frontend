@@ -14,7 +14,8 @@
  * 以及是否有「类别」筛选。模板实现收敛到 @/components/elementary/ReportList.vue，
  * 逐路由差异表见该组件头部注释。
  *
- * 【路由未改动】本文件路径与 src/router/index.js 中已声明的 component 路径完全一致。
+ * 【第十二届：路由已摘除，本文件保留】src/router/index.js 中该路由已被注释掉（原因见该文件头），
+ * 因此本页当前不可达；文件本身、组件与逻辑均未改动，日后恢复教师组时把路由行加回即可。
  */
 import ReportList from '@/components/elementary/ReportList.vue'
 </script>

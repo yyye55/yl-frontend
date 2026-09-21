@@ -54,13 +54,11 @@
  *
  * ===========================================================================
  * 【dist 已确认】来源：dist/chunk-0294a80a.165638130932c3751d03.js 模块 1607
- * 该模块被 16 个报名/修改页共用，在这些页面里 import 为 `Teacher`（模板中写作 <Teacher>）。
- * 取证方式：对 dist 全量检索 `n("1607")`，命中 16 个路由 chunk，逐一抽取模块体比对字节完全相同；
- * 再用 路由->chunk 映射反查出这 16 个路由（即本项目 src/views 下 8 组 create/edit 页）：
- *   /city/{elementary,teacher}/{create, edit/:id}
- *   /province/{elementary,teacher,teacher1}/{create, edit/:id}
- *   /province/school/{create, edit/:id}
- *   /school/{elementary,teacher}/{create, edit/:id}
+ * 该模块被 16 个报名/修改页共用（dist 事实），在这些页面里 import 为 `Teacher`（模板中写作 <Teacher>）。
+ * 取证方式：对 dist 全量检索 `n("1607")`，命中 16 个路由 chunk，逐一抽取模块体比对字节完全相同。
+ * 本项目中由 OrchestraForm.vue 与 ProgramForm.vue 共用，覆盖 8 条路由：
+ *   /city|school/elementary/{create, edit/:id}
+ *   /city|school/teacher/{create, edit/:id}
  * ===========================================================================
  *
  * dist 原文组件选项（逐字）：

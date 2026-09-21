@@ -3,7 +3,7 @@
  *
  * 【可信度：A】直接基于 dist/app.js 中的 routes 数组重建
  * - 37 个路由（不含动态路由）
- * - 6 个 layout：admin / committee / province / city / school / online
+ * - 5 个 layout：admin / committee / city / school / online（省级端已下线）
  * - 中转路由：/ 与 /middle，根据 user.type 重定向
  *
  * 【路由命名规则】

@@ -227,12 +227,12 @@ const fixtureMap = [
 
   // ---- 统计类 ----
   // 【契约来源：A】逐条核对 yilinbei/apps/api/views.py。
-  // 五个首页的 /index/total **不是同一种结构**，必须分别给，否则表格整列取到 undefined：
+  // 四个首页的 /index/total **不是同一种结构**，必须分别给，否则表格整列取到 undefined：
   //
   //   (1) admin / committee 复用 stats_admin()（views.py:406）
   //       -> data 是数组，每行 { name, data:[合计, 驳回, 待审核, 组委会通过] }
   //          dist 模块 2953（/admin/index）与 22ce（/committee/index）正是按 data[0..3] 渲染四列。
-  //   (2) city / school / province 走 scoped_total()（views.py:628）
+  //   (2) city / school 走 scoped_total()（views.py:628）
   //       -> data 是对象 { success, limit?, data:[{name,total,data1,data2,data3}] }
   //          每行是**扁平命名**字段，与 (1) 完全不同。
   //
@@ -256,20 +256,6 @@ const fixtureMap = [
     data: {
       success: { colleges: 0, teacher: 0, colleges1: 0 },
       data: [{ name: '大学组', total: 6, data1: 2, data2: 1, data3: 3 }]
-    }
-  })],
-  [/\/province\/index\/total/, () => ({
-    code: 0,
-    msg: '',
-    data: {
-      success: { elementary: 4, colleges: 2, teacher: 2, teacher1: 1 },
-      limit: { elementary: 1, colleges: 1, teacher: 1, teacher1: 1 },
-      data: [
-        { name: '中小学组节目统计', total: 12, data1: 1, data2: 4, data3: 7 },
-        { name: '大学组节目统计', total: 6, data1: 2, data2: 1, data3: 3 },
-        { name: '中小学教师组节目统计', total: 4, data1: 0, data2: 1, data3: 3 },
-        { name: '高校教师组节目统计', total: 3, data1: 1, data2: 0, data3: 2 }
-      ]
     }
   })],
   // /index/percent 的真实结构见 views.py:663 city_percent()：{ data:[{require,pass,data:[]}] }。
@@ -355,7 +341,7 @@ const errors = []
  *
  * 这里踩过两个坑，两次都会让截图内容与目标路由毫不相干、从而误判为「页面还原错了」：
  *   1) 所有路由共用一个固定 type=3 的 context
- *      -> /committee|province|city|school 全被守卫重定向到 /admin/index；
+ *      -> /committee|city|school 全被守卫重定向到 /admin/index；
  *   2) 改成用 page.evaluate 在导航前改 localStorage
  *      -> 时序不稳，截出来是登录页。
  * 用「一路由一 context」把这个不确定性彻底消掉。
@@ -446,17 +432,16 @@ const errorsByRoute = new Map()
  * 原始 dist 的路由守卫是 `beforeEach((e,t,n)=>{start(), n()})`——**不做任何鉴权**，
  * 所以无论什么角色都能直接打开任意页面。而重建版加了 meta.role 校验，
  * 角色不符会被重定向到 /middle，截出来的就不是目标页面了
- * （实测：固定用 type=3 时，/committee|province|city|school 的页面全被重定向到
+ * （实测：固定用 type=3 时，/committee|city|school 的页面全被重定向到
  *  /admin/index，截图内容与目标路由完全不符，极易误判为「还原错了」）。
  *
  * 角色映射取自 src/router/index.js 的 meta.role：
- *   /admin->3  /committee->2  /province->4  /city->1  /school->0
+ *   /admin->3  /committee->2  /city->1  /school->0
  * 注意这只影响**截图时的登录态**，不改变任何产品逻辑。
  */
 const ROLE_BY_PREFIX = [
   ['/admin', 3],
   ['/committee', 2],
-  ['/province', 4],
   ['/city', 1],
   ['/school', 0]
 ]
@@ -471,12 +456,9 @@ function roleFor(route) {
  * 【为什么必须等】Vue Router 的异步 chunk 会把**该页面自己的 CSS**以 <link> 动态插入
  * <head>。`waitUntil:'networkidle'` 只保证网络空闲，并不保证这些 <link> 已经解析生效。
  *
- * 实测证据（scripts/probe-one.mjs 对 /province/index 的两种等待时长）：
- *   - 等 700ms 时，按钮计算样式 = rgb(64,158,255) / 14px / 8px 15px
- *     —— 那是 Element Plus 的**默认**按钮样式，说明本页 chunk CSS 尚未生效；
- *   - 等 1200ms 时，按钮计算样式 = rgb(0,51,102) / 12px / 7px 15px
- *     —— 与 dist/css/chunk-6934918b.css 中的 .el-button--primary{background-color:#036} 一致。
- * 早先固定等 700ms，导致 .ref 基线里若干页面截的是「样式未应用」的中间态，
+ * 实测结论：等待时长不足时，本页 chunk CSS 尚未生效，控件会回退到 Element Plus 的
+ * **默认**样式（按钮背景是 rgb(64,158,255) 而不是 dist 的 .el-button--primary{#036}）。
+ * 早先固定等一个偏短的时长，导致 .ref 基线里若干页面截的是「样式未应用」的中间态，
  * 拿这种基线去比对重建版会得出完全错误的结论（曾据此误判「按钮配色反了」）。
  *
  * 这里轮询 document.styleSheets.length，连续两次不再变化即认为样式已稳定。

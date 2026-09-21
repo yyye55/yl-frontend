@@ -28,7 +28,7 @@
  * 【为什么必须补这个组件】
  * dist 把它作为**全局组件**注册（页面 `<FileCover ref="fileshow"/>` 直接使用，
  * 各页面模块里并不 import 它）。本项目此前完全没有移植它，导致所有带上传功能的
- * 页面（province|city|school 的 recommend/index、elementary|teacher 的 create/edit 等）
+ * 页面（city|school 的 recommend/index、elementary|teacher 的 create/edit 等）
  * 一旦还原就会因 <FileCover> 未注册而渲染报错。
  * 调用方约定（dist 原文）：this.$refs.fileshow.show() / .dishow() / .setPro(pct)
  * ---------------------------------------------------------------------------

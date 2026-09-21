@@ -63,7 +63,6 @@ function startServer() {
 const ROLE_BY_PREFIX = [
   ['/admin', 3],
   ['/committee', 2],
-  ['/province', 4],
   ['/city', 1],
   ['/school', 0]
 ]

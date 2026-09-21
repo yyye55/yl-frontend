@@ -7,7 +7,7 @@
  * 管理员 - 优秀组织奖申报列表（路由 /admin/recommend）
  *
  * 【可信度：A】dist 模块 f7aa（chunk-278da94c，作用域 43031bc6），组件名 "jiemu"。
- * 模板实现统一放在 @/components/common/JiemuList.vue（5 个路由共用同一份源码）。
+ * 模板实现统一放在 @/components/common/JiemuList.vue（4 个路由共用同一份源码）。
  *
  * 本页属于「变体 A」（管理员 / 组委会）：
  *   - 只有「刷新」按钮，**没有**上传入口

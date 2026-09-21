@@ -33,18 +33,20 @@
  * 市级首页（路由 /city/index），组件名 "index"，作用域 09486db2
  *
  * 【可信度：A】照搬 dist 模块 044d（chunk-13167452）。原文渲染函数可用 `node scripts/dist-map.mjs --dump 044d` 复现。
- * 与 /school/index（5d2b）、/province/index（bec3）是同一个组件的三个变体，
+ * 与 /school/index（5d2b）是同一个组件的两个变体，
  * 模板骨架、data、全部 methods（除接口模块名）逐字节相同，只有以下几处不同，本页取 city 的值：
  *
- *   | 差异点                       | city（本页）              | school                | province                |
- *   |------------------------------|---------------------------|-----------------------|-------------------------|
- *   | 导出按钮 disabled            | !pass                     | 无                     | 无                      |
- *   | 上传文件数上限 limit         | 1                         | 2                     | 2                       |
- *   | exportReport 传入的文件名    | "报名信息表"              | "报名信息表导出"       | "节目报送表"            |
- *   | 确认框正文                   | …所有**数据**都已报送完毕 | …所有数据都已报送完毕  | …所有**节目**都已报送完毕 |
- *   | container-text 内容          | 仅两个按钮                | 仅两个按钮             | 报送数量 + 报送名额 + 三个按钮 |
- *   | 接口模块                     | city.index                | school.index          | province.index          |
- *   | 作用域 id                    | 09486db2                  | 89781142              | 525d87bf                |
+ *   | 差异点                       | city（本页）              | school                |
+ *   |------------------------------|---------------------------|-----------------------|
+ *   | 导出按钮 disabled            | !pass                     | 无                     |
+ *   | 上传文件数上限 limit         | 1                         | 2                     |
+ *   | exportReport 传入的文件名    | "报名信息表"              | "报名信息表导出"       |
+ *   | 确认框正文                   | …所有**数据**都已报送完毕 | …所有数据都已报送完毕  |
+ *   | container-text 内容          | 仅两个按钮                | 仅两个按钮             |
+ *   | 接口模块                     | city.index                | school.index          |
+ *   | 作用域 id                    | 09486db2                  | 89781142              |
+ *
+ * （dist 中还有第三个变体 /province/index（bec3，作用域 525d87bf），省级端已下线，未纳入本项目。）
  *
  * data(){ return { data:[], limit:[], success:[], tableData:[], pass:!0,
  *   dialogImageVisible:!1, dialogImageUrl:"", dialogVisible:!1, fileList:[], filename:"",
@@ -71,7 +73,7 @@
  *   .container{display:flex;justify-content:flex-start;flex-direction:column;flex-wrap:wrap}
  *   .container-text{background-color:#fff;margin-bottom:20px;padding:10px;line-height:30px}
  *   .full{color:red}          ← 模板中未被引用
- *   .title{padding:20px 0;font-weight:700;font-size:16px}   ← 本页模板未用到（province 用）
+ *   .title{padding:20px 0;font-weight:700;font-size:16px}   ← 本页模板未用到
  *   .ptable{width:100%;text-align:center}   ← 模板中未被引用
  * 后两条与本页无关，但同属该 chunk 的 scoped 样式，一并保留以保持一致。
  *

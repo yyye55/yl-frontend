@@ -28,7 +28,7 @@
  * 为什么要单独导出：dist 里这两个方法在 **Vue.prototype** 上，页面用 `this.getM(秒)`
  * 或模板里 `{{ getM(秒) }}` 调用；全 dist 有 **21 个路由** 依赖它们
  * （/admin/report、/committee/elementary[1-3]、/committee/colleges、/committee/teacher[1]、
- *  /city|school|province 的 elementary|teacher list 与 edit、/province/report/list 等）。
+ *  /city|school 的 elementary|teacher list 与 edit 等）。
  * Vue3 的 <script setup> 没有 this，故改为具名导出 + 显式 import；
  * 导入的绑定会被 <script setup> 自动暴露给模板，因此模板里的 getM(...) 写法依然成立。
  */

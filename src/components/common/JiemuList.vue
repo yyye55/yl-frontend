@@ -5,7 +5,7 @@
         刷新
       </el-button>
 
-      <!-- 仅省级/市级/校级变体有上传入口；管理员与组委会变体没有 -->
+      <!-- 仅市级/校级变体有上传入口；管理员与组委会变体没有 -->
       <template v-if="uploadApi">
         <el-upload
           class="upload-demo"
@@ -86,12 +86,12 @@
  * 【可信度：A】逐行照搬 dist 中 5 个模块，它们共用同一份源码、编译成 5 个页面：
  *   /admin/recommend              f7aa  作用域 43031bc6   admin.recommend
  *   /committee/recommend          fc73  作用域 8ec6982c   committee.recommend
- *   /province/recommend/index     16bf  作用域 06219892   province.recommend
  *   /city/recommend/index         f479  作用域 8b0bXXXX   city.recommend
  *   /school/recommend/index       e791  作用域 XXXXXXXX   school.recommend
+ * （第 5 个是 /province/recommend/index，省级端已下线，不在本项目内。）
  * 五者仅两处不同 —— 接口模块，以及「有没有上传入口」，据此分成两个变体：
  *   变体 A（admin / committee）：只有「刷新」，方法名 reflush()，QiniuData.key 前缀 "scdyz/"
- *   变体 B（province / city / school）：多一个 el-upload「点击上传」+ 提示文案，
+ *   变体 B（city / school）：多一个 el-upload「点击上传」+ 提示文案，
  *                                     方法名 refresh()，QiniuData.key 前缀 "ylbxt/"，
  *                                     mounted 里额外 getUser() 与 getQiNiuToken()
  *
@@ -100,7 +100,7 @@
  * dist 是 5 份几乎相同的源码（作用域 id 各不相同即为证据）。本项目的既定原则是
  * 「功能、页面、路由、API、交互、视觉结构尽可能接近原始 dist」，并未要求文件结构一一对应；
  * 5 份复制粘贴会让今后任何一处改动都要改 5 遍，且极易漂移。
- * 因此这里保留**唯一的模板实现**，由 5 个路由文件各自传参调用，
+ * 因此这里保留**唯一的模板实现**，由 4 个路由文件各自传参调用，
  * 路由表与每个路由对应的 view 文件保持不变。
  * 两个变体的差异全部收敛到 props（uploadApi / qiniuKeyPrefix / center），无隐藏分支。
  *

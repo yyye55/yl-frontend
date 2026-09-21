@@ -33,7 +33,7 @@
  * 校级首页（路由 /school/index），组件名 "index"，作用域 89781142
  *
  * 【可信度：A】照搬 dist 模块 5d2b（chunk-33943255）。原文渲染函数可用 `node scripts/dist-map.mjs --dump 5d2b` 复现。
- * 与 /city/index（044d）、/province/index（bec3）同源，差异对照表见 src/views/city/index.vue 的文件头。
+ * 与 /city/index（044d）同源，差异对照表见 src/views/city/index.vue 的文件头。
  * 本页（school）相对于 city 的区别只有三处：
  *   1. 导出按钮**没有** :disabled="!pass" 绑定；
  *   2. el-upload 的 limit 是 2（city 为 1）；

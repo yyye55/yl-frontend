@@ -47,7 +47,6 @@ yl-frontend/
 │   │   ├── auth.js                 # 登录登出
 │   │   ├── admin.js                # 管理员
 │   │   ├── committee.js            # 委员会
-│   │   ├── province.js             # 省级
 │   │   ├── city.js                 # 市级
 │   │   ├── school.js               # 学校
 │   │   ├── v2.js                   # V2 系列（team/student/leader）
@@ -92,7 +91,6 @@ yl-frontend/
 │   │   ├── error/                  # 404/500
 │   │   ├── admin/                  # 管理员
 │   │   ├── committee/              # 委员会
-│   │   ├── province/               # 省级
 │   │   ├── city/                   # 市级
 │   │   ├── school/                 # 学校
 │   │   ├── online/                 # 在线直播
@@ -114,7 +112,6 @@ yl-frontend/
 | 1 | 市级 | `/city` | 审核本市的报名 |
 | 2 | 委员会 | `/committee` | 终极审核、抽签、直播 |
 | 3 | 管理员 | `/admin` | 全局管理 |
-| 4 | 省级 | `/province` | 省级管理 |
 
 ## 📡 API 一览
 

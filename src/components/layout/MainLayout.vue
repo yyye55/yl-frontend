@@ -123,7 +123,7 @@ const tabs = computed(() => tabsStore.tabs)
 // dist: data(){ user: this.getUser() }
 const user = computed(() => userStore.user)
 
-// dist: province / city / school / online 的 el-main 包了 keep-alive，admin / committee 没有
+// dist: city / school / online 的 el-main 包了 keep-alive，admin / committee 没有
 const keepAlive = computed(() => {
   const m = getLayoutMenu(route.path)
   return !!(m && m.keepAlive)

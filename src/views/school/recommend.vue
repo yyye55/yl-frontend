@@ -14,7 +14,7 @@
  * 【可信度：A】dist 模块 e791（chunk-38b8c098），组件名 "jiemu"。
  * 模板实现统一放在 @/components/common/JiemuList.vue。
  *
- * 与 /province/recommend/index、/city/recommend/index 同属「变体 B」，仅接口模块不同：
+ * 与 /city/recommend/index 同属「变体 B」，仅接口模块不同：
  *   GET  /api/school/recommend/list  —— schoolApi.recommend.getList
  *   POST /api/school/recommend/cau   —— schoolApi.recommend.createAndUpdate
  *

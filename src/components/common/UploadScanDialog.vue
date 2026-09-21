@@ -55,9 +55,9 @@
 /**
  * 盖章扫描件上传弹窗
  *
- * 【可信度：A】dist 的 /province/index（bec3）、/city/index（044d）、/school/index（5d2b）
- * 三个模块里，「上传审核图」这段 el-dialog + el-upload + 两个按钮的渲染函数逐字节相同，
- * 唯一的差异是 `limit`（city 为 1，school/province 为 2）和 el-upload__tip 的提示文案。
+ * 【可信度：A】dist 的 /city/index（044d）、/school/index（5d2b）
+ * 两个模块里，「上传审核图」这段 el-dialog + el-upload + 两个按钮的渲染函数逐字节相同，
+ * 唯一的差异是 `limit`（city 为 1，school 为 2）和 el-upload__tip 的提示文案。
  * 因此按 dist 的事实拆出一个共享组件，而不是把同一段代码抄三遍。
  *
  * 原文（以 5d2b 为例）：
@@ -109,7 +109,7 @@ import { rename } from '@/utils/excel'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  /** 最多可上传的文件数：city 为 1，school / province 为 2（dist 事实） */
+  /** 最多可上传的文件数：city 为 1，school 为 2（dist 事实） */
   limit: { type: Number, default: 2 },
   /** el-upload__tip 文案，三个页面各不相同，由调用方给出 */
   tip: { type: String, required: true }

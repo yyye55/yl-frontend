@@ -163,14 +163,11 @@
  *
  * ===========================================================================
  * 【dist 已确认】来源：dist/chunk-0294a80a.165638130932c3751d03.js 模块 db6d
- * 该模块被 14 个报名/修改页共用，在这些页面里 import 为 `Person`（模板中写作 <Person>）。
- * 取证方式同 TeacherTable：检索 `n("db6d")` 命中 14 个路由 chunk，模块体字节完全相同，
- * 再反查路由得到与 Teacher 的那 16 个路由**恰好少两个**：
- *   /province/school/create 与 /province/school/edit/:id
- * （校级报名页只有「指导教师」没有「参演人员」，属 dist 事实）。其余 14 个路由为：
- *   /city/{elementary,teacher}/{create, edit/:id}
- *   /province/{elementary,teacher,teacher1}/{create, edit/:id}
- *   /school/{elementary,teacher}/{create, edit/:id}
+ * 该模块被 14 个报名/修改页共用（dist 事实），在这些页面里 import 为 `Person`（模板中写作 <Person>）。
+ * 取证方式同 TeacherTable：检索 `n("db6d")` 命中 14 个路由 chunk，模块体字节完全相同。
+ * 本项目中由 OrchestraForm.vue 与 ProgramForm.vue 共用，覆盖 8 条路由：
+ *   /city|school/elementary/{create, edit/:id}
+ *   /city|school/teacher/{create, edit/:id}
  *
  * dist 原文组件选项（关键部分逐字）：
  *

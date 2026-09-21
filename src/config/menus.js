@@ -1,14 +1,14 @@
 /**
  * 各角色 Layout 的侧边栏菜单定义
  *
- * 【可信度：A】逐项照搬 dist 中 6 个 layout chunk 的 el-menu 渲染函数。
+ * 【可信度：A】逐项照搬 dist 中 5 个 layout chunk 的 el-menu 渲染函数。
  * 证据文件（dist/）：
  *   admin      -> chunk-40286ec0
  *   committee  -> chunk-77f01b0c
- *   province   -> chunk-470ebdb5
  *   city       -> chunk-3058b73e
  *   school     -> chunk-16e50bab
  *   online     -> chunk-4c9a67a5
+ * （dist 另有 province -> chunk-470ebdb5，省级端已下线，未纳入本项目）
  *
  * 【重要】原版菜单是「每个 layout 各自硬编码」的，不是从路由 children 自动生成的。
  * 因此条目集合、顺序、文案、图标、分组分隔线都必须按本文件还原，
@@ -28,10 +28,10 @@
  *
  * 【keepAlive】dist 中 el-main 的内容分两种写法：
  *   admin / committee：  t("el-main",[t("router-view")],1)
- *   province / city / school / online：
+ *   city / school / online：
  *     t("el-main",[ t("keep-alive",[ e.$route.meta.keepAlive ? t("router-view") : e._e() ],1),
  *                   e.$route.meta.keepAlive ? e._e() : t("router-view") ],1)
- * 即只有后 4 个 layout 包了 keep-alive，由路由的 meta.keepAlive 决定是否缓存。
+ * 即只有后 3 个 layout 包了 keep-alive，由路由的 meta.keepAlive 决定是否缓存。
  * 【注意】dist 中没有任何一条路由设置了 meta.keepAlive，因此该分支实际恒为 false，
  * 效果与不写 keep-alive 相同。这里按原样保留结构，不额外启用缓存。
  */
@@ -40,7 +40,6 @@
  * 【第十二届改造说明】
  * 1. 标题从"第十一届"改为"第十二届"
  * 2. 教师组菜单已在本届隐藏（代码保留，不删除）
- *    - province: teacher/create, teacher1/create 已隐藏
  *    - city: 无教师组入口
  *    - school: 无教师组入口
  *    - committee: teacher, teacher1 已隐藏

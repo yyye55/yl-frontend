@@ -22,14 +22,26 @@ import NProgress from 'nprogress'
 import { ElMessage } from 'element-plus'
 import { getToken, clearToken, clearUser } from './auth'
 
-// 优先使用 .env 中配置的后端地址，未配置时回退到内网穿透地址
-// 【第十二届】内网穿透地址：http://wa9b8afb.natappfree.cc
-//   注意：natappfree.cc 是临时内网穿透，仅供开发调试使用；
-//   生产部署请改回正式地址（如 http://47.108.29.34）
-const HOST = (import.meta.env.VITE_API_BASE_URL) ||
-  (window.location.protocol + '//wa9b8afb.natappfree.cc')
+// 【唯一来源】后端地址只从 .env 读取：开发 .env.development，生产 .env.production。
+//
+// 【为什么没有兜底地址】原实现在 env 缺失时静默回退到一条写死的内网穿透域名，
+// 一旦该隧道失效，现象是「页面数据全空」而不是「配置错了」，排查成本极高；
+// 且兜底域名与实际在用的隧道并不一致。现改为不兜底：
+// env 缺失时 HOST 为空串，请求退化为同源相对路径（如 /api/login），
+// 会立刻 404 到 dev server 自身，配置问题一眼可见。
+const HOST = import.meta.env.VITE_API_BASE_URL || ''
+
+// 生产环境本变量可能被刻意留空（同源部署），故告警只在开发环境打印。
+if (!HOST && import.meta.env.DEV) {
+  console.error('[request] VITE_API_BASE_URL 未配置，接口将请求同源地址')
+}
 
 // 创建 axios 实例
+//
+// 【baseURL 是兜底，不是开关】决定接口地址的是各调用点里拼的 HOST
+// （一律写成 HOST + '/api/…'，属于绝对地址）；axios 遇到绝对地址会直接
+// 跳过 baseURL，所以这里的 baseURL 正常情况下不生效，只在「万一有人写成
+// 相对路径」时兜底。⇒ 要换后端地址，只改 .env 里的 VITE_API_BASE_URL。
 const request = axios.create({
   baseURL: HOST,
   timeout: 12000

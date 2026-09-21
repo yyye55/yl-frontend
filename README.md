@@ -7,7 +7,7 @@
 | 项目 | 内容 |
 |------|------|
 | **部署路径** | `/ylbxt/` |
-| **后端域名** | `https://bigapp.scbdc.edu.cn/ylbxt` |
+| **后端域名** | `http://47.108.29.34` |
 | **技术栈** | Vue 3 + Element Plus + Pinia + vue-router 4 + axios + Vite |
 | **Node 版本** | 18+ |
 
@@ -15,28 +15,15 @@
 
 ```bash
 npm install
-npm run dev:mock
-```
-
-`dev:mock` 会同时启动本地 mock 后端（`:8787`）和前端 dev server（`:8080`），
-打开 http://localhost:8080/ 即可，**无需真实后端**。
-
-登录方式：**用户名选择角色，密码随便填（非空即可）**。可用用户名见
-[mock-api/README.md](mock-api/README.md)。
-
-### 连接真实后端
-
-把 [.env.development](.env.development) 里的 `VITE_API_BASE_URL` 改为
-`https://bigapp.scbdc.edu.cn/ylbxt`，然后只跑前端：
-
-```bash
 npm run dev
 ```
+
+打开 http://localhost:8080/ 即可，开发环境请求 [.env.development](.env.development)
+里 `VITE_API_BASE_URL` 配置的后端。
 
 ### 其他命令
 
 ```bash
-npm run mock      # 只启动 mock 后端
 npm run build     # 生产构建，产物在 dist/
 npm run preview   # 预览生产构建（:4173）
 ```
@@ -45,9 +32,6 @@ npm run preview   # 预览生产构建（:4173）
 
 ```
 yl-frontend/
-├── mock-api/                        # 本地 mock 后端（零依赖，纯 Node 内置模块）
-│   ├── server.mjs                  # 启动：node mock-api/server.mjs
-│   └── README.md                   # 可用账号、已知限制
 ├── public/                          # 静态资源（运行时直接访问，不参与打包）
 │   ├── models/                     # face-api.js 人脸识别模型
 │   ├── static/                     # 参演人员导入模板.xlsx
@@ -213,7 +197,7 @@ yl-frontend/
 
 | 变量 | 说明 |
 |------|------|
-| `VITE_API_BASE_URL` | API 基础地址。development 默认指向本地 mock，production 指向线上后端 |
+| `VITE_API_BASE_URL` | API 基础地址，唯一来源。分别在 `.env.development` / `.env.production` 中配置 |
 | `VITE_APP_TITLE` | 页面标题 |
 
 **部署前缀只有一个来源**：`vite.config.js` 的 `base`（production 下为 `/ylbxt/`）。

@@ -116,28 +116,6 @@ const routes = [
     ]
   },
 
-  // ============ 省级 (type=4) ============
-  {
-    path: '/province',
-    name: '/province',
-    component: MainLayout,
-    redirect: '/province/index',
-    meta: { requiresAuth: true, role: 4, title: '省级后台' },
-    children: [
-      { path: 'index',       name: '/province/index',     component: () => import('@/views/province/index.vue'),     meta: { title: '首页', icon: 'House' } },
-      { path: 'elementary/create',        name: '/province/elementary/create',        component: () => import('@/views/province/elementary-create.vue'), meta: { title: '小学组-新增' } },
-      { path: 'elementary/edit/:id',       name: '/province/elementary/edit/:id',     component: () => import('@/views/province/elementary-edit.vue'),  meta: { title: '小学组-编辑' } },
-      { path: 'teacher/create',            name: '/province/teacher/create',          component: () => import('@/views/province/teacher-create.vue'),   meta: { title: '教师组-新增' } },
-      { path: 'teacher/edit/:id',           name: '/province/teacher/edit/:id',       component: () => import('@/views/province/teacher-edit.vue'),    meta: { title: '教师组-编辑' } },
-      { path: 'teacher1/create',           name: '/province/teacher1/create',         component: () => import('@/views/province/teacher1-create.vue'),  meta: { title: '教师1组-新增' } },
-      { path: 'teacher1/edit/:id',          name: '/province/teacher1/edit/:id',      component: () => import('@/views/province/teacher1-edit.vue'),   meta: { title: '教师1组-编辑' } },
-      { path: 'school/create',             name: '/province/school/create',           component: () => import('@/views/province/school-create.vue'),    meta: { title: '学校-新增' } },
-      { path: 'school/edit/:id',            name: '/province/school/edit/:id',        component: () => import('@/views/province/school-edit.vue'),     meta: { title: '学校-编辑' } },
-      { path: 'report/list',               name: '/province/report/list',             component: () => import('@/views/province/report-list.vue'),     meta: { title: '报名列表', icon: 'Document' } },
-      { path: 'recommend/index',           name: '/province/recommend/index',         component: () => import('@/views/province/recommend.vue'),      meta: { title: '推荐', icon: 'Star' } }
-    ]
-  },
-
   // ============ 市级 (type=1) ============
   {
     path: '/city',

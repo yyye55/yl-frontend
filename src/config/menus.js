@@ -90,28 +90,6 @@ export const LAYOUT_MENUS = {
     ]
   },
 
-  /* ---------- 省级 (type=4) ---------- */
-  province: {
-    title: XIBU_TITLE,
-    activeTextColor: '#db3399',
-    keepAlive: true,
-    items: [
-      { index: '/province/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
-      { type: 'line', text: '—— 网上报名 ——' },
-      // 【第十二届改造】组别待后端确认后调整文案
-      { index: '/province/elementary/create', text: '小学组节目报名', label: '小学组节目报名', icon: 'el-icon-s-flag' },
-      // 【第十二届隐藏】教师组已隐藏
-      // { index: '/province/teacher/create', text: '中小学教师组节目报名', label: '中小学教师组节目报名', icon: 'el-icon-s-shop' },
-      { index: '/province/school/create', text: '大学组节目报名', label: '大学组节目报名', icon: 'el-icon-s-flag' },
-      // 【第十二届新增】铜管乐团报名待后端确认后添加
-      // { index: '/province/brass/create', text: '铜管乐团报名', label: '铜管乐团报名', icon: 'el-icon-s-flag' },
-      // { index: '/province/teacher1/create', text: '高校教师组节目报名', label: '高校教师组节目报名', icon: 'el-icon-star-off' },
-      { type: 'line', text: '—— 报名信息 ——' },
-      { index: '/province/report/list', text: '节目统计', label: '节目统计', icon: 'el-icon-help' },
-      { index: '/province/recommend/index', text: '优秀组织奖申报', label: '优秀组织奖申报', icon: 'el-icon-s-goods' }
-    ]
-  },
-
   /* ---------- 市级 (type=1) ---------- */
   city: {
     title: YILINBEI_TITLE,

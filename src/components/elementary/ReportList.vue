@@ -189,7 +189,7 @@
  * ===========================================================================
  * | 路由 | dist 模块 | 表格标题 | api | 类别筛选 | 列集合 | 操作列宽 | group | 编辑跳转 |
  * |---|---|---|---|---|---|---|---|---|
- * | /province/report/list  | cadb | 报名列表 | province | 有 | I  | 440 | 有 select，初值 null | 按 row.group 分发（0/1/2） |
+ * | /province/report/list  | cadb | 报名列表 | province | 有 | I  | 440 | 有 select，初值 null | 按 row.group 字符串分发（管乐团-小学/中学/大学） |
  * | /city/teacher/list     | 4b6a | 报名列表 | city     | 无 | I  | 500 | **固定 2** | /city/teacher/edit/:id 中小学教师组节目修改 |
  * | /school/teacher/list   | 67bc | 报名列表 | school   | 无 | I  | 500 | **固定 3** | /school/teacher/edit/:id 高校教师组节目修改 |
  * | /city/elementary/list  | 1c73 | 报名汇总 | city     | 无 | II | 500 | **无此参数** | /city/elementary/edit/:id 报名修改 |
@@ -426,13 +426,16 @@ function edit(row) {
   let target = null
 
   if (cfg.editByGroup) {
-    if (row.group === 0) {
+    // 【第十二届改造】后端 Report.group 为 CharField，存字符串（如 "管乐团-小学组"）
+    // row.group 来自后端 API 响应，故改为字符串比较
+    if (row.group === '管乐团-小学组') {
       target = { path: `/province/elementary/edit/${row.id}`, label: '中小学组节目修改' }
-    } else if (row.group === 1) {
+    } else if (row.group === '管乐团-中学组') {
       target = { path: `/province/school/edit/${row.id}`, label: '大学组节目修改' }
-    } else if (row.group === 2) {
+    } else if (row.group === '管乐团-大学组') {
       target = { path: `/province/teacher/edit/${row.id}`, label: '教师组节目修改' }
     }
+    // 【保留 dist 缺陷】cadb 原先没有 row.group === 3 的分支，按原样保留
   } else {
     target = { path: cfg.editPath(row.id), label: cfg.editLabel }
   }

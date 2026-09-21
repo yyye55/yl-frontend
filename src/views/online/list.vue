@@ -15,13 +15,19 @@
           <el-button :icon="Search" @click="getData" />
         </template>
         <template #prepend>
+          <!--
+            【第十二届改造】红头文件第十二届仅设 5 组（管乐团小学/中学/大学 + 铜管乐团小学/中学）。
+            原 dist 选项「大学生甲组/大学生乙组/高校教师组/中小学教师组/中小学生组」
+            均为 11 届及更早的组别，本次活动已取消。
+            【BE-02 必须后端确认】实际后端 group 字段存储值（0-4 还是字符串）待与后端对齐。
+          -->
           <el-select v-model="group" placeholder="组别" size="mini" clearable @change="getData">
             <el-option label="全部" :value="null" />
-            <el-option label="大学生甲组（非专业组）" value="大学生甲组（非专业组）" />
-            <el-option label="大学生乙组（专业组）" value="大学生乙组（专业组）" />
-            <el-option label="高校教师组" value="高校教师组" />
-            <el-option label="中小学教师组" value="中小学教师组" />
-            <el-option label="中小学生组" value="中小学生组" />
+            <el-option label="管乐团-小学组" value="管乐团-小学组" />
+            <el-option label="管乐团-中学组" value="管乐团-中学组" />
+            <el-option label="管乐团-大学组" value="管乐团-大学组" />
+            <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
+            <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
           </el-select>
         </template>
       </el-input>

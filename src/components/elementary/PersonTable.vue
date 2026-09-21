@@ -581,19 +581,28 @@ function uploadSuccessBatch(res, file) {
  * 所以这里不存在 UploadScanDialog 那种 key 累加的缺陷），再判体积、后判格式。
  */
 function beforeUpload(file) {
+  /*
+   * 【第十二届改造】红头文件要求：
+   *   - 师生电子照片：蓝底、免冠证件照、JPG、每张不超过 100KB
+   *   - 学生照片命名：「身份证后6位+姓名.jpg」
+   *   - 教师照片命名：「按系统规定命名」
+   * 客户端硬校验（JPG + ≤100KB），蓝底与命名格式仅在前端提示，无法像素级校验。
+   * 【保留 dist 缺陷】QiniuData.key 每次都重置（不会累加），故此处写法正确。
+   */
   QiniuData.key = 'ylbxt/'
   filename = file.name
 
   const isJpg = file.type === 'image/jpeg'
   QiniuData.key += rename(file.name)
 
-  const sizeOk = file.size / 1024 / 1024 < 0.1
+  // dist 原文顺序：先判体积、再判格式（保留）
+  const sizeOk = file.size / 1024 < 100
   if (!sizeOk) {
-    ElMessage.error('文件大小不能超过100k')
+    ElMessage.error('文件大小不能超过100KB')
     return false
   }
   if (!isJpg) {
-    ElMessage.error('格式只能是jpg')
+    ElMessage.error('照片格式只能是JPG')
     return false
   }
   return isJpg && sizeOk

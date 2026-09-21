@@ -52,13 +52,17 @@
         </template>
       </el-input>
 
+      <!--
+        【第十二届改造】同 /online/list，红头文件仅设 5 个组别。
+        【BE-02 必须后端确认】实际后端 group 字段存储值待与后端对齐。
+      -->
       <el-select v-model="group" placeholder="组别" size="mini" @change="getData">
         <el-option label="全部" :value="null" />
-        <el-option label="大学生甲组（非专业组）" value="大学生甲组（非专业组）" />
-        <el-option label="大学生乙组（专业组）" value="大学生乙组（专业组）" />
-        <el-option label="高校教师组" value="高校教师组" />
-        <el-option label="中小学教师组" value="中小学教师组" />
-        <el-option label="中小学生组" value="中小学生组" />
+        <el-option label="管乐团-小学组" value="管乐团-小学组" />
+        <el-option label="管乐团-中学组" value="管乐团-中学组" />
+        <el-option label="管乐团-大学组" value="管乐团-大学组" />
+        <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
+        <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
       </el-select>
 
       <!-- dist 该页的按钮宽度走内联 style，本页 CSS 中没有 .menu-button 规则 -->

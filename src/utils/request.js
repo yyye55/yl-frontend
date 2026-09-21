@@ -22,10 +22,12 @@ import NProgress from 'nprogress'
 import { ElMessage } from 'element-plus'
 import { getToken, clearToken, clearUser } from './auth'
 
-// 与 dist 严格一致：host = protocol + //bigapp.scbdc.edu.cn/ylbxt
-// 实际部署时请改为你的后端地址
+// 优先使用 .env 中配置的后端地址，未配置时回退到内网穿透地址
+// 【第十二届】内网穿透地址：http://wa9b8afb.natappfree.cc
+//   注意：natappfree.cc 是临时内网穿透，仅供开发调试使用；
+//   生产部署请改回正式地址（如 http://47.108.29.34）
 const HOST = (import.meta.env.VITE_API_BASE_URL) ||
-  (window.location.protocol + '//bigapp.scbdc.edu.cn/ylbxt')
+  (window.location.protocol + '//wa9b8afb.natappfree.cc')
 
 // 创建 axios 实例
 const request = axios.create({

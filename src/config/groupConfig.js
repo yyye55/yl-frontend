@@ -1,31 +1,44 @@
 /**
  * 第十二届「意林杯」四川省管乐展示活动 - 前端组别配置层
- * 
+ *
  * 【重要】此文件为前端配置层，用于：
  * 1. 前端UI展示
  * 2. 前端业务规则校验
  * 3. 组别与后端值的映射
- * 
- * 【后端值待确认】
- * 后端 group 和 establishment 的具体枚举值需要后端确认后填写到 BACKEND_VALUE 列
+ *
+ * 【后端枚举值已验证】
+ * 通过阅读后端代码（apps/core/models.py Report CharField + apps/api/views.py scoped_total
+ * / stats_admin 字符串过滤）确认：
+ *   - Report.group 为 CharField，存字符串（如 "小学组"、"中学组"、"大学组"）
+ *   - Report.establishment 为 CharField，存字符串（如 "管乐团"、"铜管乐团"）
+ *   - 后端 scoped_total / stats_admin 按 group="字符串" 过滤，不是数字枚举
+ *
+ * 【第十二届新增说明】
+ * 第十二届新增「铜管乐团」类型（管乐团 + 铜管乐团各若干组）。
+ * 但后端 scoped_total / stats_admin 目前只按 "小学组/中学组/大学组" 过滤，
+ * 未区分管乐/铜管。完整统计需要后端按 establishment+group 联合分组（BE-01）。
  */
 
 /**
  * 第十二届五个正式组别
- * 
- * 注意：BACKEND_GROUP_VALUE 和 BACKEND_ESTABLISHMENT_VALUE 需要后端确认后填写
- * 当前使用 FRONTEND_KEY 作为前端内部唯一标识
- * 
+ *
  * 【官方明确 - 第十二届红头文件】
  * 管乐团分为：小学组、中学组、大学组
  * 铜管乐团分为：小学组、中学组
+ *
+ * 【后端枚举值 - 已验证】
+ * BACKEND_GROUP_VALUE：直接使用后端 Report.group 存储的字符串值
+ * BACKEND_ESTABLISHMENT_VALUE：直接使用后端 Report.establishment 存储的字符串值
+ * 证据：apps/api/views.py scoped_total() / stats_admin() 均使用字符串过滤
  */
 export const TWELFTH_GROUPS = [
   {
     FRONTEND_KEY: 'wind_primary',
     FRONTEND_LABEL: '管乐团-小学组',
-    BACKEND_GROUP_VALUE: null, // TODO: 待后端确认
-    BACKEND_ESTABLISHMENT_VALUE: null, // TODO: 待后端确认 (管乐团)
+    // 【已验证】后端按 group="小学组" 字符串过滤
+    BACKEND_GROUP_VALUE: '小学组',
+    // 【已验证】后端 establishment 存 "管乐团" 字符串
+    BACKEND_ESTABLISHMENT_VALUE: '管乐团',
     ORCHESTRA_TYPE: '管乐团',
     ORCHESTRA_TYPE_KEY: 'wind',
     LEVEL: '小学组',
@@ -45,8 +58,9 @@ export const TWELFTH_GROUPS = [
   {
     FRONTEND_KEY: 'wind_middle',
     FRONTEND_LABEL: '管乐团-中学组',
-    BACKEND_GROUP_VALUE: null, // TODO: 待后端确认
-    BACKEND_ESTABLISHMENT_VALUE: null, // TODO: 待后端确认 (管乐团)
+    // 【已验证】后端按 group="中学组" 字符串过滤
+    BACKEND_GROUP_VALUE: '中学组',
+    BACKEND_ESTABLISHMENT_VALUE: '管乐团',
     ORCHESTRA_TYPE: '管乐团',
     ORCHESTRA_TYPE_KEY: 'wind',
     LEVEL: '中学组',
@@ -63,8 +77,9 @@ export const TWELFTH_GROUPS = [
   {
     FRONTEND_KEY: 'wind_university',
     FRONTEND_LABEL: '管乐团-大学组',
-    BACKEND_GROUP_VALUE: null, // TODO: 待后端确认
-    BACKEND_ESTABLISHMENT_VALUE: null, // TODO: 待后端确认 (管乐团)
+    // 【已验证】后端按 group="大学组" 字符串过滤
+    BACKEND_GROUP_VALUE: '大学组',
+    BACKEND_ESTABLISHMENT_VALUE: '管乐团',
     ORCHESTRA_TYPE: '管乐团',
     ORCHESTRA_TYPE_KEY: 'wind',
     LEVEL: '大学组',
@@ -81,8 +96,10 @@ export const TWELFTH_GROUPS = [
   {
     FRONTEND_KEY: 'brass_primary',
     FRONTEND_LABEL: '铜管乐团-小学组',
-    BACKEND_GROUP_VALUE: null, // TODO: 待后端确认
-    BACKEND_ESTABLISHMENT_VALUE: null, // TODO: 待后端确认 (铜管乐团)
+    // 【已验证】后端按 group="小学组" 字符串过滤（注意与管乐小学共用同一 group 值）
+    // 区分管乐/铜管需要后端按 establishment 字段联合判断
+    BACKEND_GROUP_VALUE: '小学组',
+    BACKEND_ESTABLISHMENT_VALUE: '铜管乐团',
     ORCHESTRA_TYPE: '铜管乐团',
     ORCHESTRA_TYPE_KEY: 'brass',
     LEVEL: '小学组',
@@ -99,8 +116,9 @@ export const TWELFTH_GROUPS = [
   {
     FRONTEND_KEY: 'brass_middle',
     FRONTEND_LABEL: '铜管乐团-中学组',
-    BACKEND_GROUP_VALUE: null, // TODO: 待后端确认
-    BACKEND_ESTABLISHMENT_VALUE: null, // TODO: 待后端确认 (铜管乐团)
+    // 【已验证】后端按 group="中学组" 字符串过滤（注意与管乐中学共用同一 group 值）
+    BACKEND_GROUP_VALUE: '中学组',
+    BACKEND_ESTABLISHMENT_VALUE: '铜管乐团',
     ORCHESTRA_TYPE: '铜管乐团',
     ORCHESTRA_TYPE_KEY: 'brass',
     LEVEL: '中学组',
@@ -146,25 +164,29 @@ export function getBackendValues(frontendKey) {
 export const GROUP_OPTIONS = TWELFTH_GROUPS.map(g => ({
   label: g.FRONTEND_LABEL,
   value: g.FRONTEND_KEY,
-  // 后端值待确认，暂时使用前端 key
-  backendValue: g.FRONTEND_KEY
+  // 后端值已验证为字符串
+  backendValue: g.BACKEND_GROUP_VALUE
 }))
 
 /**
  * 乐团类型下拉选项
- * 
+ *
  * 【第十二届】只有两种乐团类型
+ *
+ * 【后端枚举值 - 已验证】
+ * establishment 字段存字符串 "管乐团" / "铜管乐团"
+ * 证据：apps/api/views.py export_services.py admin_data1_rows() 直接用 item.establishment
  */
 export const ORCHESTRA_TYPE_OPTIONS = [
   {
     label: '管乐团',
-    BACKEND_VALUE: null, // TODO: 待后端确认
+    BACKEND_VALUE: '管乐团', // 【已验证】后端直接存字符串
     ORCHESTRA_TYPE_KEY: 'wind',
     IS_BRASS: false
   },
   {
     label: '铜管乐团',
-    BACKEND_VALUE: null, // TODO: 待后端确认
+    BACKEND_VALUE: '铜管乐团', // 【已验证】后端直接存字符串
     ORCHESTRA_TYPE_KEY: 'brass',
     IS_BRASS: true
   }
@@ -194,7 +216,7 @@ export function getOrchestraTypeBackendValue(label) {
  * @param {string} level - 组别 ('小学组' / '中学组' / '大学组')
  */
 export function getGroupByTypeAndLevel(orchestraType, level) {
-  return TWELFTH_GROUPS.find(g => 
+  return TWELFTH_GROUPS.find(g =>
     g.ORCHESTRA_TYPE === orchestraType && g.LEVEL === level
   ) || null
 }

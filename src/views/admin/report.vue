@@ -23,11 +23,18 @@
       </el-select>
 
       <el-select v-model="group" placeholder="组别" size="mini" @change="getData">
+        <!--
+          【第十二届改造】原 11 届下拉框为「中小学组/大学组/中小学教师组/高校教师组」，
+          第十二届按红头文件调整为五个正式组别（管乐团小学/中学/大学 + 铜管乐团小学/中学）。
+          后端 Report.group 为 CharField，存字符串（如 "管乐团-小学组"），
+          filter 参数用字符串值以匹配 scoped_total / report_queryset 的字符串过滤逻辑。
+        -->
         <el-option label="全部" :value="null" />
-        <el-option label="中小学组" :value="0" />
-        <el-option label="大学组" :value="1" />
-        <el-option label="中小学教师组" :value="2" />
-        <el-option label="高校教师组" :value="3" />
+        <el-option label="管乐团-小学组" value="管乐团-小学组" />
+        <el-option label="管乐团-中学组" value="管乐团-中学组" />
+        <el-option label="管乐团-大学组" value="管乐团-大学组" />
+        <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
+        <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
       </el-select>
 
       <el-button class="menu-button" type="primary" size="mini" @click="refresh"> 刷新</el-button>

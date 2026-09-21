@@ -119,14 +119,30 @@ export async function makeXLSX(fileName, aoa) {
 }
 
 /**
- * 从 blob 下载 xlsx
+ * 后端实际文件名映射（apps/api/export_services.py）
+ * 管理员/组委会导出的文件名由后端固定生成，前端不应覆盖。
+ * 理由：后端 workbook_response 设置 Content-Disposition filename，后端决定文件名。
+ *       前端传 fileName 会变成 filename.xlsx（因为后端已经是 .xlsx）。
+ *       因此去掉前端覆盖，直接使用后端返回的 blob，浏览器会根据 Content-Disposition 自动命名。
+ *
+ * 后端实际文件名：
+ *   /api/export/data     → "数据导出.xlsx"
+ *   /api/admin/export/data1 → "数据导出.xlsx"
+ *   /api/admin/export/data2 → "数据导出.xlsx"
+ *   /api/export/report   → "节目报送表.pdf"
+ *   /api/export/person   → "参演人员信息表.pdf"
+ *   /api/admin/chouqian/export/{type} → "{组别}现场展演抽签顺序表.xlsx"
+ *
+ * 注意：后端文件名不含届数（第十二届也仍为"节目报送表.pdf"），
+ * 这是后端 BE 问题，标记为 BE-11。
  */
 export function downloadExcelFile(blob, fileName) {
   const b = new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8' })
   const url = window.URL.createObjectURL(b)
   const a = document.createElement('a')
   a.href = url
-  a.download = fileName + '.xlsx'
+  // 【第十二届修复】不传 fileName 时，浏览器使用后端 Content-Disposition 中的实际文件名
+  a.download = fileName ? (fileName + '.xlsx') : undefined
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

@@ -230,6 +230,24 @@ yl-frontend/
 4. **接口失败路径产生未处理的 Promise rejection**
 5. **HTTP 400 无用户可见提示**
 
+## 🚧 第十二届业务依赖后端（BE 清单）
+
+12 届业务规则需要后端配合方能闭环。前端能修复的已在 2026-09-21 那轮内完成。
+以下事项**必须由后端处理**，前端无法独立解决：
+
+| 编号 | 业务要求 | 前端为何无法解决 | 后端建议 |
+| --- | --- | --- | --- |
+| BE-01 | 后端 group / establishment 枚举值确认 | 前端推测的占位 0-4 仅用于表单下拉，提交时仍按 formInit 常量；后端确认前，5 组数据字典可能不一致 | report 表 group/establishment 枚举确认并写入 src/config/groupConfig.js BACKEND_*_VALUE |
+| BE-02 | 每所学校限报一支队伍 | 数据库唯一性约束必须在后端 | report 表加 (school_id) UNIQUE |
+| BE-03 | 名单确定后不得更改 | 状态锁定字段必须由后端控制 | 增加 report.is_locked 字段，submit 后置 true；编辑 API 拒绝 is_locked 行 |
+| BE-04 | 资格审核识别「非本校师生」 | 需要跨表 join 身份证号、参赛人员 | 在 report.check API 中实现身份证+学校匹配校验 |
+| BE-05 | OSS 视频上传临时凭证 / 直传地址 | 前端不知道 bucket / region / STS role | 实现 /api/oss/token 返回 STS 临时凭证；或采用后端代收视频 |
+| BE-06 | 600dpi 图片分辨率校验 | 前端无法读取 PDF / JPEG 的 DPI | upload API 中使用 Pillow / pdfinfo 校验 600dpi |
+| BE-07 | 视频/图片实际大小 / 格式服务端兜底 | 防绕过 | upload API 最终检查 size ≤ 700MB 且为 MP4/MOV；图片 ≤ 100KB 且为 JPG |
+| BE-08 | 一所学校仅一支队伍的 UI 提示关联 | 提交后才知道已报名 | GET /api/school/report/exists 接口返回是否已报名，用于前端按钮禁用 |
+| BE-09 | 时间窗口控制（10/9–10/26 报名开放） | 服务端权威时间 | 后端 submit API 在时间窗外拒绝；前端能做按钮禁用 + 文案，但不影响业务 |
+| BE-10 | 直播编辑时的 PDF 命名规则与 12 届细则 | dist 是硬编码 | 后端字段确认后再调前端 |
+
 ## 📦 开发辅助脚本
 
 ```bash

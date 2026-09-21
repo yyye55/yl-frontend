@@ -53,6 +53,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { User, Bottom } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import { useTabsStore } from '@/store/modules/tabs'
 import { clearAllMsg } from '@/utils/auth'
@@ -99,6 +100,8 @@ function logout() {
   > div {
     padding: 0 20px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
 
     span {
       margin-left: 10px;

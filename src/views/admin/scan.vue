@@ -126,6 +126,7 @@
 
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { scanApi } from '@/api'
 import ShowScFile from '@/components/common/ShowScFile.vue'
 

@@ -9,8 +9,8 @@
         :model="form"
         :rules="rules"
         inline
-        label-width="120px"
-        size="mini"
+        label-width="130px"
+        size="default"
       >
         <el-form-item label="账号" prop="username">
           <el-input v-model="form.username" disabled />

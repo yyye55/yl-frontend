@@ -617,7 +617,9 @@ function beforeUpload(file) {
   QiniuData.key += rename(file.name)
 
   const sizeOk = file.size / 1024 / 1024 < 700
-  const isVideo = file.type === 'video/mov' || file.type === 'video/mp4'
+  // 【修复】'video/mov' 不是合法 MIME 类型，浏览器对 .mov 一律上报 video/quicktime，
+  // 原写法导致 MOV 视频被无条件拒绝。与 ProgramForm 族保持同一判据。
+  const isVideo = file.type === 'video/quicktime' || file.type === 'video/mp4'
 
   if (!isVideo) {
     ElMessage.error('请上传 MP4 或 MOV 格式的视频文件')

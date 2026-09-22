@@ -20,28 +20,28 @@
       <div v-for="(item, index) in data" :key="index" class="box-line">
         <div class="box-col">{{ index + 1 }}</div>
         <div class="box-col">
-          <el-input v-model="item.name" placeholder="请输入姓名" size="mini" />
+          <el-input v-model="item.name" placeholder="请输入姓名" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证号码" size="mini" />
+          <el-input v-model="item.card" placeholder="请输入身份证号码" />
         </div>
         <div class="box-col">
-          <el-select v-model="item.gender" placeholder="请选择" size="mini">
+          <el-select v-model="item.gender" placeholder="请选择">
             <el-option label="男" value="男" />
             <el-option label="女" value="女" />
           </el-select>
         </div>
         <div class="box-col">
-          <el-input v-model="item.age" size="mini" type="number" placeholder="请输入年龄" />
+          <el-input v-model="item.age" type="number" placeholder="请输入年龄" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.school" size="mini" placeholder="请输入学校全称" />
+          <el-input v-model="item.school" placeholder="请输入学校全称" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.phone" size="mini" placeholder="请输入联系电话" />
+          <el-input v-model="item.phone" placeholder="请输入联系电话" />
         </div>
         <div class="box-col">
-          <el-button type="danger" size="mini" @click="remove(index)">删除</el-button>
+          <el-button type="danger" @click="remove(index)">删除</el-button>
         </div>
       </div>
     </div>
@@ -100,12 +100,12 @@
  * 5) `e._m(0)` → 展开成普通模板里的表头 div
  *    静态提升只是编译期优化，渲染结果与 dist 的 staticRenderFns 完全一致。
  *
- * 6) `size="mini"` 原样保留
+ * 6) `size="mini"` 已移除
  *    【dist 已确认】dist 全文用 size="mini"（Element UI 2 的尺寸档）。
- *    Element Plus 只认 large/default/small，`mini` 会被静默当作 default 处理 →
- *    **本组件的输入框/按钮/danger 按钮目前看起来会比 dist 略大**。
- *    按本项目统一决定，本轮先原样保留 size="mini"，不自行改成 small，
- *    留给后续单独的设计系统轮统一处理。
+ *    Element Plus 只认 large/default/small，`mini` 不被识别、每次渲染告警一次；
+ *    EP 中没有 `.el-input--mini` / `.el-select--mini` / `.el-button--mini` 任何规则，
+ *    所以 dist 里这个属性本来也是空转，删掉后渲染结果与 dist（及迁移后现状）一致。
+ *    **未**改成 small —— `--small` 是真实尺寸规则，会把输入框/按钮压小。
  *
  * 7) `el-icon-*` 图标：本组件 dist 原文未使用任何图标；本组件也不需要
  *    @element-plus/icons-vue 的显式 import。

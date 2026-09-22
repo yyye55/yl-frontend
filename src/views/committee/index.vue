@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <p class="title">报名一览</p>
-    <el-table :data="tableData" size="mini" style="width:100%">
+    <el-table :data="tableData" style="width:100%">
       <!--
         【第十二届改造】后端 stats_admin() 返回 "小学组报名情况"/"中学组报名情况"/"大学组报名情况"
         这些是 11 届遗留字符串。对 12 届，组委会首页展示新 5 组统计暂无完整后端支持，
@@ -12,10 +12,10 @@
         <template #default="{ row }">
           <span>{{ row.name }}</span>
           <span v-if="row.name === '小学组报名情况'" style="color:#888;font-size:12px">
-            （含管乐小学+铜管小学）
           </span>
           <span v-else-if="row.name === '中学组报名情况'" style="color:#888;font-size:12px">
-            （含管乐中学+铜管中学）
+          </span>
+          <span v-else-if="row.name === '大学组报名情况'" style="color:#888;font-size:12px">
           </span>
         </template>
       </el-table-column>

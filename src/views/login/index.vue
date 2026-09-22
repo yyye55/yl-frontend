@@ -165,16 +165,17 @@ async function submit() {
 .login_box {
   position: relative;
   z-index: 1;
-  width: 460px;
+  width: 520px;
   background-color: rgba(255, 255, 255, 0.96);
   border-radius: 12px;
-  padding: 36px 40px;
+  padding: 48px 52px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  transform: translateX(150px);
 }
 
 .title {
   text-align: center;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: bold;
   color: #1a1a1a;
   margin-bottom: 32px;
@@ -185,18 +186,18 @@ async function submit() {
     text-align: center;
     .mybtn {
       width: 100%;
-      height: 48px;
+      height: 40px;
       background-color: #004088;
       border-color: #004088;
-      font-size: 16px;
+      font-size: 17px;
       font-weight: bold;
     }
   }
   p {
-    font-size: 13px;
+    font-size: 14px;
     color: #333333;
     line-height: 1.6;
-    margin-top: 16px;
+    margin-top: 18px;
   }
   :deep(.el-input__wrapper) {
     box-shadow: 0 0 0 1px #dde0e8 !important;
@@ -204,15 +205,16 @@ async function submit() {
     border-radius: 6px;
   }
   :deep(.el-input__inner) {
-    height: 44px;
+    height: 40px;
     border: none !important;
     border-radius: 6px;
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: 16px;
+    padding-right: 16px;
+    font-size: 15px;
     box-shadow: none !important;
   }
   :deep(.el-input__suffix) {
-    padding-right: 10px;
+    padding-right: 12px;
   }
   :deep(.el-input__wrapper.is-focus) {
     box-shadow: 0 0 0 1px #004088 !important;
@@ -224,7 +226,7 @@ async function submit() {
     box-shadow: 0 0 0 1px #c0c4cc !important;
   }
   :deep(.el-form-item) {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
 }
 

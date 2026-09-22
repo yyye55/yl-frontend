@@ -9,7 +9,6 @@
         label-position="left"
         :rules="rules"
         label-width="120px"
-        size="mini"
       >
         <div class="bg1">
           <!-- ============ 第 1 行：乐团名称 / 类型 ============ -->
@@ -134,13 +133,13 @@
                   placeholder="请输入内容"
                   maxlength="300"
                   show-word-limit
-                  rows="15"
+                  :rows="15"
                 />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <el-form-item label="乐团集体电子照">
+          <el-form-item label="乐团集体电子照片">
             <el-upload
               class="upload-demo"
               drag
@@ -166,7 +165,7 @@
                     原 dist 提示有 typo「JEPG」，已订正。
                     600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
                   -->
-                  电子照片要求分辨率不低于600dpi、JPEG或TIFF格式（用于制作秩序册）
+                  乐团集体电子照片用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
                 </div>
               </template>
             </el-upload>
@@ -193,7 +192,7 @@
               <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
               <template #tip>
                 <div class="el-upload__tip">
-                  视频要求格式为MP4或MOV，大小不超过700M。
+                  视频格式为MP4或MOV，大小不超过700MB。
                 </div>
               </template>
             </el-upload>
@@ -210,7 +209,7 @@
             <Teacher ref="teacherRef" :showdata="form.teacher" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
             <p style="font-size: 14px; color: #ff0000">
-              管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（在报名时可报预备队员3人）。
+              管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（报名时可报预备队员3人）。
             </p>
             <Person ref="personRef" :showdata="form.person" />
           </div>
@@ -337,8 +336,10 @@
  * 7) dist 的 `openWindow/closeWindow` 是 layout 上的方法（走 vuex tabs 模块），
  *    这里复用项目已有的等价实现 @/composables/useTabs。
  *
- * 【保留未改】`size="mini"`：Element Plus 只认 large/default/small，"mini" 会静默回退，
- * 留到设计系统轮统一处理。
+ * 【已移除】`size="mini"`：Element Plus 的合法尺寸是 large/default/small，不含 "mini"，
+ * 该 prop 每次渲染都会触发一次校验告警。EP 里并不存在 `.el-*--mini` 规则，这个属性
+ * 本来就不产生任何样式，删掉是零视觉变化。**未**改成 small —— `--small` 是真实尺寸规则
+ * （按钮 32→24px、表格单元格 padding 8px→4px、字号变小），会改动界面。
  * 【保留未改】`oninput="value=value.replace(...)"`：dist 原文（在原生 input 上过滤非数字），
  * 与 ProgramForm 保持同一写法，实际效果在浏览器中验证。
  */
@@ -1024,5 +1025,12 @@ function onSubmit() {
 .request {
   color: #8c939d;
   margin-bottom: 20px;
+}
+
+/* 上传区（乐团集体电子照 / 上传视频）宽度原本由 #tip 文案长度撑出（shrink-to-fit），
+   导致「乐团集体电子照」比「上传视频」宽 13px。撑满内容列后两者完全一致。
+   必须用 :deep()：.el-upload 根节点上没有 data-v 属性，裸选择器命中不了。 */
+:deep(.upload-demo) {
+  width: 40%;
 }
 </style>

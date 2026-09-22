@@ -62,7 +62,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: url("@/assets/login-bg1.png") center center / cover no-repeat;
+  background: url("@/assets/login-bg2.png") center center / cover no-repeat;
   position: relative;
 }
 .login_box {

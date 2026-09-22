@@ -38,7 +38,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -46,7 +45,7 @@
         </template>
       </el-input>
 
-      <el-button type="primary" size="mini" @click="reflush">
+      <el-button type="primary" @click="reflush">
         刷新
       </el-button>
     </div>
@@ -55,8 +54,8 @@
       <div class="bg-list">
         <p class="title">人员管理</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
-          <el-table-column type="index" label="序号" align="center" />
+        <el-table :data="data" border style="width: 100%">
+          <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="name" label="姓名" align="center" />
           <el-table-column prop="card" label="身份证号码" align="center" />
           <el-table-column prop="school" label="学校名称" align="center" />
@@ -88,7 +87,6 @@
         :rules="editRules"
         inline
         label-width="120px"
-        size="mini"
       >
         <el-form-item label="姓名" prop="name">
           <el-input v-model="editForm.name" />
@@ -99,8 +97,8 @@
       </el-form>
 
       <template #footer>
-        <el-button size="mini" @click="showEditInfo = false">取 消</el-button>
-        <el-button type="primary" size="mini" @click="editSubmit">确 定</el-button>
+        <el-button @click="showEditInfo = false">取 消</el-button>
+        <el-button type="primary" @click="editSubmit">确 定</el-button>
       </template>
     </el-dialog>
   </div>

@@ -115,13 +115,15 @@ const { openWindow } = useTabs()
 
 const menu = computed(() => getLayoutMenu(route.path) || { title: ['', ''], items: [] })
 
-// dist: handleOpen(e,t){console.log(e,t)} / handleClose(e,t){console.log(e,t)}
-function handleOpen(index, indexPath) {
-  console.log(index, indexPath)
-}
-function handleClose(index, indexPath) {
-  console.log(index, indexPath)
-}
+/**
+ * dist: handleOpen(e,t){console.log(e,t)} / handleClose(e,t){console.log(e,t)}
+ *
+ * 【本次调整】dist 原文这两个回调只做 console.log，没有任何业务逻辑。
+ * 这里去掉打印（模板 9、10 行仍然绑定着它们，所以函数本身保留）。
+ * 效果：控制台不再在每次操作菜单时刷出两行；渲染与交互行为完全不变。
+ */
+function handleOpen() {}
+function handleClose() {}
 </script>
 
 <style lang="scss" scoped>

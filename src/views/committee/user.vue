@@ -40,7 +40,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -50,13 +49,11 @@
 
       <el-button
         type="primary"
-        size="mini"
         @click="reflush"
       >刷新</el-button>
 
       <el-button
         type="primary"
-        size="mini"
         :loading="exporting"
         @click="download('账号列表')"
       >导出所有账号</el-button>
@@ -66,8 +63,8 @@
       <div class="bg-list">
         <p class="title">账号列表</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
-          <el-table-column type="index" label="序号" />
+        <el-table :data="data" border style="width: 100%">
+          <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="nickname" label="名称" />
           <el-table-column prop="username" label="账号" />
           <el-table-column prop="leader" label="修改人姓名" />

@@ -22,7 +22,8 @@
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
       <el-upload
-        style="margin: 10px; display: inline-block"
+        class="import-bar"
+        style="margin: 10px; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
         action="/"
         :show-file-list="false"
         :on-change="importExcel"
@@ -44,7 +45,7 @@
         <el-button style="color: #1890ff" type="text" @click="flush">清空</el-button>
 
         <el-upload
-          style="margin: 10px; display: inline-block"
+          style="display: inline-block"
           :on-success="uploadSuccessBatch"
           :data="QiniuData"
           :before-upload="beforeUpload"
@@ -67,7 +68,7 @@
           <button ref="uploadAvatar" type="button">click</button>
         </el-upload>
 
-        <p style="color: red; margin-bottom: 10px">注： 电子照片要求为蓝底、免冠、证件照、JPG格式,每张照片文件大小不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位+姓名.jpg</i> 例如：<i style="color: blue">123456张三.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456</i> 且姓名为 <i style="color: blue">张三</i> 的人员对应。 </p>
+        <p style="color: red; margin-bottom: 10px; flex-basis: 100%">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位.jpg</i> 例如：<i style="color: blue">123456.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456 </i>的人员对应。 </p>
       </el-upload>
     </div>
 
@@ -91,41 +92,41 @@
       <div v-for="(item, index) in data" :key="index" class="box-line">
         <div class="box-col">{{ index + 1 }}</div>
         <div class="box-col">
-          <el-input v-model="item.name" placeholder="请输入姓名" size="mini" />
+          <el-input v-model="item.name" placeholder="请输入姓名" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证号码" size="mini" />
+          <el-input v-model="item.card" placeholder="请输入身份证号码" />
         </div>
         <div class="box-col">
-          <el-select v-model="item.gender" placeholder="请选择" size="mini">
+          <el-select v-model="item.gender" placeholder="请选择">
             <el-option label="男" value="男" />
             <el-option label="女" value="女" />
           </el-select>
         </div>
         <div class="box-col">
-          <el-input v-model="item.age" size="mini" type="number" placeholder="请输入年龄" />
+          <el-input v-model="item.age" type="number" placeholder="请输入年龄" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.school" size="mini" placeholder="请输入学校全称" />
+          <el-input v-model="item.school" placeholder="请输入学校全称" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.phone" size="mini" placeholder="请输入联系电话" />
+          <el-input v-model="item.phone" placeholder="请输入联系电话" />
         </div>
         <div class="box-col">
-          <el-select v-model="item.type" placeholder="请选择" size="mini">
+          <el-select v-model="item.type" placeholder="请选择">
             <el-option label="学生" :value="0" />
             <el-option label="教师" :value="1" />
           </el-select>
         </div>
         <div class="box-col">
-          <el-select v-model="item.position" placeholder="请选择" size="mini">
+          <el-select v-model="item.position" placeholder="请选择">
             <el-option label="正式队员" :value="0" />
             <el-option label="预备队员" :value="1" />
             <el-option label="指挥" :value="2" />
           </el-select>
         </div>
         <div class="box-col">
-          <el-select v-model="item.instrument" placeholder="请选择" size="mini">
+          <el-select v-model="item.instrument" placeholder="请选择">
             <el-option label="短笛" value="短笛" />
             <el-option label="长笛" value="长笛" />
             <el-option label="单簧管" value="单簧管" />
@@ -149,8 +150,8 @@
           <img style="width: 59px; height: 82px" :src="item.head" />
         </div>
         <div class="box-col sticky-column">
-          <el-button size="mini" @click="upAvatar(index)">上传头像</el-button>
-          <el-button type="danger" size="mini" @click="remove(index)">删除</el-button>
+          <el-button @click="upAvatar(index)">上传头像</el-button>
+          <el-button type="danger" @click="remove(index)">删除</el-button>
         </div>
       </div>
     </div>
@@ -233,10 +234,11 @@
  *      dist 里它是 Vue.prototype 上的方法，返回 `[{ sheet: 行数组 }]`；新建的实现忠于该结构，
  *      原因与取证见 src/utils/xlsx.js 顶部注释。
  *
- * 4) `size="mini"` 原样保留
- *    【dist 已确认】Element Plus 只认 large/default/small，`mini` 会被静默当作 default，
- *    故输入框/下拉/按钮的视觉尺寸会比 dist 略大。按本项目统一决定，本轮不改 small，
- *    留给后续设计系统轮统一处理。
+ * 4) `size="mini"` 已移除
+ *    【dist 已确认】Element Plus 只认 large/default/small，`mini` 不被识别、每次渲染告警一次；
+ *    而 EP 中没有 `.el-input--mini` / `.el-select--mini` / `.el-button--mini` 任何规则，
+ *    该属性本来就不产生样式，删掉是零视觉变化。**未**改成 small —— `.el-input--small` 等
+ *    是真实尺寸规则，会把输入框/按钮压小。
  *
  * 5) `slot="trigger"` → `<template #trigger>`（本组件唯一需要推敲的模板改动）
  *    【dist 已确认】Element UI 2 的 ElUpload(index.vue) 渲染函数：
@@ -671,5 +673,15 @@ defineExpose({ getData, getCacheData })
   background-color: #fff;
   z-index: 10;
   border-right: 1px solid #ddd;
+}
+
+/* 「下载模板 / 批量导入 / 添加一行 / 清空 / 批量上传头像」这一排按钮。
+   它们分散在 Upload 根 / UploadContent / 内层 Upload 三种容器里，改前实测间距是
+   0 / 8 / 8 / 10px，且「批量导入」「批量上传头像」比中间三个高 1.2px —— 前者因为在
+   inline-flex 的 UploadContent 里，后者因为 el-button 的相邻 margin-left 只对相邻兄弟生效。
+   现在由 .import-bar 的 flex + gap:8px 统一发间距、align-items:center 对齐基线，
+   所以必须把 el-button 自带的相邻 margin-left:8px 清掉，否则会变成 8+8=16px。 */
+.import-bar > .el-button {
+  margin-left: 0;
 }
 </style>

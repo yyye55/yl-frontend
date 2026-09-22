@@ -1,6 +1,6 @@
 <template>
   <div style="display:inline-block;margin-right:10px">
-    <el-button size="mini" @click="dialogTableVisible = true">查看详情</el-button>
+    <el-button @click="dialogTableVisible = true">查看详情</el-button>
     <el-dialog v-model="dialogTableVisible">
       <div class="detail-content">
         <h2>{{ data.name }}</h2>
@@ -10,7 +10,7 @@
           <p>学校名称：{{ data.school_name }}</p>
         </div>
         <div class="fall-info">
-          <p>乐团类型：{{ data.establishment }}</p>
+          <p>类型：{{ data.establishment }}</p>
           <p>参演组别：{{ data.group }}</p>
           <p>自选曲目：{{ data.name }}</p>
         </div>
@@ -21,14 +21,14 @@
         </div>
         <div class="fall-info">
           <p>联系地址：{{ data.contact_way }}</p>
-          <p>展示时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
+          <p>作品总时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
           <p>乐团简介：{{ data.desc || '未填写' }}</p>
         </div>
         <div
           v-if="data.spectrum"
           style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px"
         >
-          乐团集体照文件--------
+          乐团集体照片文件--------
           <a
             :href="data.spectrum.url"
             download="data.spectrum.filename"

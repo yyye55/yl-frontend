@@ -58,7 +58,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -66,7 +65,13 @@
         </template>
       </el-input>
 
-      <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
+      <!--
+        placeholder 写「全部」而不是「审核状态」：
+        「全部」这一项的 value 是 null，对 el-select 来说就是空值，它会回头显示 placeholder。
+        所以只有把 placeholder 本身写成「全部」，选中「全部」时框里才会出现「全部」两个字。
+        这只是显示文案，status 仍然是 null，axios 会丢弃空值参数 —— 也就是「全部」= 不传 status。
+      -->
+      <el-select v-model="status" placeholder="全部" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
         <el-option label="未通过" :value="-1" />
@@ -76,7 +81,6 @@
       <el-button
         class="menu-button"
         type="primary"
-        size="mini"
         :loading="exporting"
         @click="exportXlsx"
       >导出数据</el-button>
@@ -84,7 +88,6 @@
       <el-button
         class="menu-button"
         type="primary"
-        size="mini"
         @click="refresh"
       >刷新</el-button>
     </div>
@@ -93,8 +96,8 @@
       <div class="bg-list">
         <p class="title">{{ pageTitle }}</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
-          <el-table-column type="index" prop="date" label="序号" header-align="center" align="center" />
+        <el-table :data="data" border style="width: 100%">
+          <el-table-column type="index" prop="date" label="序号" width="60" header-align="center" align="center" />
 
           <!-- 列集合 I（teacher / elementary）：合唱团 + 节目 + 联系人/电话/地址 -->
           <template v-if="columns === 'I'">
@@ -113,7 +116,7 @@
             <el-table-column prop="user.nickname" label="提交单位" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="school_name" label="参展学校" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="contact_name" label="领队姓名" header-align="center" align="center" />
-            <el-table-column prop="contact_phone" label="领队联系电话" header-align="center" align="center" />
+            <el-table-column prop="contact_phone" label="领队联系电话" header-align="center" align="center" width="120"/>
           </template>
 
           <el-table-column label="人员信息" header-align="center" align="center">
@@ -133,11 +136,11 @@
               <ShowContent :data="row" />
               <template v-if="row.status < 1">
                 <Remark v-if="row.status === -1" :data="row.remark" />
-                <el-button size="mini" @click="check(row.id, 1)">审核通过</el-button>
-                <el-button v-if="row.status === 0" size="mini" @click="returnBack(row.id)">驳回</el-button>
+                <el-button @click="check(row.id, 1)">审核通过</el-button>
+                <el-button v-if="row.status === 0" @click="returnBack(row.id)">驳回</el-button>
               </template>
               <template v-else-if="row.status === 1">
-                <el-button size="mini" @click="returnBack(row.id)">驳回</el-button>
+                <el-button @click="returnBack(row.id)">驳回</el-button>
               </template>
             </template>
           </el-table-column>
@@ -341,6 +344,14 @@ onMounted(() => {
 
 .options > .el-input {
   width: 220px !important;
+}
+
+/* 状态下拉必须给固定宽度，否则它占满整行、把「导出数据 / 刷新」两个按钮挤到后面几行。
+   Element Plus 定义了 --el-select-width:100%，而 .el-select 的 width 就是取这个变量，
+   于是下拉一旦成为 flex item，基准宽度就是 .options 的整个内容宽，换行后还会被自身
+   margin-right:10px 挤掉 10px。同款写法见上面的 .el-input 规则。 */
+.options > .el-select {
+  width: 160px !important;
 }
 
 .content {

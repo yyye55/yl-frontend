@@ -50,7 +50,7 @@
       </p>
       <p style="padding:5px 0;">
         下载：
-        <el-button size="mini" type="primary"> 操作手册 </el-button>
+        <el-button type="primary"> 操作手册 </el-button>
       </p>
     </el-dialog>
   </div>
@@ -95,6 +95,7 @@
 
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Close } from '@element-plus/icons-vue'
 import Sidebar from './Sidebar.vue'
 import Header from './Header.vue'
 import ModifyUserInfo from './ModifyUserInfo.vue'
@@ -189,6 +190,8 @@ function openModify() {
   padding: 3px 6px;
   margin: 0 5px;
   color: #fff;
+  display: flex;
+  align-items: center;
 
   .el-icon {
     margin-left: 4px;

@@ -1,0 +1,159 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# 同一时间只允许一个生产部署，避免并发写同一个目录
+concurrency:
+  group: frontend-deploy-production
+  cancel-in-progress: false
+
+env:
+  REMOTE_ROOT: /www/wwwroot/47.108.29.34
+  REMOTE_TARGET: /www/wwwroot/47.108.29.34/ylbxt
+  # 服务器上 nginx worker 以 www 运行，落盘文件必须归 www，否则面板/权限会不一致
+  REMOTE_OWNER: www:www
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vue
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          test -d dist/js
+          test -d dist/css
+          echo "dist/index.html 存在，js/ 与 css/ 均已生成"
+
+      # 生产构建不允许出现内网穿透地址
+      - name: Guard against natapp in production build
+        run: |
+          if grep -RIl "natapp" dist; then
+            echo "::error::生产构建中检测到 natapp 地址，已中止部署"
+            exit 1
+          fi
+          echo "未检测到 natapp 地址"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # 1) 建立 staging 目录（不触碰线上正式目录）
+      - name: Create staging directory
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<REMOTE
+          set -eu
+          STAGING="${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}"
+          rm -rf "\$STAGING"
+          mkdir -p "\$STAGING"
+          echo "staging created: \$STAGING"
+          REMOTE
+
+      # 2) 全量上传到 staging
+      - name: Upload dist to staging
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.SERVER_PORT }}" \
+            dist/ "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}/"
+
+      # 3) 校验 staging -> 4) 备份旧版本 -> 5) 替换 -> 6) 修正属主
+      #    任一步失败都会在替换前退出，线上旧版本保持可用
+      #    注意：`set -eu` 保证校验不通过时不会走到 rm -rf
+      - name: Verify staging and publish
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<REMOTE
+          set -eu
+          STAGING="${{ env.REMOTE_ROOT }}/.ylbxt-staging-${{ github.run_id }}"
+          TARGET="${{ env.REMOTE_TARGET }}"
+          BACKUP="${{ env.REMOTE_ROOT }}/.ylbxt-backup-${{ github.run_id }}"
+          OWNER="${{ env.REMOTE_OWNER }}"
+
+          # --- 3) staging 完整性校验（不通过则整个部署中止，线上不动） ---
+          test -f "\$STAGING/index.html"
+          test -d "\$STAGING/js"
+          test -d "\$STAGING/css"
+          echo "staging 校验通过"
+
+          # --- 4) 备份旧版本，保留回滚能力 ---
+          if [ -d "\$TARGET" ]; then
+            rm -rf "\$BACKUP"
+            cp -a "\$TARGET" "\$BACKUP"
+            echo "已备份旧版本 -> \$BACKUP"
+          fi
+
+          # --- 5) 替换（此时 staging 已确认完整） ---
+          mkdir -p "\$TARGET"
+          find "\$TARGET" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          cp -a "\$STAGING"/. "\$TARGET"/
+          test -f "\$TARGET/index.html"
+
+          # --- 6) 修正属主：nginx worker 以 www 运行，落盘文件须归 www 且可读 ---
+          chown -R "\$OWNER" "\$TARGET"
+          chmod -R u=rwX,go=rX "\$TARGET"
+          echo "正式目录已更新，属主归 \$OWNER"
+
+          rm -rf "\$STAGING"
+          # 只保留最近 3 份备份，避免长期堆积
+          ls -1dt ${{ env.REMOTE_ROOT }}/.ylbxt-backup-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+          echo "DEPLOY_OK run_id=${{ github.run_id }}"
+          REMOTE
+
+      # 7) 部署后真实 HTTP 冒烟测试：静态入口 + history fallback + API 仍归 Django
+      - name: Smoke test on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<'REMOTE'
+          set -eu
+          H='Host: 47.108.29.34'
+          ENTRY=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbxt/)
+          echo "/ylbxt/       -> $ENTRY"
+          test "$ENTRY" = "200"
+
+          LOGIN=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbxt/login)
+          echo "/ylbxt/login  -> $LOGIN  (history fallback)"
+          test "$LOGIN" = "200"
+
+          # /api/ 只要不是被静态 location 截获即可；405/401/404 都算正常
+          API=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/api/login)
+          echo "/api/login    -> $API  (Django，非 200 亦属正常)"
+          test "$API" != "000"
+
+          echo "SMOKE TEST OK"
+          REMOTE
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/remote.sh

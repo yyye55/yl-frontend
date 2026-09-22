@@ -5,7 +5,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -13,7 +12,13 @@
         </template>
       </el-input>
 
-      <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
+      <!--
+        placeholder 写「全部」而不是「审核状态」：
+        「全部」这一项的 value 是 null，对 el-select 来说就是空值，它会回头显示 placeholder。
+        所以只有把 placeholder 本身写成「全部」，选中「全部」时框里才会出现「全部」两个字。
+        这只是显示文案，status 仍然是 null，axios 会丢弃空值参数 —— 也就是「全部」= 不传 status。
+      -->
+      <el-select v-model="status" placeholder="全部" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
         <el-option label="未通过" :value="-1" />
@@ -24,7 +29,6 @@
         class="menu-button"
         style="width: 100px"
         type="primary"
-        size="mini"
         @click="refresh"
       >
         刷新
@@ -35,11 +39,12 @@
       <div class="bg-list">
         <p class="title">{{ cfg.title }}</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
+        <el-table :data="data" border style="width: 100%">
           <el-table-column
             type="index"
             prop="date"
             label="序号"
+            width="60"
             header-align="center"
             align="center"
           />
@@ -120,13 +125,13 @@
               <template v-if="row.status === -1">
                 <Remark :data="row.remark" />
                 <ShowContent :data="row" />
-                <el-button size="mini" @click="edit(row)">编辑</el-button>
-                <el-button size="mini" @click="remove(row.id)">删除</el-button>
+                <el-button @click="edit(row)">编辑</el-button>
+                <el-button @click="remove(row.id)">删除</el-button>
               </template>
               <template v-else-if="row.status === 0">
                 <ShowContent :data="row" />
-                <el-button size="mini" @click="edit(row)">编辑</el-button>
-                <el-button size="mini" @click="remove(row.id)">删除</el-button>
+                <el-button @click="edit(row)">编辑</el-button>
+                <el-button @click="remove(row.id)">删除</el-button>
               </template>
               <template v-else>
                 <ShowContent :data="row" />
@@ -238,7 +243,9 @@
  * 7) `mounted(){this.getData()}` -> `onMounted(getData)`。
  * 8) `data-isDelete` 等 dist 声明后从未使用的字段同样不迁移。
  *
- * 【保留未改】`size="mini"`：Element Plus 只认 large/default/small，留到设计系统轮统一处理。
+ * 【已移除】`size="mini"`：Element Plus 只认 large/default/small，不含 "mini"，每渲染一次
+ * 告警一次；而 EP 里没有 `.el-*--mini` 规则，该属性本就不产生样式，删掉是零视觉变化。
+ * **未**改成 small —— `--small` 是真实尺寸规则，会把表格/按钮/下拉改小。
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -419,6 +426,18 @@ onMounted(() => {
 /* 子组件（el-input / el-select）的根元素会继承父作用域 id，故该规则在 Vue 3 下同样命中 */
 .options > .el-input {
   width: 220px !important;
+}
+
+/* 状态下拉必须给固定宽度，否则它占满整行、把刷新按钮挤到第三行。
+   Element Plus 定义了 --el-select-width:100%，而 .el-select 的 width 就是取这个变量，
+   于是下拉一旦成为 flex item，基准宽度就是 .options 的整个内容宽：第一行放完输入框
+   （220+10）后剩余空间放不下它，换行；独占一行后又与自身 margin-right:10px 抢空间，
+   被迫收缩 10px，刷新按钮再被挤到下一行 —— 实测 1920/1600/1366/1280/1024 五个视口
+   全是 3 行（下拉宽 = 容器内容宽 − 10，正好印证 width:100%）。
+   同款写法见上面的 .el-input 规则；权重上 .options > .el-select[data-v-x] 已高于 .el-select，
+   这里加 !important 只为与相邻规则保持一致的风格。 */
+.options > .el-select {
+  width: 160px !important;
 }
 
 .content {

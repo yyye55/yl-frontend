@@ -34,7 +34,6 @@
       class="enter-upload"
       style="margin-top: 20px"
       type="primary"
-      size="mini"
       @click="updateFile"
     >
       确认上传
@@ -43,7 +42,6 @@
       class="enter-upload"
       style="margin-top: 20px"
       type="danger"
-      size="mini"
       @click="visible = false"
     >
       取消

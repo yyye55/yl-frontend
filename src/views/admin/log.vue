@@ -35,7 +35,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -53,7 +52,7 @@
       <div class="bg-list">
         <p class="title">日志记录</p>
 
-        <el-table :data="data" border size="mini" style="width: 100%">
+        <el-table :data="data" border style="width: 100%">
           <!-- dist 原文即 label:"id"（疑为笔误，按规则7 保留常量 1:1 不动） -->
           <el-table-column type="index" prop="name" label="id" align="center" header-align="center" />
           <el-table-column prop="content" label="内容" align="center" header-align="center" show-overflow-tooltip />

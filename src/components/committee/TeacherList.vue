@@ -37,7 +37,13 @@
         </template>
       </el-input>
 
-      <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
+      <!--
+        placeholder 写「全部」而不是「审核状态」：
+        「全部」这一项的 value 是 null，对 el-select 来说就是空值，它会回头显示 placeholder。
+        所以只有把 placeholder 本身写成「全部」，选中「全部」时框里才会出现「全部」两个字。
+        这只是显示文案，status 仍然是 null，axios 会丢弃空值参数 —— 也就是「全部」= 不传 status。
+      -->
+      <el-select v-model="status" placeholder="全部" size="mini" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
         <el-option label="未通过" :value="-1" />

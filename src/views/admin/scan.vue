@@ -5,22 +5,21 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
-      <el-button type="primary" size="mini" @click="reflush"> 刷新</el-button>
+      <el-button type="primary" @click="reflush"> 刷新</el-button>
     </div>
 
     <div class="content">
       <div class="bg-list">
         <p class="title">报名列表</p>
-        <el-table :data="data" border size="mini" style="width:100%">
+        <el-table :data="data" border style="width:100%">
           <!-- dist 原文为 prop="date" + type="index"；type=index 时 prop 不生效，保留原样 -->
-          <el-table-column prop="date" type="index" label="序号" />
+          <el-table-column prop="date" type="index" label="序号" width="60" />
           <el-table-column prop="nickname" label="学校名称" />
           <el-table-column label="操作">
             <template #default="{ row }">
@@ -28,7 +27,6 @@
               <el-button
                 v-else
                 disabled
-                size="mini"
                 type="danger"
                 style="margin-left:10px"
               > 没有扫描文件上传 </el-button>
@@ -126,6 +124,7 @@
 
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { scanApi } from '@/api'
 import ShowScFile from '@/components/common/ShowScFile.vue'
 

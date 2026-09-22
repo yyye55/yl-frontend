@@ -5,7 +5,6 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        size="mini"
         @change="getData"
       >
         <template #append>
@@ -15,14 +14,20 @@
         </template>
       </el-input>
 
-      <el-select v-model="status" placeholder="审核状态" size="mini" @change="getData">
+      <!--
+        placeholder 写「全部」而不是「审核状态」：
+        「全部」这一项的 value 是 null，对 el-select 来说就是空值，它会回头显示 placeholder。
+        所以只有把 placeholder 本身写成「全部」，选中「全部」时框里才会出现「全部」两个字。
+        这只是显示文案，status 仍然是 null，axios 会丢弃空值参数 —— 也就是「全部」= 不传 status。
+      -->
+      <el-select v-model="status" placeholder="全部" @change="getData">
         <el-option label="全部" :value="null" />
         <el-option label="待审核" :value="0" />
         <el-option label="未通过" :value="-1" />
         <el-option label="组委会通过" :value="1" />
       </el-select>
 
-      <el-select v-model="group" placeholder="组别" size="mini" @change="getData">
+      <el-select v-model="group" placeholder="组别" @change="getData">
         <!--
           【第十二届改造】原 11 届下拉框为「中小学组/大学组/中小学教师组/高校教师组」，
           第十二届按红头文件调整为五个正式组别（管乐团小学/中学/大学 + 铜管乐团小学/中学）。
@@ -37,13 +42,13 @@
         <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
       </el-select>
 
-      <el-button class="menu-button" type="primary" size="mini" @click="refresh"> 刷新</el-button>
+      <el-button class="menu-button" type="primary" @click="refresh"> 刷新</el-button>
     </div>
 
     <div class="content">
       <div class="bg-list">
         <p class="title">报名列表</p>
-        <el-table :data="data" border size="mini" style="width:100%">
+        <el-table :data="data" border style="width:100%">
           <!-- dist 原文同时写了 type="index" 与 prop="date"；type=index 时 prop 不生效，
                与 ShowScFile.vue 的处理保持一致，原样保留。 -->
           <el-table-column type="index" prop="date" label="序号" align="center" header-align="center" />
@@ -70,11 +75,11 @@
                    status===-1 时改为显示「查看驳回信息」；status===1 时只显示「驳回」。 -->
               <template v-if="row.status < 1">
                 <Remark v-if="row.status === -1" :data="row.remark" />
-                <el-button size="mini" @click="check(row.id, 1)">审核通过</el-button>
-                <el-button v-if="row.status === 0" size="mini" @click="returnBack(row.id)"> 驳回 </el-button>
+                <el-button @click="check(row.id, 1)">审核通过</el-button>
+                <el-button v-if="row.status === 0" @click="returnBack(row.id)"> 驳回 </el-button>
               </template>
               <template v-if="row.status === 1">
-                <el-button size="mini" @click="returnBack(row.id)">驳回</el-button>
+                <el-button @click="returnBack(row.id)">驳回</el-button>
               </template>
             </template>
           </el-table-column>
@@ -164,8 +169,8 @@
  *  - data 中的 isDelete 在 dist 里被声明但既未渲染也未随请求发送，属遗留字段，
  *    为保持与原文逐字一致而保留。
  *  - refresh() 不会把 page 重置为 1（与 scan.vue 的 reflush 行为不同），此处按 dist 原样。
- *  - size="mini" 沿用 Element UI 2.x 写法（与 scan.vue / user.vue / ShowScFile 等保持一致）；
- *    Element Plus 的合法尺寸为 large/default/small，该映射问题属 UI 阶段统一处理，本阶段不改。
+ *  - size="mini"（Element UI 2.x 写法）已移除：Element Plus 的合法尺寸为 large/default/small，
+ *    "mini" 每次渲染都会告警，而 EP 中没有对应的 `--mini` 样式规则，删除零视觉变化。
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'

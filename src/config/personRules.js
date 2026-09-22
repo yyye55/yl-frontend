@@ -163,35 +163,40 @@ export function validatePersonCount(establishment, group, persons) {
   let formalCount = 0
   let reserveCount = 0
   let percussionCount = 0
-  
-  let conductorCount = 0
 
   // 遍历所有人员统计
-  // 【第十二届·口径修正】dist 是 `if (p.type===0){ formalCount++; if(p.position===1) reserveCount++ }`，
-  // 一刀切：凡学生都算正式队员，于是「学生+预备队员」「学生+指挥」也被算进正式人数，
-  // 不满足 35 人下限也能通过（假通过）。现按 position 分流。
   //
-  // type===0 的门槛保留，依据红头文件「乐团成员须为本校在校学生」——正式/预备队员必为
-  // 在校学生，故教师即使 position 填成 0/1 也不计入。
-  // 指挥不套这个门槛：中小学指挥须为本校在职教师（type=1）、高校指挥可为在校学生（type=0），
-  // 套上就永远数不到。
+  // 【第十二届口径】红头文件原文：
+  //   「管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；
+  //     铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人
+  //     （报名时可报预备队员3人）。」
+  // 由此定三条口径，缺一条就会误判：
+  //   1) 括号里的预备队员是**另计**的，不并进正式人数。
+  //      旧实现让每个 type===0 都 formalCount++，于是 30正式+5预备 被数成 35 人，
+  //      刚够下限就放行；而 65正式+5预备 又被数成 70 人，合乎上限的满编乐团反而被拦。
+  //   2) 打击乐上限是「其中」，即只数**正式成员**里的打击乐，预备里的不算。
+  //   3) 指挥既不是正式队员也不是预备队员，两个数都不进。
+  //      旁证（均已核对后端源码）：apps/api/registration_form.py:99 的 members(position)
+  //      取 position==0 作正式队员；同文件 :132 打印的报名表「参展人数」写的是
+  //      「正式队员 X 人，预备队员 Y 人」；附件2 里指挥另有独立栏目，不在正式队员名单内。
+  //
+  // position 语义与后端 ReportPerson.position 一致（见 registration_form.py:3）：
+  //   0=正式队员  1=预备队员  2=指挥  4=指导老师
   persons.forEach(p => {
-    if (p.type === 0) {
-      if (p.position === 0) {
-        formalCount++
-        // 「其中打击乐不超过8人」的「其中」指正式成员内部，故只在正式队员里统计
-        if (isPercussion(p.instrument)) {
-          percussionCount++
-        }
-      } else if (p.position === 1) {
-        reserveCount++
+    // type=1 是教师。指导教师另表登记（TeacherTable，position 固定为 4），不算乐团编制。
+    if (p.type !== 0) return
+    if (p.position === 0) {
+      formalCount++
+      // 乐器 === '打击乐' 统计（只统计正式成员）
+      if (p.instrument === '打击乐') {
+        percussionCount++
       }
+    } else if (p.position === 1) {
+      reserveCount++
     }
-    if (p.position === 2) {
-      conductorCount++
-    }
+    // position===2（指挥）刻意不计数：它不属于正式成员，也不占用预备名额
   })
-  
+
   // 校验正式成员人数
   // 【第十二届】附上构成明细：口径改为按 position 分流后，只报一个总数会让用户看不出
   // 是哪个角色被算进去了/没被算进去（如 31 正式 + 5 预备：旧口径按 36 通过、新口径 31 不通过）。

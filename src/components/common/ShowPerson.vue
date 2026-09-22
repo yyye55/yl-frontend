@@ -1,7 +1,18 @@
 <template>
   <div>
     <el-button type="text" @click="dealWith">查看人员信息</el-button>
-    <el-dialog v-model="dialogTableVisible" title="人员信息">
+    <!--
+      append-to-body —— 必须加，否则弹窗会被后面的列盖住。
+      本组件渲染在 el-table 的单元格里，而 Element Plus 给 .el-table__cell 加了
+      `position: relative; z-index: 1`，**每个 td 因此自成层叠上下文**。
+      弹窗不 teleport 出去的话，el-overlay 的 z-index:2005 只能在所在 td 内部比拼；
+      而状态列/操作列那些 td 同为 z=1、在 DOM 里又更靠后，于是「待审核」「查看详情」
+      「编辑」「删除」整条盖在弹窗上面 —— 用户看到的就是「外面的白框出现在了里面，
+      还可以看到待审核三个字」。
+      实测（__debug__/probe-stack.cjs）：遮罩矩形本身是 0,0 1440x900、满视口，
+      位置没问题，坏的只是层叠顺序。
+    -->
+    <el-dialog v-model="dialogTableVisible" title="人员信息" append-to-body>
       <div class="show-title">指导教师</div>
       <el-table :data="teacher" border style="width:100%">
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />

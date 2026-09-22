@@ -331,9 +331,12 @@
  *   "ylbxt/" 再 += rename(name)）随 OSS 改造一并删除：ObjectKey 现在由后端签发，
  *   前端不再拼 key。相关的 getQiniuToken / domain / host / filename 同样移除。
  *
- * 【低·死代码】人数统计里的 `0===i.type && i.position` 是一个**求值后丢弃**的表达式
- *   （dist 原文如此，无任何副作用）。本组件按语义等价实现，不写这条空语句，
- *   其余三处副作用（预备队员计数 n++ / 学生计数 t++ / 打击乐计数 r++）逐条保留。
+ * 【已消失·死代码】dist 的 onSubmit 里有一段人数统计：一条 `0===i.type && i.position`
+ *   的**求值后丢弃**的空表达式，外加 `studentCount++` / `reserveCount++` /
+ *   `percussionCount++` 三个局部计数器。自本函数改用 validatePersonCount() 统一校验后，
+ *   这三个变量在组件内**只写不读**（全量检索确认无第二种引用），已成死代码，本轮删除。
+ *   注意别再照抄这段口径：它是「type===0 一律计正式」，与红头文件不符（见 personRules.js
+ *   validatePersonCount 的注释），也正是本轮 H1 修掉的那个错。
  *
  * 【低·UI】「乐团集体电子照」的提示文案 `电子照片要求解析度为600dpi、JEPG或TIFF格式）`
  *   结尾有一个**孤立的右括号**（「JEPG」也是 TIFF/JPEG 的拼写笔误）。dist 原文，照搬。
@@ -781,10 +784,30 @@ function uploadSuccess1() {}
  *   —— 编辑页没有 tempSave 方法（无草稿缓存），故用 cfg.mode 区分。
  *
  * 【为什么用 .then 而**不是** async/await】本函数有意不返回 Promise。
- *   改造前它返回 undefined，el-upload 收到后不会走自己的 onSuccess（Element Plus 只在
- *   httpRequest 返回 Promise 时才 .then），因此内置列表里的那个 File 项不会被标成 success，
- *   真正进列表的是下面 push 进去的 `{id, name}`。改成 async 会让 el-upload 多走一遍
- *   成功态处理，属于本次改造不该引入的行为变化，故维持原样。
+ *   返回 Promise 的话，Element Plus 会在 upload-content 里替我们再跑一遍自己的成功路径
+ *   （见 element-plus/es/components/upload/src/upload-content…mjs 的
+ *   `if (request instanceof Promise) request.then(options.onSuccess, options.onError)`），
+ *   属于本次改造不该引入的行为变化，故维持返回 undefined。
+ *
+ * 【为什么不能再 push 一条列表项（2026-09 修复的重复条目缺陷）】
+ *   listRef 就是绑给 el-upload 的 v-model:file-list 的那个数组 —— 选中文件时，
+ *   el-upload 的 handleStart 已经往里放过一条
+ *   `{name, percentage, status:'ready', size, raw, uid}`。
+ *   上传完成后再 push 一条 `{id, name}`，同一个文件就会同时存在两条：
+ *     - el-upload 那条：status 一直是 'ready' -> 显示为「无对勾」
+ *     - push 那条：没有 status，而 Element Plus 的 use-handlers 里有
+ *       `file.status ||= 'success'` 的深监听 -> 被自动补成 'success' -> 显示为「有对勾」
+ *   两条同名并排，就是用户看到的「一次上传出现两个一样的文件」。
+ *
+ *   附带（也是同源的）第二个缺陷：提交时读的是 `listRef.value[0].id`
+ *   （见下方 onSubmit 的 `t.spectrum = fileList1.value[0].id`），而 push 进去的那条
+ *   排在 [1]，[0] 恰是 el-upload 那条、**没有 id** —— 于是照片/视频的 id 根本提交不上去。
+ *   若只把 push 删掉了事，列表只剩 el-upload 那条，id 依然是丢的。
+ *
+ *   正确做法：不新增、而是**按 uid 原地替换**那一条 —— 与 UploadScanDialog.vue 的
+ *   uploadFile() 已确立的写法一致（那里也是同一个坑，注释见该文件第 1 条）。
+ *   替换后的对象不带 status，由上面那个 `status ||= 'success'` 补成成功态（显示对勾），
+ *   于是「列表显示」与「提交读的 id」由同一条记录承担。
  */
 function doUpload(options, listRef, biz) {
   const file = options.file
@@ -801,7 +824,6 @@ function doUpload(options, listRef, biz) {
     .then((result) => {
       fileshowRef.value.dishow()
       const info = {}
-      const item = {}
       info.filename = rawName
       info.type = file.type
       info.size = file.size
@@ -809,9 +831,17 @@ function doUpload(options, listRef, biz) {
       info.url = result.url
       fileApi.saveFileInfo(info).then(({ data: r }) => {
         if (r.code === 0) {
-          item.id = r.data.id
-          item.name = rawName
-          listRef.value.push(item)
+          // 按 uid 找 el-upload 已写入的那条（判据与 Element Plus use-handlers 的
+          // getFile() 相同），命中就原地替换（找不到的情形见下方说明）。
+          const i = listRef.value.findIndex((f) => f.uid === file.uid)
+          if (i > -1) {
+            // 不带 status：交给 use-handlers 的 `file.status ||= 'success'` 补成成功态
+            listRef.value[i] = { id: r.data.id, uid: file.uid, name: rawName, url: result.url }
+          }
+          // 【i === -1 时什么都不做，刻意不 push】只有一种情况会走到这里：用户在
+          //   等待上传的这段时间里点了删除，handleRemove 已按 uid 把它移出列表。
+          //   此时再 push 等于把用户刚删掉的文件复活。而列表本就只剩这一条，
+          //   删掉后为空，提交时会被 onSubmit 开头的「请上传…」拦住，不会静默丢数据。
           if (cfg.mode === 'create') tempSave()
           ElMessage.success('文件上传成功！')
         } else {

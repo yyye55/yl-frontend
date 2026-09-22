@@ -1,7 +1,11 @@
 <template>
   <div style="display:inline-block;margin-right:10px">
     <el-button @click="dialogTableVisible = true">查看详情</el-button>
-    <el-dialog v-model="dialogTableVisible">
+    <!-- append-to-body：本组件渲染在 el-table 的单元格里，而 Element Plus 给
+         .el-table__cell 加了 position:relative + z-index:1，每个 td 自成层叠上下文。
+         弹窗留在原地的话，它的 z-index 只能在该 td 内部比拼，后面几列（状态列/操作列）
+         同为 z=1 且在 DOM 里更靠后，会整片盖在弹窗上面。详见 ShowPerson.vue 的同类说明。 -->
+    <el-dialog v-model="dialogTableVisible" append-to-body>
       <div class="detail-content">
         <h2>{{ data.name }}</h2>
         <div class="fall-info">
@@ -118,7 +122,7 @@
  * 对应路由已在第十二届摘除，无菜单入口。
  * .fall-info 的 3 列 grid、h2 居中、两个文件块的 border 均未改动。
  */
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import Status from './Status.vue'
 // dist 里这两个方法挂在 Vue.prototype；Vue3 的 <script setup> 没有 this，故具名导入。
 // 语义与 dist 完全一致（见 utils/date.js 中的实现与出处）。
@@ -127,6 +131,23 @@ import { getM, getS } from '@/utils/date'
 const props = defineProps({
   data: { default: () => [] }
 })
+
+/**
+ * dialogTableVisible —— dist 原文在 data() 里：`data(){ return { dialogTableVisible:!1 } }`
+ * （见本文件头部摘录的组件选项）。迁移到 <script setup> 时**漏掉了这一行**，
+ * 后果不是「少了个默认值」而是整个弹窗失效：
+ *
+ *   模板里的 `@click="dialogTableVisible = true"` 与 `v-model="dialogTableVisible"`，
+ *   只有在编译器把该标识符识别为 setup 里的 ref 时才会编成 `dialogTableVisible.value`。
+ *   没有声明 -> 这个标识符不在 bindingMetadata 里 -> 编译成 `_ctx.dialogTableVisible`。
+ *   于是 v-model 拿到的永远是 undefined（假值），**「查看详情」点了没有任何反应**。
+ *
+ * 判据可用 @vue/compiler-sfc 复现：
+ *   compileScript(descriptor,{id,inlineTemplate:true}).bindings 里没有 dialogTableVisible，
+ *   而 render 里是 `onClick: $event => (_ctx.dialogTableVisible = true)`。
+ * 已用 __debug__/audit-bindings.cjs 全量扫过 src，**全仓库仅此一处**。
+ */
+const dialogTableVisible = ref(false)
 
 /**
  * 原文 mounted：把单个 person 对象规范化为数组。

@@ -50,6 +50,52 @@ const request = axios.create({
 // POST 默认表单格式（与 dist 一致）
 request.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded'
 
+/**
+ * 对象请求体一律 JSON 序列化
+ *
+ * 【为什么需要这一小段】axios 0.x（dist 用的）与 axios 1.x 对下面这行的处理**不一样**：
+ *
+ *     request.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded'
+ *
+ *   · axios 0.x 的 transformRequest：对象一律 `JSON.stringify(data)`，而
+ *     setContentTypeIfUnset 发现头已存在便不再改动 —— 结果是
+ *     **body 是 JSON、Content-Type 却写着 form-urlencoded**。
+ *   · axios 1.x 的 transformRequest（node_modules/axios/lib/defaults/index.js）多了一行：
+ *         if (contentType.indexOf('application/x-www-form-urlencoded') > -1)
+ *           return toURLEncodedForm(data, formSerializer).toString()
+ *     于是对象体被真的编码成表单键值对：`person[0][name]=…&person[0][card]=…`
+ *
+ * 后端 `apps/core/services.py:parse_body` 先 `json.loads(request.body)`，失败再退到
+ * `request.POST.dict()`。Django 解析表单时**不做括号解嵌套**，`person[0][name]` 就是一整个
+ * 平铺的键名，因此 `parse_body` 返回的字典里**根本没有 `person` 这个键**。
+ * 而 create_report / update_report 都写的是 `data.get("person", [])` —— 取到空列表，
+ * `store_people([])` 又是 `(True, [])`，于是**一个不带任何人员关联的报名表被成功创建**，
+ * 接口照常回「创建成功」。
+ *
+ * 症状就是用户报的两条：
+ *   ① 列表页「人员信息」弹窗是空表；④ 编辑页「指导教师」「参展人员」两张表也是空表。
+ * （② ③ 是另外两个独立缺陷，与本条无关。）
+ *
+ * 【为什么在这里改、而不是把 Content-Type 换成 application/json】
+ * 保持头不变 = 与 dist 的线上行为逐字节一致。`application/json` 不是 CORS 安全列表内的
+ * content type，换成它会让跨域部署下的每个 POST 都先发一次 OPTIONS 预检，是否放行取决于
+ * 别处的 CORS 配置 —— 那是本次修复不该引入的变量。后端不读 Content-Type，
+ * parse_body 只认 body 本身，所以这样改就够。
+ *
+ * 【放行清单】FormData 必须原样透传，否则 multipart 的分段与 boundary 会被破坏
+ * （上传链路全靠它）。其余二进制/字符串类型同理不动。
+ */
+function isRawBody(data) {
+  if (typeof data === 'string') return true
+  if (typeof FormData !== 'undefined' && data instanceof FormData) return true
+  if (typeof URLSearchParams !== 'undefined' && data instanceof URLSearchParams) return true
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return true
+  if (typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer || ArrayBuffer.isView(data))) {
+    return true
+  }
+  return false
+}
+
 /* ============ 请求拦截 ============ */
 request.interceptors.request.use(
   (config) => {
@@ -57,6 +103,11 @@ request.interceptors.request.use(
     const token = getToken()
     if (token) {
       config.headers['Authorization'] = token
+    }
+    // 先自己 stringify 成字符串：axios 1.x 的 transformRequest 只在 data 仍是
+    // 「对象」时才会走 toURLEncodedForm 那一支，字符串会被原样放行。
+    if (config.data !== null && typeof config.data === 'object' && !isRawBody(config.data)) {
+      config.data = JSON.stringify(config.data)
     }
     return config
   },

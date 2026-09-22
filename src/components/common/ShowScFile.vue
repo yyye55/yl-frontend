@@ -2,7 +2,9 @@
   <div style="display:inline-block;margin:5px">
     <el-button @click="showFile">文件下载</el-button>
 
-    <el-dialog v-model="dialogTableVisible">
+    <!-- append-to-body：本组件在 el-table 的操作列单元格里，不加会被后面的列盖住。
+         原因见 ShowPerson.vue 顶部关于 .el-table__cell{z-index:1} 的说明。 -->
+    <el-dialog v-model="dialogTableVisible" append-to-body>
       <div class="detail-content">
         <h2>文件列表</h2>
         <div class="files">

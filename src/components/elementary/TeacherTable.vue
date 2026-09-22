@@ -244,17 +244,26 @@ defineExpose({ getData, getCacheData })
   text-align: center;
 }
 
+/* 【列宽依据】前 7 列必须与 PersonTable.vue 逐字相同 ——
+ * 两表同页上下排布且前 7 列完全同名同序（序号/姓名/身份证号/性别/年龄/
+ * 学校名称/联系电话），宽度一致才会在视觉上对齐成一个整体。
+ * 改这里请同步改 PersonTable.vue。
+ *
+ * dist 原值 50/120/180/120/130/160/150/80 合计 990px（不溢出），
+ * 但学校名称 160px 实测需要 183px，长校名会被输入框截掉。
+ * 现按实测重排，合计 858px。
+ * padding 由 10px 收到 6px 的理由同 PersonTable：给各列文字区让位。 */
 .box-line-title,
 .box-line {
   display: grid;
-  grid-template-columns: 50px 120px 180px 120px 130px 160px 150px 80px;
+  grid-template-columns: 38px 96px 182px 72px 78px 184px 128px 80px;
   justify-content: stretch;
 }
 
 .box-col {
   border-left: 1px solid #8c939d;
   border-bottom: 1px solid #8c939d;
-  padding: 5px 10px;
+  padding: 5px 6px;
 }
 
 .box-line-title {

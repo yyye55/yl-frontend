@@ -39,7 +39,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="person_info.instrument" label="使用乐器" align="center" header-align="center" />
-        <el-table-column prop="head" label="头像" width="100" align="center" header-align="center">
+        <el-table-column prop="person_info.head" label="头像" width="100" align="center" header-align="center">
           <template #default="{ row }">
             <img :src="row.person_info.head" style="width:59px;height:82px" />
           </template>

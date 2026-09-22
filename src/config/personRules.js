@@ -13,7 +13,7 @@
  * - 视奏：仅管乐团需要，铜管乐团不需要
  * 
  * 【乐器识别】
- * - 乐器字段：item.instrument === '打击乐'
+ * - 乐器字段：item.instrument === '打击乐'（比对前先 trim，见 isPercussion）
  *
  * 【后端字段 - 已验证】
  * Report.group / Report.establishment 均为 CharField，直接存中文字符串
@@ -119,6 +119,23 @@ export function getPersonRules(frontendGroupKey) {
 }
 
 /**
+ * 是否为打击乐
+ *
+ * 乐器字段有两个来源，且其中一个是脏的：
+ *   1. 界面下拉（PersonTable.vue）—— 唯一取值 '打击乐'
+ *   2. Excel 导入（PersonTable.importExcel 的 `instrument: sheet[i].instrument`）—— 原样透传。
+ *      而 exportCheck 只校验 instrument 非空、**不校验取值**，故单元格里写「打击乐 」
+ *      （尾随空格）也能通过导入，进而不被统计，绕过「不超过8人」这条红头文件明写的硬约束。
+ * 故比对前先去掉首尾空白。JS 的 String.prototype.trim() 会去掉全部 WhiteSpace，
+ * 其中已包含全角空格 U+3000 与不换行空格 U+00A0（二者属 Unicode Zs），无需额外正则。
+ *
+ * @param {*} instrument - 乐器值，理论上为字符串，实际可能为任意类型（导入未做类型校验）
+ */
+function isPercussion(instrument) {
+  return typeof instrument === 'string' && instrument.trim() === '打击乐'
+}
+
+/**
  * 校验人员编制
  * @param {string} establishment - 乐团类型 ('管乐团' / '铜管乐团')
  * @param {string} group - 组别 ('小学组' / '中学组' / '大学组')
@@ -130,9 +147,14 @@ export function validatePersonCount(establishment, group, persons) {
   const rules = getPersonRules(ruleKey)
   
   if (!rules) {
+    // 【第十二届】原文案「未找到对应组别的人员编制规则」既不说哪个组合、也不说改哪里。
+    // 该路径只在编辑页回填到 PERSON_RULES 之外的历史组合时触发（新增页选项受 cfg 约束，
+    // 实测 4 条路由都选不出非法组合）。此时组别栏会原值回显一个下拉里不存在的值
+    // （实测：显示「大学组」而选项只有 小学组/中学组），若文案不点名，用户无从下手。
+    // 故把实际组合念出来并指明动作。仅改文案，拦截行为不变。
     return { 
       valid: false, 
-      errors: ['未找到对应组别的人员编制规则'], 
+      errors: [`未找到「${establishment} + ${group}」的人员编制规则，请重新选择类型或参演组别`], 
       stats: { formal: 0, reserve: 0, percussion: 0 } 
     }
   }
@@ -142,27 +164,43 @@ export function validatePersonCount(establishment, group, persons) {
   let reserveCount = 0
   let percussionCount = 0
   
+  let conductorCount = 0
+
   // 遍历所有人员统计
+  // 【第十二届·口径修正】dist 是 `if (p.type===0){ formalCount++; if(p.position===1) reserveCount++ }`，
+  // 一刀切：凡学生都算正式队员，于是「学生+预备队员」「学生+指挥」也被算进正式人数，
+  // 不满足 35 人下限也能通过（假通过）。现按 position 分流。
+  //
+  // type===0 的门槛保留，依据红头文件「乐团成员须为本校在校学生」——正式/预备队员必为
+  // 在校学生，故教师即使 position 填成 0/1 也不计入。
+  // 指挥不套这个门槛：中小学指挥须为本校在职教师（type=1）、高校指挥可为在校学生（type=0），
+  // 套上就永远数不到。
   persons.forEach(p => {
-    // type=0 表示学生/队员
     if (p.type === 0) {
-      formalCount++
-      if (p.position === 1) {
+      if (p.position === 0) {
+        formalCount++
+        // 「其中打击乐不超过8人」的「其中」指正式成员内部，故只在正式队员里统计
+        if (isPercussion(p.instrument)) {
+          percussionCount++
+        }
+      } else if (p.position === 1) {
         reserveCount++
       }
-      // 乐器 === '打击乐' 统计
-      if (p.instrument === '打击乐') {
-        percussionCount++
-      }
+    }
+    if (p.position === 2) {
+      conductorCount++
     }
   })
   
   // 校验正式成员人数
+  // 【第十二届】附上构成明细：口径改为按 position 分流后，只报一个总数会让用户看不出
+  // 是哪个角色被算进去了/没被算进去（如 31 正式 + 5 预备：旧口径按 36 通过、新口径 31 不通过）。
+  const formalBreakdown = `（正式${formalCount} / 预备${reserveCount} / 指挥${conductorCount}）`
   if (formalCount < rules.formalMin) {
-    errors.push(`正式成员人数不能少于${rules.formalMin}人，当前${formalCount}人`)
+    errors.push(`正式成员人数不能少于${rules.formalMin}人，当前${formalCount}人${formalBreakdown}`)
   }
   if (formalCount > rules.formalMax) {
-    errors.push(`正式成员人数不能超过${rules.formalMax}人，当前${formalCount}人`)
+    errors.push(`正式成员人数不能超过${rules.formalMax}人，当前${formalCount}人${formalBreakdown}`)
   }
   
   // 校验预备成员人数

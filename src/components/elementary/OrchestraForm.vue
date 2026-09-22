@@ -1005,9 +1005,6 @@ function onSubmit() {
     if (fileList.value && fileList.value.length === 0) return ElMessage.error('未上传视频')
 
     const allPeople = []
-    let studentCount = 0
-    let reserveCount = 0
-    let percussionCount = 0
 
     if (form.value.teacher && form.value.teacher.length > 0) {
       if (form.value.teacher.length > 3) return ElMessage.error('指导教师最多3人！')
@@ -1019,13 +1016,12 @@ function onSubmit() {
     if (form.value.person && form.value.person.length > 0) {
       form.value.person.forEach((p) => {
         allPeople.push(p)
-        // dist 原文此处还有一条 `0===i.type && i.position` 的空语句（求值后丢弃），
-        // 无副作用，故不实现；其余三处副作用逐条保留：
-        if (p.type === 0) {
-          if (p.position === 1) reserveCount++
-          studentCount++
-          if (p.instrument === '打击乐') percussionCount++
-        }
+        // 【第十二届】dist 此处另有三处副作用（studentCount / reserveCount / percussionCount
+        // 自增）和一条空语句 `0===i.type && i.position`（求值后丢弃），已一并删除：
+        //   · 那三个变量全文只被写入、从无读取处（逐标识符检索确认，各出现 3 次 = 声明 1 + 自增 1 + 读取 0），是死代码；
+        //   · 它们算的正是已被 config/personRules.js 的 validatePersonCount 取代的旧口径
+        //     （type===0 一刀切、打击乐不分角色），留着会被后人误当成有效口径取用。
+        // allPeople.push(p) 保留 —— 唯一有真实作用的一步，下方 `t.person = allPeople` 依赖它。
       })
     }
 

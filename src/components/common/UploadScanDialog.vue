@@ -8,12 +8,10 @@
     <el-upload
       class="upload-demo"
       drag
-      :action="domain"
-      :data="QiniuData"
       v-model:file-list="fileList"
       :limit="limit"
       :before-upload="beforeUpload"
-      :on-success="uploadSuccess"
+      :http-request="uploadFile"
       :on-remove="removeSuccess"
       :on-exceed="handleExceed"
     >
@@ -95,15 +93,26 @@
  *    beforeUpload 里 `this.QiniuData.key += this.rename(e.name)` 是**累加**，而只有
  *    uploadSuccess 才会把 key 重置回 "ylbxt/"。当用户一次选中两个文件时，第二个文件的
  *    上传 key 会变成 "ylbxt/随机名1随机名2"（第一个文件名被拼了进去）。
- *    这里按原样保留，仅记录，交由使用者决定是否修复。
+ *    ~~这里按原样保留，仅记录，交由使用者决定是否修复。~~
+ *    → 【第十二届改造·第二轮已消灭】上传改走 OSS 后 key 由后端生成，
+ *      QiniuData 整个被删除，这条缺陷不复存在。见下方 5)。
+ *
+ * 5) 【第十二届改造·第二轮】上传通道：七牛直传 → 阿里云 OSS（biz: doc）
+ *    小文件改由后端代传进 OSS，经 @/services/ossUpload 的 uploadToOss()。
+ *    模板的 `:action` / `:data` / `:on-success` 换成 `:http-request="uploadFile"`；
+ *    脚本侧删掉 QiniuData / domain / host / filename / getQiNiuToken()，以及只服务于
+ *    拼 key 的 `rename` 导入。`open()` 末尾的 getQiNiuToken() 调用随之删除
+ *    —— 打开弹窗不再需要预取凭证。
+ *    ⚠️ 上面第 1) 条仍成立且必须保留：改用 http-request 后 EP 不再回调 on-success，
+ *    但 v-model:file-list 仍会在选中文件时写入原始条目，所以「按 uid 替换」的写法
+ *    不能退回成 push，否则又会出现重复条目。
  */
 
-import { ref, reactive, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { scanApi } from '@/api/scan'
-import { qiniuApi } from '@/api/misc'
-import { rename } from '@/utils/excel'
+import { uploadToOss } from '@/services/ossUpload'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -121,18 +130,9 @@ const visible = computed({
 })
 
 const fileList = ref([])
-const filename = ref('')
-const QiniuData = reactive({ token: '', key: 'ylbxt/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
-
-/** dist: getQiniuToken(){ this.$api.communal.getQiNiuToken().then(({data:e})=>{ 0===e.code ? this.QiniuData.token=e.uptoken : Message.error(e.msg) }) } */
-function getQiNiuToken() {
-  qiniuApi.getToken().then(({ data: res }) => {
-    if (res.code === 0) QiniuData.token = res.uptoken
-    else ElMessage.error(res.msg)
-  })
-}
+// 【第十二届改造·第二轮】filename / QiniuData / domain / host 与 getQiNiuToken()
+// 已移除：上传改走阿里云 OSS（biz: doc，小文件由后端代传），凭证与 ObjectKey
+// 都由服务/后端负责，前端不再硬编码七牛域名与域名拼接。
 
 /**
  * dist:
@@ -143,11 +143,11 @@ function getQiNiuToken() {
  *              : (Message.error("请上传 .pdf 文件"),!1)
  *   }
  * 三层嵌套三元与下面两个 if 完全等价，只是把「先判类型、再判体积」的求值顺序写清楚。
+ *
+ * 【第十二届改造·第二轮】删去写 QiniuData.key / filename 的两行。原写法里
+ * `QiniuData.key +=` 是累加（文件头说明 4 记录的 dist 缺陷），随 QiniuData 一并消失。
  */
 function beforeUpload(file) {
-  filename.value = file.name
-  QiniuData.key += rename(file.name)
-
   const sizeOk = file.size / 1024 / 1024 < 20
   const isPdf = file.type === 'application/pdf'
 
@@ -163,25 +163,37 @@ function beforeUpload(file) {
 }
 
 /**
- * dist: uploadSuccess(e,t){ this.fileList.push({uid:t.uid,url:this.host+e.key,
- *        name:this.filename,size:t.size,type:t.raw.type}), this.QiniuData.key="ylbxt/" }
- * 改为「按 uid 替换 EP 已写入的那条」，避免 Element Plus 下出现重复条目（见文件头说明 1)。
+ * 替代原 uploadSuccess。
+ *
+ * dist 原文：uploadSuccess(e,t){ this.fileList.push({uid:t.uid,url:this.host+e.key,
+ *            name:this.filename,size:t.size,type:t.raw.type}), this.QiniuData.key="ylbxt/" }
+ * 本项目此前改为「按 uid 替换 EP 已写入的那条」，避免 Element Plus 下出现重复条目
+ * （见文件头说明 1)。改用 :http-request 后 EP 不会再回调 on-success，但 v-model:file-list
+ * 仍会在选中文件时把原始条目写进 fileList，所以「按 uid 替换」的写法原样保留、仍然必要。
+ *
+ * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时才
+ * 跑自己那套内部成功路径，这里条目由我们自己写，返回非 Promise 让行为更可控。
  */
-function uploadSuccess(res, file) {
-  const item = {
-    uid: file.uid,
-    url: host + res.key,
-    name: filename.value,
-    size: file.size,
-    type: file.raw.type
-  }
-  const list = fileList.value.slice()
-  const i = list.findIndex((f) => f.uid === file.uid)
-  if (i >= 0) list[i] = item
-  else list.push(item)
-  fileList.value = list
-
-  QiniuData.key = 'ylbxt/'
+function uploadFile(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'doc' })
+    .then(({ url }) => {
+      const item = {
+        uid: options.file.uid,
+        url,
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }
+      const list = fileList.value.slice()
+      const i = list.findIndex((f) => f.uid === options.file.uid)
+      if (i >= 0) list[i] = item
+      else list.push(item)
+      fileList.value = list
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 /** dist: removeSuccess(e){ for(let t=0;t<this.fileList.length;t++) this.fileList[t].uid===e.uid && this.fileList.splice(t,1) } —— 语义相同，改为非原地过滤 */
@@ -216,7 +228,13 @@ function updateFile() {
   })
 }
 
-/** dist: openImageDialog(){ this.fileList=[]; $api.image.getImages({type:0}).then(...); this.dialogImageVisible=!0; this.getQiNiuToken() } */
+/**
+ * dist: openImageDialog(){ this.fileList=[]; $api.image.getImages({type:0}).then(...);
+ *        this.dialogImageVisible=!0; this.getQiNiuToken() }
+ *
+ * 【第十二届改造·第二轮】末尾的 getQiNiuToken() 已删除：改走 OSS 后打开弹窗
+ * 不再需要预取任何上传凭证，凭证由上传服务在真正要传时才去取。
+ */
 function open() {
   fileList.value = []
   scanApi.getImages({ type: 0 }).then((res) => {
@@ -231,7 +249,6 @@ function open() {
     }
   })
   visible.value = true
-  getQiNiuToken()
 }
 
 defineExpose({ open })

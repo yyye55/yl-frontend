@@ -24,6 +24,9 @@
     - POST /api/scan/cau            → image/uploadImage(e)  body {type:1, files:[...]}
       后端：ScanFiles.objects.get_or_create(user_id=auth.id, type=type)
     - GET  /api/qiniu/token        → qiniuApi.getToken() 返回 uptoken
+      【第十二届改造·第二轮已废弃】上传改走阿里云 OSS：小文件（biz: doc）由后端代传，
+      经 @/services/ossUpload 的 uploadToOss()。该接口不再被本页调用，
+      /api/qiniu/token 本身保留至全部上传点验证通过后再下线。
     - GET  /api/scan/files         → scanApi.getImages() 返回当前用户已上传的 ScanFiles
 
   【重要】这是**完全不同的业务模块**，不是 CommitteeReportList 的变体：
@@ -137,10 +140,8 @@
         class="upload-demo"
         drag
         :limit="5"
-        :on-success="uploadSuccess"
-        :data="QiniuData"
+        :http-request="uploadFile"
         :before-upload="beforeUpload"
-        :action="domain"
         :file-list="fileList"
         :on-remove="removeSuccess"
         :on-exceed="handleExceed"
@@ -196,7 +197,7 @@ import { storeToRefs } from 'pinia'
 
 import { committeeApi } from '@/api/committee'
 import { scanApi } from '@/api/scan'
-import { qiniuApi } from '@/api/misc'
+import { uploadToOss } from '@/services/ossUpload'
 import { useTabsStore } from '@/store/modules/tabs'
 import Status from '@/components/common/Status.vue'
 import ShowOnlinePerson from '@/components/online/ShowOnlinePerson.vue'
@@ -218,10 +219,8 @@ const dialogImageVisible = ref(false)
 const dialogImageUrl = ref('')
 const dialogVisible = ref(false)
 const fileList = ref([])
-const filename = ref('')
-const QiniuData = ref({ token: '', key: 'ylbxt/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
+// 【第十二届改造·第二轮】filename / QiniuData / domain / host 已移除：
+// key 改由后端生成，url 由上传服务返回，前端不再硬编码七牛域名。
 
 function handleSizeChange(size) { page.value = 1; limit.value = size; getData() }
 function refresh() { getData() }
@@ -248,18 +247,22 @@ function edit(row) {
   })
 }
 
-function getQiniuToken() {
-  qiniuApi.getToken().then((res) => {
-    const body = res?.data
-    if (!body) return
-    if (body.code === 0) QiniuData.value.token = body.uptoken
-    else ElMessage.error(body.msg)
-  })
-}
-
+/*
+ * 【第十二届改造】上传通道由七牛直传换成阿里云 OSS（biz: doc）。
+ *
+ * 改动说明：
+ *   - `:action` + `:data="QiniuData"` + `:on-success` 换成 `:http-request`，
+ *     因为小文件现在由后端代传进 OSS，并复用统一上传服务的错误处理。
+ *   - getQiniuToken() / QiniuData / domain / host / 本地 rename() 一并移除：
+ *     凭证由服务内部处理，key 改由后端生成，url 由服务返回。
+ *   - 【顺带修掉的缺陷】原 beforeUpload 里 `QiniuData.value.key +=` 是累加，
+ *     一次选多个文件时第二个文件的 key 会变成「随机名1随机名2」。
+ *
+ * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时
+ * 才跑自己那套内部成功路径（往 fileList 里塞条目），本页的 fileList 是手工
+ * push 的，返回非 Promise 让行为完全由下面的 .then 控制。
+ */
 function beforeUpload(rawFile) {
-  filename.value = rawFile.name
-  QiniuData.value.key += rename(rawFile.name)
   const overSize = rawFile.size / 1024 / 1024 > 20
   const isPdf = rawFile.type === 'application/pdf'
   if (!isPdf) {
@@ -273,24 +276,24 @@ function beforeUpload(rawFile) {
   return true
 }
 
-function rename(name) {
-  const dot = name.lastIndexOf('.')
-  const ext = dot >= 0 ? name.substring(dot) : ''
-  return Date.now() + '_' + Math.random().toString(36).substring(2) + ext
+function uploadFile(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'doc' })
+    .then(({ url }) => {
+      fileList.value.push({
+        uid: options.file.uid,
+        url,
+        name: file.name,
+        size: file.size,
+        type: file.type
+      })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 function handleExceed() { ElMessage.error('文件数量超过限制！') }
-
-function uploadSuccess(response, file) {
-  fileList.value.push({
-    uid: file.uid,
-    url: host + response.key,
-    name: filename.value,
-    size: file.size,
-    type: file.raw.type
-  })
-  QiniuData.value.key = 'ylbxt/'
-}
 
 function removeSuccess(file) {
   fileList.value = fileList.value.filter(f => f.uid !== file.uid)

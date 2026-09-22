@@ -1,5 +1,5 @@
 <template>
-  <JiemuList :list-api="adminApi.recommend.getList" qiniu-key-prefix="scdyz/" />
+  <JiemuList :list-api="adminApi.recommend.getList" />
 </template>
 
 <script setup>

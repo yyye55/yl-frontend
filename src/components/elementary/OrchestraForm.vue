@@ -129,12 +129,10 @@
                   class="upload-demo"
                   drag
                   :limit="1"
-                  :data="QiniuData"
                   v-model:file-list="fileList1"
                   :before-upload="beforeUpload1"
                   :on-remove="handleRemove1"
                   :http-request="uploadFile1"
-                  :action="domain"
                   :on-exceed="handleExceed"
                   :on-success="uploadSuccess1"
                 >
@@ -162,12 +160,10 @@
                   class="upload-demo"
                   drag
                   :limit="1"
-                  :data="QiniuData"
                   v-model:file-list="fileList"
                   :before-upload="beforeUpload"
                   :on-remove="handleRemove"
                   :http-request="uploadFile"
-                  :action="domain"
                   :on-exceed="handleExceed"
                   :on-success="uploadSuccess"
                 >
@@ -309,9 +305,9 @@
  *   本轮已加最小必要守卫：r.file && r.file.id != null 才 push，r.spectrum 同理；
  *   未伪造任何占位文件，未改动 onSubmit 提交逻辑，未改变 API 契约。
  *
- * 【低·不可达】4 个模块的 data() 里都声明了 `QiniuData.key:"ylbxt/"`，但
- *   beforeUpload/beforeUpload1 每次都会把它重置为 "ylbxt/" 再累加 rename(name)，
- *   与 ProgramForm 族是同一处「key 累加」写法，此处同样照搬。
+ * 【已消失】dist 遗留的 `QiniuData.key:"ylbxt/"` 累加写法（beforeUpload 里先重置为
+ *   "ylbxt/" 再 += rename(name)）随 OSS 改造一并删除：ObjectKey 现在由后端签发，
+ *   前端不再拼 key。相关的 getQiniuToken / domain / host / filename 同样移除。
  *
  * 【低·死代码】人数统计里的 `0===i.type && i.position` 是一个**求值后丢弃**的表达式
  *   （dist 原文如此，无任何副作用）。本组件按语义等价实现，不写这条空语句，
@@ -412,14 +408,14 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { upload } from 'qiniu-js'
 
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
-import { fileApi, qiniuApi } from '@/api/misc'
+import { fileApi } from '@/api/misc'
+// 【第十二届改造】上传改走阿里云 OSS 直传，不再使用七牛
+import { uploadToOss } from '@/services/ossUpload'
 import { addCache, getCache, clearCache } from '@/utils/auth'
 import { getM, getS } from '@/utils/date'
-import { rename } from '@/utils/excel'
 import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
@@ -494,10 +490,10 @@ const personRef = ref(null)
 const fileshowRef = ref(null)
 const secondRef = ref(null)
 
-const QiniuData = reactive({ token: '', key: 'ylbxt/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
-const filename = ref('')
+// 【已移除】QiniuData / domain / host / filename：
+//   OSS 的 ObjectKey 由后端签发（{biz}/{YYYYMMDD}/{uuid}），上传目标地址也由后端
+//   在凭证响应里下发（data.host），前端不再需要自己拼 key、也不再硬编码上传域名。
+//   filename 原本只是 beforeUpload 存入、doUpload 取出，等价于 options.file.name，一并去掉。
 const fileList = ref([])
 const fileList1 = ref([])
 
@@ -620,27 +616,26 @@ const photoMissingMsg = computed(() =>
 
 /* ------------------------- 上传逻辑（逐行照搬 dist） ------------------------- */
 
-/** dist: getQiniuToken(){ this.$api.communal.getQiNiuToken().then(({data:e})=>{0===e.code?…:…}) } */
-function getQiniuToken() {
-  qiniuApi.getToken().then(({ data: res }) => {
-    if (res.code === 0) QiniuData.token = res.uptoken
-    else ElMessage.error(res.msg)
-  })
-}
+/**
+ * 【第十二届改造】dist 的 getQiniuToken() 已移除。
+ * 七牛的 uptoken 是「一次取好、反复用」的；OSS 的 STS 凭证必须**按次签发**
+ * （后端要拿 biz / fileSize / contentType 去判规则并收敛会话策略到本次的 key 前缀），
+ * 所以没有可预取的东西 —— 连 onMounted 里的那次预取也一并删掉了。
+ * 凭证的获取时机现在完全收在 services/ossUpload.js 的 uploadToOss() 内部。
+ */
 
 /**
- * dist beforeUpload（视频）：MP4/MOV，<700M。
- * 【保留 dist 缺陷】QiniuData.key 是**累加**（先重置为 "ylbxt/" 再 += rename(name)），
- * 与 ProgramForm 族同一处写法，照搬不改。
+ * beforeUpload（视频）：MP4/MOV，<700M。
+ *
+ * 【第十二届改造】原来这里还负责拼七牛的 ObjectKey（`QiniuData.key = 'ylbxt/'`
+ * 再 `+= rename(name)`），现在 key 由后端签发，那三行随之删除。
+ * 校验本身（格式、大小、报错文案）逐字保留，与 ProgramForm 族保持同一判据。
  */
 function beforeUpload(file) {
-  if (!QiniuData.token) getQiniuToken()
-  QiniuData.key = 'ylbxt/'
-  filename.value = file.name
-  QiniuData.key += rename(file.name)
-
   const sizeOk = file.size / 1024 / 1024 < 700
-  const isVideo = file.type === 'video/mov' || file.type === 'video/mp4'
+  // 【修复】'video/mov' 不是合法 MIME 类型，浏览器对 .mov 一律上报 video/quicktime，
+  // 原写法导致 MOV 视频被无条件拒绝。与 ProgramForm 族保持同一判据。
+  const isVideo = file.type === 'video/quicktime' || file.type === 'video/mp4'
 
   if (!isVideo) {
     ElMessage.error('请上传 MP4 或 MOV 格式的视频文件')
@@ -653,13 +648,8 @@ function beforeUpload(file) {
   return undefined
 }
 
-/** dist beforeUpload1（乐团集体电子照）：JPEG/TIFF，<20MB */
+/** beforeUpload1（乐团集体电子照）：JPEG/TIFF，<20MB。key 改由后端签发，拼 key 的三行删除 */
 function beforeUpload1(file) {
-  if (!QiniuData.token) getQiniuToken()
-  QiniuData.key = 'ylbxt/'
-  filename.value = file.name
-  QiniuData.key += rename(file.name)
-
   const sizeOk = file.size / 1024 / 1024 < 20
   const isImage = file.type === 'image/jpeg' || file.type === 'image/tiff'
 
@@ -679,38 +669,44 @@ function uploadSuccess() {}
 function uploadSuccess1() {}
 
 /**
- * dist uploadFile / uploadFile1 的公共部分（两者除写入的 fileList 外逐字相同）。
+ * uploadFile / uploadFile1 的公共部分（两者除写入的 fileList 与 biz 外逐字相同）。
+ *
+ * 【第十二届改造】上传通道由七牛 qiniu-js 换成阿里云 OSS 直传。取凭证、分片、
+ * 进度、弱网下刷新凭证这些事全部收在 services/ossUpload.js 的 uploadToOss() 里，
+ * 这里只负责「进度圈 + 落库 + 写 fileList」这段业务编排。两者差别只剩 biz 一个参数。
  *
  * 【新增页 vs 编辑页的唯一差别】上传成功后是否调用 tempSave()：
  *   5e02 / 3d27（create）：`t.fileList.push(o), t.tempSave(), Message.success("文件上传成功！")`
  *   30d4 / 0b72（edit  ）：`t.fileList.push(o),                   Message.success("文件上传成功！")`
  *   —— 编辑页没有 tempSave 方法（无草稿缓存），故用 cfg.mode 区分。
  *
- * dist 原文在末尾重复调用了第二次 qiniu.upload(...) 且未 subscribe，不产生额外请求，
- * 故这里只保留实际生效的那一次（可观测行为一致，与 ProgramForm 同一处理）。
+ * 【为什么用 .then 而**不是** async/await】本函数有意不返回 Promise。
+ *   改造前它返回 undefined，el-upload 收到后不会走自己的 onSuccess（Element Plus 只在
+ *   httpRequest 返回 Promise 时才 .then），因此内置列表里的那个 File 项不会被标成 success，
+ *   真正进列表的是下面 push 进去的 `{id, name}`。改成 async 会让 el-upload 多走一遍
+ *   成功态处理，属于本次改造不该引入的行为变化，故维持原样。
  */
-function doUpload(options, listRef) {
+function doUpload(options, listRef, biz) {
   const file = options.file
-  const rawName = options.file.name
+  const rawName = file.name
 
   fileshowRef.value.show()
 
-  const observable = upload(file, options.data.key, options.data.token)
-  observable.subscribe({
-    next(res) {
-      fileshowRef.value.setPro(res.total.percent.toFixed(2))
-    },
-    error(err) {
-      ElMessage.error(err)
-    },
-    complete(res) {
+  uploadToOss({
+    file,
+    biz,
+    // FileCover 的 setPro() 内部是 parseFloat，传数字即可
+    onProgress: (percent) => fileshowRef.value.setPro(percent)
+  })
+    .then((result) => {
       fileshowRef.value.dishow()
       const info = {}
       const item = {}
-      info.filename = filename.value
+      info.filename = rawName
       info.type = file.type
       info.size = file.size
-      info.url = host + res.key
+      // url 用凭证响应里后端下发的 host 拼出，前端不再硬编码文件域名
+      info.url = result.url
       fileApi.saveFileInfo(info).then(({ data: r }) => {
         if (r.code === 0) {
           item.id = r.data.id
@@ -722,15 +718,21 @@ function doUpload(options, listRef) {
           ElMessage.error('文件上传失败！')
         }
       })
-    }
-  })
+    })
+    .catch((err) => {
+      fileshowRef.value.dishow()
+      // err.shown 为 true 表示拦截器/网络层已经提示过，不重复弹
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败！')
+    })
 }
 
 function uploadFile(options) {
-  doUpload(options, fileList)
+  // 演出视频：MP4/MOV ≤700MB，对应后端 OSS_BIZ_RULES.video
+  doUpload(options, fileList, 'video')
 }
 function uploadFile1(options) {
-  doUpload(options, fileList1)
+  // 乐团集体电子照片：JPEG/TIFF <20MB，对应后端 OSS_BIZ_RULES.photo
+  doUpload(options, fileList1, 'photo')
 }
 
 /** dist: handleRemove(e,t){ 按 uid 从 fileList 中 splice 掉 } —— 语义相同，改为非原地过滤 */
@@ -869,7 +871,8 @@ onMounted(() => {
     getMessage()
   }
 
-  getQiniuToken()
+  // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
+  // OSS 的 STS 凭证必须按次签发，没有可预取的东西，故删除。
 })
 
 // dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy

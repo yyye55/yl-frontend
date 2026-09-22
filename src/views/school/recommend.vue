@@ -2,7 +2,6 @@
   <JiemuList
     :list-api="schoolApi.recommend.getList"
     :upload-api="schoolApi.recommend.createAndUpdate"
-    qiniu-key-prefix="ylbxt/"
     center
   />
 </template>

@@ -2,7 +2,6 @@
   <JiemuList
     :list-api="cityApi.recommend.getList"
     :upload-api="cityApi.recommend.createAndUpdate"
-    qiniu-key-prefix="ylbxt/"
     center
   />
 </template>

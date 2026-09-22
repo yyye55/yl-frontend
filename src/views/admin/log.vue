@@ -57,7 +57,9 @@
           <el-table-column type="index" prop="name" label="id" align="center" header-align="center" />
           <el-table-column prop="content" label="内容" align="center" header-align="center" show-overflow-tooltip />
           <el-table-column prop="user.nickname" label="操作账号" align="center" header-align="center" />
-          <el-table-column prop="created_at" label="时间" align="center" header-align="center" />
+          <el-table-column prop="created_at" label="时间" align="center" header-align="center">
+            <template #default="{ row }">{{ formatCreatedAt(row.created_at) }}</template>
+          </el-table-column>
         </el-table>
 
         <el-pagination
@@ -101,6 +103,20 @@ function getData() {
     if (body.code === 0) { total.value = body.count; data.value = body.data }
     else ElMessage.error(body.msg || '获取失败')
   })
+}
+
+/**
+ * 后端 created_at 返回 UTC 字符串（如 "2026-09-22 02:22:34.915124+00:00"），
+ * 解析后按浏览器本地时区（北京时间）格式化为 yyyy-MM-dd HH:mm:ss。
+ * 解析失败时原样返回，避免显示异常。
+ */
+function formatCreatedAt(date) {
+  if (!date) return ''
+  const s = String(date).replace(' ', 'T').replace(/\.(\d{3})\d+/, '.$1')
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return String(date)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 onMounted(() => { getData() })

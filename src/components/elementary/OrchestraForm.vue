@@ -1273,6 +1273,13 @@ function onSubmit() {
     }
     if (fileList.value && fileList.value.length === 0) return ElMessage.error('未上传视频')
 
+    /*
+     * 【合并说明 2026-09-23】这一段曾与 origin/main 冲突，两侧都动了它：
+     *   · origin/main 只改了 allPeople 循环里的**注释**，代码一字未动；
+     *   · 本分支把整个 allPeople 数组删了（提交体改由 buildDraftPayload 产出，见下方长注释）。
+     * 故取本分支版本。origin/main 那段注释的结论（三个计数器是死代码）已被下方
+     * 「【第十二届·暂存改造】」长注释与 config/personRules.js 覆盖，信息未丢失。
+     */
     if (form.value.teacher && form.value.teacher.length > 3) {
       return ElMessage.error('指导教师最多3人！')
     }

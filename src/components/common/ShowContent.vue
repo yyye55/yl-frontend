@@ -28,9 +28,11 @@
           <p>作品总时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
           <p>乐团简介：{{ data.desc || '未填写' }}</p>
         </div>
+        <!-- 【本项目新增】style 末尾的 text-align:center 是本项目的改动，
+             dist 原文只有前四个声明，详见 script 中的说明。 -->
         <div
           v-if="data.spectrum"
-          style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px"
+          style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           乐团集体照片文件--------
           <a
@@ -42,7 +44,7 @@
         </div>
         <div
           v-if="data.file"
-          style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px"
+          style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           视频文件--------
           <a
@@ -52,7 +54,7 @@
             style="text-decoration:none;color:#1890FF"
           >下载</a>
         </div>
-        <div class="options" style="font-size:16px;font-weight:bold">
+        <div class="options" style="font-size:16px;font-weight:bold;text-align:center">
           <Status :status="data.status" />
         </div>
       </div>
@@ -97,6 +99,28 @@
  *   apps/api/export_services.py  seconds_to_human(item.time_length)
  * —— 同一个字段在导出 Excel 时被当作秒数格式化；apps/core/models.py 的
  *    time_length = models.IntegerField(default=0) 也印证是整数秒。
+ *
+ * ---------------------------------------------------------------------------
+ * 【本项目改动 · 与 dist 的唯一差异】三处 text-align:center
+ * ---------------------------------------------------------------------------
+ * dist 原文的「乐团集体照片文件 / 视频文件」两个块只有
+ *   padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px
+ * 状态块的父元素 .options 只有 font-size:16px;font-weight:bold
+ * 三者都是**块级占满整行、内部内容默认左对齐**，在弹窗里靠左。
+ * 现按需求在**这三处 inline style 末尾各追加 text-align:center**（原文声明一字未改）。
+ *
+ * 为什么状态块只在父元素加、不动 Status.vue：
+ *   Status 渲染的是 <div class="status-box"><div class="case3">组委会通过</div></div>，
+ *   两层都是块级，只调父元素不会移动文本；但 text-align 是**继承属性**，
+ *   写在 .options 上会一路继承到最内层文本。Status.vue 是各列表页共用的独立组件，
+ *   改它风险更大，故不动。
+ *
+ * 影响面：ShowContent 被 5 个可访问页面的详情弹窗共用 ——
+ *   /city/elementary/list、/school/elementary/list（ReportList.vue）
+ *   /committee/elementary1|2|3（CommitteeReportList.vue）
+ * 另有 3 处调用方（admin/report.vue、committee/colleges.vue、TeacherList.vue）
+ * 对应路由已在第十二届摘除，无菜单入口。
+ * .fall-info 的 3 列 grid、h2 居中、两个文件块的 border 均未改动。
  */
 import { onMounted, ref } from 'vue'
 import Status from './Status.vue'

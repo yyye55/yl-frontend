@@ -1,0 +1,24 @@
+# 统一行尾为 LF —— 这是构建可复现性的前提，不是风格偏好。
+#
+# 【为什么必须钉死】@vitejs/plugin-vue 计算 SFC 的 scoped 样式 ID（data-v-xxxxxxxx）
+# 时，会把源码文本一并哈希进去。Windows 上 core.autocrlf=true 会把工作区检出成
+# CRLF，同一份源码因此算出与 Linux/CI 不同的 scope ID，进而让所有 chunk 的文件名
+# 哈希逐级改变 —— 本地构建与 CI 构建产物对不上，也就无法用「字节级比对」来验证
+# 线上部署的到底是哪一份代码。
+#
+# 仓库里存的本来就是 LF，CI（Linux）检出的也是 LF。这里只是让 Windows 检出
+# 也得到 LF，使三处一致。
+* text=auto eol=lf
+
+# 显式标记二进制，避免被当作文本做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.xlsx binary
+*.xls binary
+*.pdf binary
+*.zip binary
+public/models/* binary

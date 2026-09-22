@@ -8,6 +8,7 @@
         class="demo-ruleForm"
         :model="form"
         :rules="rules"
+        inline
         label-width="130px"
         size="default"
       >
@@ -101,9 +102,10 @@
  *   必填与长度规则全部不生效。对策：恢复校验（两次密码一致这条仍需手写判断，
  *   因为 password1 没有 prop，进不了 rules）。
  *
- * 【问题 4：保存成功后顶部昵称不更新】Header.vue:69 的昵称是
+ * 【问题 4：保存成功后 store 不更新】dist 里顶栏昵称是
  *   computed(() => userStore.user.nickname)，而保存成功后没人写 store，
  *   所以昵称纹丝不动、刷新也不变。对策：保存成功后 userStore.setUser(...) 合并更新。
+ *   （第十二届已移除顶栏昵称栏，该症状不再可见；store 合并本身仍必要，理由见 submit()。）
  *
  * 【本次明确不做的事】
  *   - 弹窗里「修改信息后，修改的账号需要重新登录」这句文案原样保留，且**不加任何强制登出**。
@@ -364,8 +366,8 @@ async function submit() {
     ElMessage.success('修改成功')
 
     /**
-     * 同步用户状态，让顶部昵称立即更新
-     * （Header.vue:69 的昵称是 computed(() => userStore.user.nickname)）
+     * 同步用户状态：保 type / 不落盘 password / 保 id
+     * （顶部昵称栏已移除，此处不再是为它服务 —— 见 Header.vue 文件头）
      *
      * 【为什么是合并而不是 setUser(form)】
      *   1) form 里没有 type / parent_id，而 userStore.userType 这个 getter 依赖 type，

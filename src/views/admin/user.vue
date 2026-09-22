@@ -48,7 +48,7 @@
     </div>
 
     <!-- 添加用户 -->
-    <el-dialog v-model="showInfo" title="添加用户" width="40%">
+    <el-dialog v-model="showInfo" title="添加用户" width="50%">
       <el-form
         ref="ruleFormRef"
         class="demo-ruleForm"
@@ -66,8 +66,8 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" />
         </el-form-item>
-        <el-form-item label="类型选择" prop="type">
-          <el-select v-model="form.type" placeholder="请选择账号类型">
+        <el-form-item label="类型选择" prop="type" style = "width: calc(50% - 60px)">
+          <el-select v-model="form.type" placeholder="请选择账号类型" style = "width: 200px">
             <el-option label="组委会账号" :value="2" />
             <el-option label="市州账号" :value="1" />
             <el-option label="学校账号" :value="0" />
@@ -90,7 +90,7 @@
     </el-dialog>
 
     <!-- 修改用户 -->
-    <el-dialog v-model="showEditInfo" title="修改用户" width="40%">
+    <el-dialog v-model="showEditInfo" title="修改用户" width="50%">
       <el-form
         ref="ruleEditFormRef"
         class="demo-ruleForm"
@@ -352,7 +352,6 @@ getData()
   margin-top: 20px;
   box-shadow: 1px 1px 5px 1px #8c939d;
   min-height: calc(100% - 150px);
-  width: calc(100% - 20px);
 }
 
 .title {

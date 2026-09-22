@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => ({
   base: mode === 'production' ? '/ylbxt/' : '/',
   server: {
     port: 8080,
+    strictPort: true,
     open: true,
     // 允许局域网访问，方便真机调试摄像头
     host: '0.0.0.0'

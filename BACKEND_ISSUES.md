@@ -296,7 +296,7 @@ ALTER TABLE report ADD CONSTRAINT uq_school UNIQUE (school_id);
 |---|---|
 | `src/views/admin/report.vue` | group filter 从数字 `0-4` 改为后端字符串 `管乐团-小学组` 等 |
 | `src/components/elementary/ReportList.vue` | `edit()` 中 row.group 改为字符串比较 |
-| `src/config/groupConfig.js` | BACKEND_GROUP_VALUE/BACKEND_ESTABLISHMENT_VALUE 改为已验证的后端字符串 |
+| `src/config/groupConfig.js` | BACKEND_GROUP_VALUE/BACKEND_ESTABLISHMENT_VALUE 改为已验证的后端字符串（※该文件全项目零引用，已删除；等价信息在 `src/config/personRules.js` 的 `orchestraType` / `level`） |
 | `src/utils/excel.js` | downloadExcelFile 不覆盖后端 Content-Disposition 文件名 |
 | `src/views/committee/index.vue` | 表格 11 届统计名加 12 届说明 |
 | `README.md` | 第十二届 BE 依赖清单已存档 |

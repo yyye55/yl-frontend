@@ -5,8 +5,8 @@
       <Sidebar :collapse="isCollapse" :active="active" />
 
       <el-container>
-        <!-- 顶部：昵称 / 修改信息 / 退出登录 -->
-        <Header @modify="openModify" @help="showHelp = true" />
+        <!-- 顶部：昵称已移除 / 修改信息 / 退出登录 -->
+        <Header @modify="openModify" />
 
         <!-- 标签页栏：dist 中为 v-if="tabs.length>0" -->
         <div v-if="tabs.length > 0" class="indexs">
@@ -40,19 +40,6 @@
     <!-- 修改信息 -->
     <ModifyUserInfo ref="modifyRef" :user="user" />
 
-    <!-- 帮助弹窗（点击右上角昵称打开） -->
-    <el-dialog v-model="showHelp">
-      <p style="line-height:25px;">
-        在系统使用过程中，如遇技术操作问题，请联系运维实施人员，其他问题请联系展演活动相关负责人员。<br />
-        运维实施人员电话：XXXXXXXX、XXXXXXXX（工作时间）<br />
-        运维实施人员QQ：XXXXXXXX（添加请备注单位名称+姓名）<br />
-        邮箱：XXXXXXXX@qq.com<br />
-      </p>
-      <p style="padding:5px 0;">
-        下载：
-        <el-button type="primary"> 操作手册 </el-button>
-      </p>
-    </el-dialog>
   </div>
 </template>
 
@@ -91,6 +78,10 @@
  *  4. 原实现给 router-view 加了 <transition name="fade" mode="out-in"> 和 :key="route.fullPath"，
  *     dist 的 el-main 里只有裸 router-view，因此移除（移除后行为才与 dist 一致）。
  *  5. 原实现的 Header 有折叠按钮 / 面包屑 / 下拉菜单，dist 均无 —— 见 Header.vue。
+ *  6. 【第十二届】按要求移除顶栏昵称栏及其「帮助」弹窗触发，故上面第 81 行那条
+ *     帮助 el-dialog 已从本组件**删除**；el-header 的三个可点击 div 现为两个
+ *     （修改信息 / 退出登录）。上面第 80 行的 `ModifyUserInfo` **保留不动**，
+ *     「修改信息」功能照常可用。dist 骨架原文保留作为凭据，勿据此恢复帮助弹窗。
  */
 
 import { ref, computed } from 'vue'
@@ -112,7 +103,6 @@ const { closeWindow } = useTabs()
 
 // dist: data.isCollapse 恒为 false —— 全文没有任何地方把它置为 true，原版没有折叠开关
 const isCollapse = ref(false)
-const showHelp = ref(false)
 const modifyRef = ref(null)
 
 // dist: updated(){ this.active = this.$route.path }。改用 computed，等价且更直接。

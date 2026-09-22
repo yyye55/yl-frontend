@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   /committee/scan —— 扫描文件查看（学校层面）
 
   【可信度：A】
@@ -205,7 +205,6 @@ onMounted(() => { getData() })
   margin-top: 20px;
   box-shadow: 1px 1px 5px 1px #8c939d;
   min-height: calc(100% - 150px);
-  width: calc(100% - 20px);
 }
 
 .title {

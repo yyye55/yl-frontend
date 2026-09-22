@@ -141,22 +141,40 @@ export function validatePersonCount(establishment, group, persons) {
   let formalCount = 0
   let reserveCount = 0
   let percussionCount = 0
-  
+
   // 遍历所有人员统计
+  //
+  // 【第十二届口径】红头文件原文：
+  //   「管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；
+  //     铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人
+  //     （报名时可报预备队员3人）。」
+  // 由此定三条口径，缺一条就会误判：
+  //   1) 括号里的预备队员是**另计**的，不并进正式人数。
+  //      旧实现让每个 type===0 都 formalCount++，于是 30正式+5预备 被数成 35 人，
+  //      刚够下限就放行；而 65正式+5预备 又被数成 70 人，合乎上限的满编乐团反而被拦。
+  //   2) 打击乐上限是「其中」，即只数**正式成员**里的打击乐，预备里的不算。
+  //   3) 指挥既不是正式队员也不是预备队员，两个数都不进。
+  //      旁证（均已核对后端源码）：apps/api/registration_form.py:99 的 members(position)
+  //      取 position==0 作正式队员；同文件 :132 打印的报名表「参展人数」写的是
+  //      「正式队员 X 人，预备队员 Y 人」；附件2 里指挥另有独立栏目，不在正式队员名单内。
+  //
+  // position 语义与后端 ReportPerson.position 一致（见 registration_form.py:3）：
+  //   0=正式队员  1=预备队员  2=指挥  4=指导老师
   persons.forEach(p => {
-    // type=0 表示学生/队员
-    if (p.type === 0) {
+    // type=1 是教师。指导教师另表登记（TeacherTable，position 固定为 4），不算乐团编制。
+    if (p.type !== 0) return
+    if (p.position === 0) {
       formalCount++
-      if (p.position === 1) {
-        reserveCount++
-      }
-      // 乐器 === '打击乐' 统计
+      // 乐器 === '打击乐' 统计（只统计正式成员）
       if (p.instrument === '打击乐') {
         percussionCount++
       }
+    } else if (p.position === 1) {
+      reserveCount++
     }
+    // position===2（指挥）刻意不计数：它不属于正式成员，也不占用预备名额
   })
-  
+
   // 校验正式成员人数
   if (formalCount < rules.formalMin) {
     errors.push(`正式成员人数不能少于${rules.formalMin}人，当前${formalCount}人`)

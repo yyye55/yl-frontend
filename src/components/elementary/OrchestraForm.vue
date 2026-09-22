@@ -331,9 +331,12 @@
  *   "ylbxt/" 再 += rename(name)）随 OSS 改造一并删除：ObjectKey 现在由后端签发，
  *   前端不再拼 key。相关的 getQiniuToken / domain / host / filename 同样移除。
  *
- * 【低·死代码】人数统计里的 `0===i.type && i.position` 是一个**求值后丢弃**的表达式
- *   （dist 原文如此，无任何副作用）。本组件按语义等价实现，不写这条空语句，
- *   其余三处副作用（预备队员计数 n++ / 学生计数 t++ / 打击乐计数 r++）逐条保留。
+ * 【已消失·死代码】dist 的 onSubmit 里有一段人数统计：一条 `0===i.type && i.position`
+ *   的**求值后丢弃**的空表达式，外加 `studentCount++` / `reserveCount++` /
+ *   `percussionCount++` 三个局部计数器。自本函数改用 validatePersonCount() 统一校验后，
+ *   这三个变量在组件内**只写不读**（全量检索确认无第二种引用），已成死代码，本轮删除。
+ *   注意别再照抄这段口径：它是「type===0 一律计正式」，与红头文件不符（见 personRules.js
+ *   validatePersonCount 的注释），也正是本轮 H1 修掉的那个错。
  *
  * 【低·UI】「乐团集体电子照」的提示文案 `电子照片要求解析度为600dpi、JEPG或TIFF格式）`
  *   结尾有一个**孤立的右括号**（「JEPG」也是 TIFF/JPEG 的拼写笔误）。dist 原文，照搬。
@@ -1032,9 +1035,6 @@ function onSubmit() {
     if (fileList.value && fileList.value.length === 0) return ElMessage.error('未上传视频')
 
     const allPeople = []
-    let studentCount = 0
-    let reserveCount = 0
-    let percussionCount = 0
 
     if (form.value.teacher && form.value.teacher.length > 0) {
       if (form.value.teacher.length > 3) return ElMessage.error('指导教师最多3人！')
@@ -1046,13 +1046,12 @@ function onSubmit() {
     if (form.value.person && form.value.person.length > 0) {
       form.value.person.forEach((p) => {
         allPeople.push(p)
-        // dist 原文此处还有一条 `0===i.type && i.position` 的空语句（求值后丢弃），
-        // 无副作用，故不实现；其余三处副作用逐条保留：
-        if (p.type === 0) {
-          if (p.position === 1) reserveCount++
-          studentCount++
-          if (p.instrument === '打击乐') percussionCount++
-        }
+        // 【第十二届】dist 原文此处还维护 studentCount / reserveCount / percussionCount
+        // 三个局部计数器（外加一条 `0===i.type && i.position` 的空语句）。自本函数改用
+        // validatePersonCount() 统一校验后，这三个变量只写不读 —— 是死代码，且沿用的正是
+        // 「type===0 一律计正式」的旧口径（预备队员与指挥被并进正式人数、预备里的打击乐
+        // 被并进打击乐上限），留着会诱导后人照抄。故一并删除。
+        // 需要这三个人数时取 personValidation.stats 的 formal / reserve / percussion。
       })
     }
 

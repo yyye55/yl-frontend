@@ -57,6 +57,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Bottom } from '@element-plus/icons-vue'
 import { useTabsStore } from '@/store/modules/tabs'
+import { useUserStore } from '@/store/modules/user'
 import { clearAllMsg } from '@/utils/auth'
 import { logout as apiLogout } from '@/api/auth'
 
@@ -64,6 +65,7 @@ defineEmits(['modify'])
 
 const router = useRouter()
 const tabsStore = useTabsStore()
+const userStore = useUserStore()
 
 function logout() {
   apiLogout().then(({ data: res }) => {
@@ -74,6 +76,14 @@ function logout() {
       tabsStore.clearAllTabs()
       ElMessage.success('退出成功！')
       clearAllMsg()
+      /**
+       * 【为什么还要清一次 store】clearAllMsg() 只清 localStorage，而 userStore 是启动时
+       * 把 localStorage 读进内存的副本（store/modules/user.js:13-16），内存里的 token/user
+       * 不会跟着变。其读取方都在路由守卫之后（守卫读 localStorage，MainLayout 由守卫放行
+       * 才挂载），所以这一行**不是在修可见 Bug**，而是把"登出即清干净"这条语义补齐。
+       * 语义与 utils/auth.js:74 的 logout() 一致（ModifyUserInfo 的强制登出同样有这一行）。
+       */
+      userStore.logout()
       router.push('/login')
     }
   })

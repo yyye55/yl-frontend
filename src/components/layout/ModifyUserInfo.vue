@@ -84,13 +84,12 @@
  * 【本次修复 · 问题与对策】
  *
  * 【问题 1：表单数据永远陈旧】原实现的唯一数据源是 props.user，而它一路追溯到
- *   localStorage 的 user —— 那个值只在登录时写过一次（login/index.vue:117,119），
- *   之后再没有任何地方更新。后果：数据库里明明已经改好了，重新进入系统、点开弹窗，
- *   看到的还是登录那一刻的旧值，而且永远不变。
- *   对策：打开弹窗时调 GET /api/user 拉取最新数据填入表单。
- *   该接口后端尚未实现（实测返回 405），因此必须**静默降级**：拉到就用，拉不到就
- *   退回 props.user，弹窗照常打开、不弹任何报错。
- *   【接口契约】见 docs/接口需求-GET-api-user.md
+ *   localStorage 的 user —— 那个值只在登录时写过一次（login/index.vue:117,119）。
+ *   一度以为对策是"打开弹窗时调 GET /api/user 拉最新值"，本文件曾照此实现过。
+ *   现已整段删除，理由见下方「本次修复：整段删除了…」：GET 与登录返回的是同一个
+ *   user_dict(user)，同源同字段，值不可能不同；而保存成功后强制重新登录，
+ *   用户看到的永远是刚读到的权威值 —— 这条链路里没有需要"再拉一次"的位置。
+ *   【接口契约】见 docs/接口需求-GET-api-user.md（该接口现已上线）
  *
  * 【问题 2：tel / leader 被静默清空】原实现照搬 dist 的 $set(form,"tel","")，
  *   每次打开都把这两项置空。而 submit 又不校验，于是"只想改个昵称，一按确定，
@@ -102,15 +101,25 @@
  *   必填与长度规则全部不生效。对策：恢复校验（两次密码一致这条仍需手写判断，
  *   因为 password1 没有 prop，进不了 rules）。
  *
- * 【问题 4：保存成功后 store 不更新】dist 里顶栏昵称是
- *   computed(() => userStore.user.nickname)，而保存成功后没人写 store，
- *   所以昵称纹丝不动、刷新也不变。对策：保存成功后 userStore.setUser(...) 合并更新。
- *   （第十二届已移除顶栏昵称栏，该症状不再可见；store 合并本身仍必要，理由见 submit()。）
+ * 【问题 4：保存成功后 store 不更新 → 已由「强制退出重新登录」取代】
+ *   dist 里顶栏昵称取自 userStore，而保存成功后没人写 store，昵称纹丝不动、刷新也不变。
+ *   本仓库原先的对策是保存成功后 userStore.setUser(...) 合并更新；
+ *   第十二届按业务要求改为「保存成功后强制退出重新登录」（见下方「本次新增」与 submit()），
+ *   登出会执行 localStorage.clear()，那段合并写进去立刻被抹掉、没有任何读取方，故已删除。
+ *   【最新一次修复把"打开弹窗时拉取最新用户信息"整段也删了】连它里面那次 store 同步一起 ——
+ *   把读到的值持久化进 localStorage 正是"刷新多次也不变"的成因。
+ *   现在本组件**只读** props.user，不写 store、也不发 GET。
+ *
+ * 【本次新增：保存成功后强制退出重新登录】
+ *   弹窗里那句「修改信息后，修改的账号需要重新登录」原先只是文案 —— 后端 user_update
+ *   只调 set_password，不会使既有 PersonalAccessToken 失效，用户不会被踢出，
+ *   提示语与行为不符。现按业务要求把行为补齐：
+ *   保存成功 → POST /api/logout（后端删掉该 token）→ 清本地 → 关标签页 → 1 秒后跳登录。
+ *   范围是「任何保存」：只改昵称也会登出 —— 与文案字面「修改信息后」一致。
+ *   【注意】即使 logout 接口失败也必须继续退出：保存已经成功，
+ *   「需重新登录」这个承诺不能因为一个清理接口失败而失效（submit() 里单独 catch）。
  *
  * 【本次明确不做的事】
- *   - 弹窗里「修改信息后，修改的账号需要重新登录」这句文案原样保留，且**不加任何强制登出**。
- *     后端 user_update 只调 set_password，不会使既有 PersonalAccessToken 失效，
- *     用户不会被踢出 —— 提示语与行为不符属于既知现状，不在本次范围内。
  *   - footer 里的两个 size="mini" 已移除：Element Plus 不认 "mini"、每次渲染都会告警，
  *     而 EP 中并不存在 `.el-button--mini` 规则，删掉是零视觉变化。**未**改成 small ——
  *     `.el-button--small` 会把按钮从 32px 压到 24px。
@@ -119,16 +128,22 @@
  */
 
 import { ref, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { userApi } from '@/api'
 import { showApiError } from '@/utils/request'
 import { useUserStore } from '@/store/modules/user'
+import { useTabsStore } from '@/store/modules/tabs'
+import { clearAllMsg } from '@/utils/auth'
+import { logout as apiLogout } from '@/api/auth'
 
 const props = defineProps({
   user: { type: Object, default: null }
 })
 
+const router = useRouter()
 const userStore = useUserStore()
+const tabsStore = useTabsStore()
 
 const showInfo = ref(false)
 // 提交中：接口慢时防止连点「确定」发出两次 PUT（先例：login/index.vue:31 的 :loading）
@@ -159,6 +174,17 @@ const form = reactive({
   password1: ''
 })
 
+/**
+ * 【业务要求·不是 bug】leader / tel 必填是刻意为之，前端有意比后端严：
+ *   后端 tel / leader 均为 null=True, blank=True, default=""（apps/core/models.py:81-82），
+ *   且 user_update 只看键在不在、不看值是否为空；
+ *   而 admin 页「添加账号」弹窗没有这两个输入框（admin/user.vue 的「添加用户」弹窗，
+ *   只有 账号/名称/密码/类型/其他信息），user_create_admin 的 `if k in data`
+ *   于是不写这两列 → 新建账号的 tel / leader 恒为空串。
+ *   合起来的意图：**新账号第一次修改信息时，必须先补全「修改人姓名 / 修改人联系方式」**，
+ *   保存成功后强制退出重新登录（见 submit()）。
+ *   ⇒ 不要把这两条改成非必填：它们不是前后端不一致，是前端有意更严。
+ */
 const rules = {
   nickname: [
     { required: true, message: '请输入名称', trigger: 'blur' },
@@ -204,7 +230,7 @@ function fillForm(source) {
  * 【watch 与"接口回填"的冲突 —— 判断与对策】
  *
  * 原实现是 watch(() => props.user, resetForm, { immediate:true })，props.user 引用一变就整表重置。
- * 改造后 props.user 多了一条变化路径：拉到服务端数据后我们主动调 userStore.setUser(...)，
+ * 改造后 props.user 曾多出一条变化路径：拉到服务端数据后组件自己调 userStore.setUser(...)，
  * 而 userStore.user 正是 MainLayout 传给本组件的 :user。
  *
  * 于是存在这个时序：GET 回填完成 → 用户开始编辑 → props.user 引用变化 → watch 触发 →
@@ -213,8 +239,11 @@ function fillForm(source) {
  * 对策：给 watch 加「仅弹窗关闭时生效」的守卫，而不是删掉 watch 或维护两套 form。
  *   - 弹窗关闭期间：props.user 变化照旧跟随（保留原语义，immediate 首帧也会填好）；
  *   - 弹窗打开期间：props 变化一律不碰表单，表单的唯一数据源是"本次打开时拉到的那一份"。
- * 保存成功的时序也安全：submit 里先 showInfo=false 再 setUser，此时守卫已放行，
- * 表单被刷成刚保存的值（密码被清空），与界面状态一致。
+ *
+ * 【这条守卫现在还必要吗】那条自写路径已随本次修复删除（组件不再写 store），
+ * 弹窗打开期间理论上已无人改动 props.user。但守卫零成本，且把"表单只在关闭时跟随 props"
+ * 这条语义写死了，所以保留 —— 不依赖"上游恰好不会变"这个假设。
+ * 保存成功的时序也安全：submit 里先置 showInfo=false，此时守卫已放行。
  */
 watch(
   () => props.user,
@@ -224,86 +253,45 @@ watch(
   { immediate: true }
 )
 
-/** 本次打开的请求序号：丢弃过期响应，防连续开关弹窗时旧的慢响应覆盖新数据 */
-let reqSeq = 0
-
 /**
- * 拉取最新用户信息，失败静默降级
+ * 【本次修复：整段删除了"打开弹窗时拉取最新用户信息"的实现】
+ * 删掉的是原 loadLatest()、配套的请求序号 reqSeq、以及表单快照 snapshotOf()/isDirty()。
  *
- * 【时序照仓库惯例】参照 src/components/common/UploadScanDialog.vue:222 的 open()：
- * 先发请求、同步置 visible、数据回来再回填。这里同样先由 show() 同步回填 props.user，
- * 保证弹窗一打开就有内容；接口数据回来后覆盖成本次拉到的最新值。
+ * 【直接原因】它唯一的产出是"把服务端值填进表单"，而这份值与弹窗已有的 props.user
+ *   **同源同字段**：GET /api/user 返回 user_dict(user)（apps/api/views.py 的 user_info），
+ *   登录接口返回的也是 user_dict(user)（apps/core/services.py:47）。同一行的同一次读取，
+ *   值不可能不同。
  *
- * 【为什么必须 catch】GET /api/user 后端尚未实现，django-ninja 对「路径存在、方法不允许」
- * 返回 405。而 request.js 的响应拦截器对 405 走 default 分支：只 console.log 然后
- * reject(response || error)，既没提示也没跳转。所以不 catch 就是一条 unhandled rejection
- * （控制台红字，在别人眼里就是"前端有 Bug"）。自己 catch 并吞掉，用户侧完全无感。
- * 注意 body.code===401 的响应也会被这里吞掉：那是拦截器的职责（它已经提示过"没有权限操作"），
- * 不需要、也不应该再补一条提示。
+ * 【根本原因】它当初存在的理由是"顺手同步 store，让顶部昵称也跟着刷新"。
+ *   而顶栏的昵称那一栏在第十二届已按要求移除（Header.vue:48-51，模板中只剩
+ *   "修改信息 / 退出登录"两个 div），userStore.user 现在**唯一**的读取方是
+ *   MainLayout.vue:115，也就是本组件自己的 props.user —— 写回 store 等于自己写给自己，
+ *   是个自环。动机既然不存在，剩下的就只有成本。
+ *
+ * 【为什么"留着也无害"不成立】它有害，而且正是用户报的那个症状：GET 是异步的，
+ *   回来时用户可能已经动过表单（快照比较挡得住这一种），也可能还没动（**挡不住**，
+ *   此时整表被服务端值覆盖）。若那份响应恰好是旧的，用户接着点确定就把旧值写回了数据库，
+ *   属于静默的数据回退。上一版它还把这个值写进 localStorage，于是"刷新多次也不变"。
+ *
+ * 【删掉后的数据来源】只有 props.user 一份，来自登录响应；保存成功后强制重新登录，
+ *   登录响应又是刚读的权威值 —— 这条闭环里没有需要"再拉一次"的位置。
+ *
+ * 【代价（如实记录）】不重新登录时，刷不到"别人在用户管理页改的我的资料"
+ *   （admin/committee 的 user_update_admin）。这是本次唯一的功能回退；
+ *   判断是这个场景的收益远小于"过期回填把旧值静默写回库"的风险。
+ *   若将来确实要做，别恢复快照比较这种写法，改成让后端在 user_dict 里返回 updated_at
+ *   （models.py:90 有这个列，auto_now=True），前端比时间戳。
  */
-function loadLatest() {
-  const seq = ++reqSeq
-  userApi
-    .getUserInfo()
-    .then(({ data: res }) => {
-      // 过期响应（期间又开关过一次弹窗）直接丢弃
-      if (seq !== reqSeq) return
-      // 弹窗已关：不要再往里写数据
-      if (!showInfo.value) return
-      // 用户已点确定、PUT 正在飞：别在这时候刷表单，否则会覆盖用户刚改的内容
-      if (submitting.value) return
-      // 后端信封：成功 code===0、失败 code===1（apps/core/services.py 的 success/failure），全仓不存在 code 200
-      // data 为空也一并降级，避免 fillForm(undefined) 把表单掏空
-      if (!res || res.code !== 0 || !res.data) return
-
-      fillForm(res.data)
-      // 回填可能让某些字段由"非法"变"合法"，清掉上一次的校验红字
-      if (ruleForm.value) ruleForm.value.clearValidate()
-
-      /**
-       * 顺手同步一次用户状态，让顶部昵称也跟着刷新
-       *
-       * 【为什么要做】只填表单不解决"重新进入系统后顶部昵称还是旧的"——
-       * Header.vue:69 的昵称取自 userStore，而 store 只读 localStorage、从不回读服务端。
-       * 既然这里已经拿到了服务端权威值，一并写回 store 才是完整的修复。
-       *
-       * 【为什么用合并而不是直接覆盖】res.data 含 id/username/nickname/description/
-       * tel/leader/type/parent_id，直接覆盖也是安全的；用展开合并可以保留将来可能新增的
-       * 本地字段，写法上也明确表达"用服务端值更新这几个字段"。password 不在 user_dict 里，
-       * 不会、也绝不能进 localStorage（auth.js setUser 会 JSON 序列化落盘）。
-       */
-      userStore.setUser({ ...(userStore.user || {}), ...res.data })
-    })
-    .catch(() => {
-      /* 静默降级：405（接口未上线）/ 超时 / 断网 / 业务 401 都走到这里，
-         表单保持 props.user 那一份数据，不弹提示 —— 这正是"优雅降级"的要求。 */
-    })
-}
 
 /** 对外方法，与 dist 的 this.$refs.modify.show() 等价 */
 function show() {
-  // 同步回填：接口没上线 / 超时 / 报错时，用户看到的就是登录时那份数据（= 改造前的行为）
+  // 回填：表单的**唯一**数据源就是 props.user（登录响应），不再发任何请求
   fillForm(props.user)
   // 首次打开时 el-dialog 内容尚未渲染，ruleForm 为 null，所以要判空；
   // 那一次也不可能存在残留的校验红字，跳过正好。
   if (ruleForm.value) ruleForm.value.clearValidate()
 
-  /**
-   * 【顺序不能反：必须先开弹窗，再发请求】
-   *
-   * 原先这里是 loadLatest() 在前、showInfo = true 在后，结果一旦 loadLatest()
-   * 内部出现**同步**异常（真实发生过：userApi.getUserInfo 不存在时抛
-   * "userApi.getUserInfo is not a function"），异常会直接掀掉整个 show()，
-   * 下面这行 showInfo = true 永远执行不到 —— 用户表现就是「点修改信息毫无反应」。
-   * 注意 loadLatest() 里的 .catch() 拦不住这种错误：它是同步抛出的，
-   * 异常发生时 .catch() 还没挂上去。
-   *
-   * 放在前面之后，"弹窗能否打开"与"接口能否调通"彻底解耦，
-   * 这才是接口文档里承诺的静默降级。时序上也正好是仓库惯例
-   * （src/components/common/UploadScanDialog.vue:222 的 open()：先置 visible 再取数）。
-   */
   showInfo.value = true
-  loadLatest()
 }
 
 /**
@@ -316,10 +304,10 @@ function show() {
  * 后两处传回调是有原因的：它们在照搬 dist 的"请检查数据完整性！"这条全局提示，必须拿到 valid 自己弹。
  * 而 Element Plus 的 validate() 只有在「不传回调」时才返回真正会 reject 的 Promise
  * （源码里写死了 shouldThrow = !isFunction(callback)）；传了回调就把标准的 try/catch 能力关掉了。
- * 本组件改造后是「校验 → 提交 → 成功后同步 store」三段线性流程，且 rules 里每条都自带 message、
+ * 本组件改造后是「校验 → 提交 → 强制重新登录」三段线性流程，且 rules 里每条都自带 message、
  * 由 el-form-item 自己渲染在字段下方，不需要全局提示，所以用最直的写法：不传回调 + await + 显式 catch。
  * 【必须 catch】校验失败会让 validate() 按契约 reject（这是它的正常行为，不是异常），
- * 不 catch 就是 unhandled rejection —— 与上面 GET 的坑是同一个。
+ * 不 catch 就是 unhandled rejection —— 与 request.js 里那条 405 静默分支是同一类坑。
  * 【别写成 await validate(fn)】那样失败时既不 reject 也不返回值，这个 await 形同虚设。
  */
 async function submit() {
@@ -358,35 +346,56 @@ async function submit() {
       return
     }
 
-    // 本次打开期间可能还有 GET 在飞，先作废它，免得它回来又把表单刷一遍
-    reqSeq++
-    // 先关弹窗再 setUser：watch 的守卫在 showInfo 为 false 时放行，
-    // 表单会被刷成刚保存的值（密码被清空），与"已保存"的状态一致
+    // 先关弹窗：watch 的守卫在 showInfo 为 false 时放行
     showInfo.value = false
-    ElMessage.success('修改成功')
+    ElMessage.success('修改成功，请重新登录')
 
     /**
-     * 同步用户状态：保 type / 不落盘 password / 保 id
-     * （顶部昵称栏已移除，此处不再是为它服务 —— 见 Header.vue 文件头）
+     * 【第十二届·新】保存成功 → 强制退出重新登录
      *
-     * 【为什么是合并而不是 setUser(form)】
-     *   1) form 里没有 type / parent_id，而 userStore.userType 这个 getter 依赖 type，
-     *      直接覆盖会让依赖角色的菜单/跳转判断拿到 -1；
-     *   2) form 里可能有 password，绝不能写进 localStorage（auth.js setUser 会 JSON 序列化落盘）；
-     *   3) id 也要保留，其它模块可能读它。
-     * 所以只把用户本次改过的几个展示字段合并进去。
+     * 【为什么要做】弹窗里那句「修改信息后，修改的账号需要重新登录」原先只是文案：
+     * 后端 user_update 只调 set_password，不会使既有 PersonalAccessToken 失效，用户不会被踢出。
+     * 现按业务要求把行为补齐 —— 范围是「任何保存」，只改昵称也会登出（与文案字面一致）。
      *
-     * 【为什么是本地合并而不是保存后回读接口】后端 user_update 是原样 setattr、无任何加工
-     * （不去空格、不做归一），所以本地值 == 服务端值。若将来后端加了加工逻辑，此处要改成保存后回读。
+     * 【为什么走 apiLogout 而不是只清本地】只清 localStorage 的话，后端那条 token 依然有效
+     * （即便这次改过密码）。apiLogout()（POST /api/logout）会让后端删掉该 token，
+     * 与顶栏「退出登录」（Header.vue:69）走的是同一条链路。
+     *
+     * 【为什么单独 try/catch】外层 catch 会调 showApiError(err, '修改失败')，
+     * 而这里保存**已经成功**，绝不能再报「修改失败」。
+     * 且 logout 失败也必须继续退出：「需重新登录」这个承诺不能因为一个清理接口失败而失效。
+     *
+     * 【原实现已删除】保存成功后 userStore.setUser(...) 合并更新。
+     * 它在本仓库存在的理由是「问题 4：保存成功后 store 不更新」；现在保存成功即登出，
+     * 而下面 clearAllMsg() 会 localStorage.clear()，那段合并写进去立刻被抹掉，已无读取方。
+     * （弹窗打开期间那次 store 同步也已随「打开时拉取最新信息」整段删除。）
+     *
+     * 【为什么下面还要 userStore.logout()】见紧挨着它的那段注释 —— 登出必须连内存态一起清。
      */
-    userStore.setUser({
-      ...(userStore.user || {}),
-      username: form.username,
-      nickname: form.nickname,
-      leader: form.leader,
-      tel: form.tel,
-      description: form.description
-    })
+    try {
+      await apiLogout()
+    } catch (_) {
+      /* 忽略：下面照常清本地并跳登录 */
+    }
+    clearAllMsg() // utils/auth.js:54 = localStorage.clear()，token 与 user 一起清
+    tabsStore.clearAllTabs()
+
+    /**
+     * 【为什么还要清一次 store】clearAllMsg() 只动 localStorage，而 userStore 是启动时
+     * 把 localStorage 读进内存的副本（store/modules/user.js:13-16），三处内存状态
+     * （token / user / getters）不会跟着变。当前它的读取方都在路由守卫之后
+     * （守卫读 localStorage，MainLayout 由守卫放行才挂载），所以这一行**不是在修可见 Bug**，
+     * 而是把"登出即清干净"这条语义补齐，免得 store 里长期挂着过期 user 等将来被误用。
+     * 语义与 utils/auth.js:74 的 logout() 一致。
+     */
+    userStore.logout()
+
+    /**
+     * 【为什么延时 1 秒】照 request.js gotoLogin() 的节奏：先让用户看清提示再跳，
+     * 否则「修改成功，请重新登录」还没读完页面就切走了。
+     * （ElMessage 渲染在 body 上，即使不延时也不会因跳路由而消失，这里只是为了可读性。）
+     */
+    setTimeout(() => router.push('/login'), 1000)
   } catch (err) {
     /**
      * 【为什么这里也要 catch】改造前这个 PUT 没有 catch：一旦走到拦截器的 default 分支

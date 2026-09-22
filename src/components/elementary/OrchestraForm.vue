@@ -423,7 +423,7 @@ import { rename } from '@/utils/excel'
 import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
-import { validatePersonCount, validateDuration } from '@/config/personRules'
+import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
@@ -539,8 +539,15 @@ function nameValidator(rule, value, callback) {
  *   管乐团-小学组 ≤ 12分钟
  *   管乐团-中学组 ≤ 15分钟
  *   管乐团-大学组 ≤ 18分钟
- *   铜管乐团 ≤ 10分钟
- * 
+ *   铜管乐团（小学组 / 中学组）≤ 10分钟
+ *
+ * 【第十二届改造】上限改查 getDurationLimit()，不写死在本函数里。
+ *   原先铜管分支只判 establishment、不判 group，而提交时的 validateDuration()
+ *   按 (类型, 组别) 二元组查表 —— 遇「铜管乐团 + 非小学/中学组」（新建页选不出，
+ *   历史数据可能带出）会分叉成「失焦报红、提交却放行」。
+ *   改为查表后两处同源，时长上限只剩 PERSON_RULES 一个来源。
+ *   报错文案保持逐字不变（铜管那条**不带组别**）；查不到规则时不校验上限。
+ *
  * 校验顺序：分钟数 → 秒数 → 格式 → 时长限制 → 范围
  */
 function minuteValidator(rule, value, callback) {
@@ -550,22 +557,15 @@ function minuteValidator(rule, value, callback) {
   if (!/(^[0-9]\d*$)/.test(value)) callback(new Error('分钟数只能是正整数'))
   if (!/(^[0-9]\d*$)/.test(second)) callback(new Error('秒数只能是正整数'))
 
-  // 【第十二届改造】根据乐团类型和组别动态校验时长
-  if (form.value.establishment === '管乐团') {
-    if (form.value.group === '小学组' && (value > 12 || (12 === Number(value) && second > 0))) {
-      callback(new Error('管乐团小学组展示时长须在12分钟以内'))
-    }
-    if (form.value.group === '中学组' && (value > 15 || (15 === Number(value) && second > 0))) {
-      callback(new Error('管乐团中学组展示时长须在15分钟以内'))
-    }
-    if (form.value.group === '大学组' && (value > 18 || (18 === Number(value) && second > 0))) {
-      callback(new Error('管乐团大学组展示时长须在18分钟以内'))
-    }
-  } else if (form.value.establishment === '铜管乐团') {
-    // 铜管乐团 ≤ 10分钟
-    if (value > 10 || (10 === Number(value) && second > 0)) {
-      callback(new Error('铜管乐团展示时长须在10分钟以内'))
-    }
+  // 【第十二届改造】上限查 personRules.js，不在本函数内硬编码
+  const limit = getDurationLimit(form.value.establishment, form.value.group)
+  if (limit !== null && (value > limit || (limit === Number(value) && second > 0))) {
+    // 铜管乐团的提示文案不带组别（改造前如此，保持不变）
+    const who =
+      form.value.establishment === '铜管乐团'
+        ? '铜管乐团'
+        : `${form.value.establishment}${form.value.group}`
+    callback(new Error(`${who}展示时长须在${limit}分钟以内`))
   }
 
   if (second > 60 || second < 0) callback(new Error('秒数只能在0-60之间'))

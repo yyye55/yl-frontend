@@ -8,6 +8,7 @@
         class="demo-ruleForm"
         :model="form"
         :rules="rules"
+        inline
         label-width="130px"
         size="default"
       >

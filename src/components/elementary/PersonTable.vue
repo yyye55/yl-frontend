@@ -21,7 +21,7 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
-              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；批量上传文件名格式为<span style="color: black">身份证后6位.jpg</span> 例如：<span style="color: black">123456.jpg</span> 则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应。 </p>
+              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
       <el-upload
         class="import-bar"
         style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
@@ -266,7 +266,8 @@
  *    rename 导入；`onMounted` 里那次 getQiniuToken() 预取随之去掉。
  *    ⚠️ 成功后的业务逻辑逐字保留，一步都没省：仍然调 fileApi.saveFileInfo(info)
  *      （info 的 filename/type/size/url 四个字段同名同义），仍然在 body.code===0 时
- *      回写 `data.value[...].head`；批量的「身份证后6位+姓名」匹配算法原样。
+ *      回写 `data.value[...].head`；批量的匹配算法见 uploadFileBatch —— 第十二届已由
+ *      「身份证后6位+姓名」改为师生两套命名，不再是原样。
  *    注意本组件的体积上限比后端规则更严（这里 100KB，后端 image 规则是 1MB），
  *    前面那道 beforeUpload 是主闸，biz: image 只作兜底。
  *
@@ -519,7 +520,7 @@ function getPosition(position) {
  * 原来是 `:on-success` 回调 uploadSuccess / uploadSuccessBatch，现在改为
  * `:http-request` 调统一上传服务，成功后的落库与回写逻辑逐字保留：
  *   - 单张：fileApi.saveFileInfo({filename,type,size,url}) → body.code===0 时写 head
- *   - 批量：同上，再按「文件名前6位=身份证后6位 且 剩余=姓名」匹配到行
+ *   - 批量：同上，再按「学生=身份证后6位、教师=姓名+身份证后6位」匹配到行
  *
  * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时才跑
  * 自己那套内部成功路径（往 fileList 里塞条目），本组件靠 :show-file-list="false"
@@ -553,7 +554,11 @@ function uploadFileSingle(options) {
 
 /**
  * dist 原文见 git 历史：uploadSuccessBatch(e,t){ n.filename=t.name, ... }
- * 匹配规则：文件名（去扩展名）前 6 位 === 身份证号后 6 位，且剩余部分 === 姓名。
+ * 匹配规则（【第十二届】已由 dist 的「前 6 位=身份证后6位 且 剩余=姓名」改为师生两套）：
+ *   - 学生照片：去扩展名后整段是 6 位数字 = 身份证后 6 位，且该行身份为「学生」
+ *   - 教师照片：去扩展名后尾部 6 位 = 身份证后 6 位、前面 = 姓名，
+ *               且该行身份为「教师」、姓名一致
+ *   两种命名都不是的（如 7 位纯数字）报「文件名格式错误」，不猜。
  */
 function uploadFileBatch(options) {
   const file = options.file
@@ -567,20 +572,28 @@ function uploadFileBatch(options) {
 
       fileApi.saveFileInfo(info).then(({ data: body }) => {
         if (body.code === 0) {
+          // 【第十二届】师生两套命名：学生 = 身份证后6位；教师 = 姓名 + 身份证后6位
           const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
-          if (nameNoExt.length < 6) {
+          let cardTail = ''
+          let personName = ''
+          if (/^\d{6}$/.test(nameNoExt)) {
+            cardTail = nameNoExt                 // 学生：整段就是身份证后6位
+          } else if (/^\D.*\d{6}$/.test(nameNoExt)) {
+            cardTail = nameNoExt.slice(-6)       // 教师：尾部 6 位是身份证后6位
+            personName = nameNoExt.slice(0, -6)  //       前面是姓名
+          } else {
             ElMessage.error('文件名格式错误：' + file.name)
             return
           }
-          const cardTail = nameNoExt.substring(0, 6)
-          const personName = nameNoExt.substring(6)
           const idx = data.value.findIndex((item) => {
-            if (!item.card || !item.name) return false
+            if (!item.card) return false
             const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-            return tail === cardTail && item.name === personName
+            if (tail !== cardTail) return false
+            // 学生照片只看身份证后6位、要求该行身份是「学生」；教师照片还要姓名一致
+            return personName ? item.type === 1 && item.name === personName : item.type === 0
           })
           if (idx !== -1) data.value[idx].head = info.url
-          else ElMessage.error('未找到匹配的人员：' + file.name)
+          else ElMessage.error((personName ? '未找到匹配的教师：' : '未找到匹配的学生：') + file.name)
         } else {
           ElMessage.error('文件上传失败')
         }
@@ -610,8 +623,8 @@ function beforeUpload(file) {
   /*
    * 【第十二届改造】红头文件要求：
    *   - 师生电子照片：蓝底、免冠证件照、JPG、每张不超过 100KB
-   *   - 学生照片命名：「身份证后6位+姓名.jpg」
-   *   - 教师照片命名：「按系统规定命名」
+   *   - 学生照片命名：「身份证后6位.jpg」
+   *   - 教师照片命名：「姓名+身份证后6位.jpg」
    * 客户端硬校验（JPG + ≤100KB），蓝底与命名格式仅在前端提示，无法像素级校验。
    */
   const isJpg = file.type === 'image/jpeg'

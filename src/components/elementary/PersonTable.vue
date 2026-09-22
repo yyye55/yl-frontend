@@ -21,7 +21,7 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
-              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
+              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
       <el-upload
         class="import-bar"
         style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
@@ -53,12 +53,12 @@
           accept="image/jpeg"
           :show-file-list="false"
         >
-          <el-button style="color: #1890ff" type="text">批量上传头像</el-button>
+          <el-button style="color: #1890ff" type="text">批量上传照片</el-button>
         </el-upload>
 
         <el-upload
           :http-request="uploadFileSingle"
-          :before-upload="beforeUpload"
+          :before-upload="beforeUploadSingle"
           hidden
           :show-file-list="false"
         >
@@ -145,7 +145,7 @@
           <img style="width: 59px; height: 82px" :src="item.head" />
         </div>
         <div class="box-col sticky-column">
-          <el-button @click="upAvatar(index)">上传头像</el-button>
+          <el-button @click="upAvatar(index)">上传照片</el-button>
           <el-button type="danger" @click="remove(index)">删除</el-button>
         </div>
       </div>
@@ -463,6 +463,11 @@ function getCacheData() {
  *   }
  * 行下标从 1 开始（跳过表头），两个循环必须都跳过表头，故 i 均从 1 起。
  * 注意 xlsx2json 的 sheet 元素存储行数组，所以 `res[0].sheet` 是行数组。
+ *
+ * 【第十二届改造】下面这两处的顺序**故意与 dist 不同，不要照 dist 还原**：
+ *   a. dist 先 `this.data=[]` 再逐行校验 → 改成了先校验、通过后才清表（失败不清表）
+ *   b. dist 重建行时不带 head → 改成按 card 把旧头像捞回来
+ * 原因见函数体里的注释。
  */
 function importExcel(file) {
   const ext = file.name.split('.')[1]
@@ -471,8 +476,23 @@ function importExcel(file) {
 
   xlsx2json(file).then((res) => {
     if (res && res.length > 0) {
-      data.value = []
-      const sheet = res[0].sheet
+      // 【第十二届】原为 `const sheet = res[0].sheet` —— 无条件取工作簿的第一张工作表。
+      // xlsx2json 只把行数组放进 `sheet`、丢掉了表名（见 src/utils/xlsx.js 的返回结构），
+      // 这里拿不到表名，故无法「优先找用户表」，只能取「第一张有数据的表」。
+      // 原写法在数据不在第一张表时（如新建工作簿时 Excel 默认留一张空的 Sheet1 在前）
+      // 会取到空表：下面两个 for 循环都不执行、一个提示都不弹，表却被 data.value = []
+      // 清空 —— 表现为静默清空。此处改为明确报错。
+      // 「有数据」的判据是 length > 1：sheet_to_json 把工作表第 1 行当表头，官方模板
+      // 第 2 行的中文标签行成为下标 0，数据从下标 1 起，故只有标签行时 length === 1。
+      // 官方模板只有一张名为「用户表」的工作表，故对官方模板行为完全不变。
+      const sheet = res.map((item) => item.sheet).find((s) => s && s.length > 1)
+      if (!sheet) {
+        return ElMessage.error('导入失败！未找到可导入的数据，请确认使用官方模板、且未删除表头')
+      }
+
+      // 【第十二届】把校验挪到清表之前。dist 原实现是「先 data.value = [] 再逐行校验」，
+      // 于是导入一个第 N 行有错的 Excel，会先把整张表（含已上传头像）清空再报「导入失败」
+      // —— 用户以为什么都没发生，其实数据已经没了。
       for (let i = 1; i < sheet.length; i++) {
         // 【dist 已知缺陷】dist 遗留的调试输出，原样保留
         console.log(sheet[i])
@@ -481,8 +501,19 @@ function importExcel(file) {
           return ElMessage.error('导入失败！参演人员名单第' + i + '行' + result.msg)
         }
       }
+
+      // 【第十二届】重建前按身份证号留一份旧头像。新行对象里没有 head 字段，不捞回来的话
+      // 编辑页回填的照片、以及上一轮已经上传的头像，重新导入后会全部消失。
+      // 用 card 而不是行序：改完 Excel 重导时行序经常变，按序会张冠李戴；card 也是
+      // uploadFileBatch 匹配用的同一个键，口径一致。
+      const oldHeads = {}
+      data.value.forEach((item) => {
+        if (item.head && item.card) oldHeads[item.card] = item.head
+      })
+
+      data.value = []
       for (let i = 1; i < sheet.length; i++) {
-        data.value.push({
+        const row = {
           name: sheet[i].name,
           card: sheet[i].card,
           age: sheet[i].age,
@@ -493,7 +524,10 @@ function importExcel(file) {
           instrument: sheet[i].instrument,
           type: sheet[i].type === '学生' ? 0 : 1,
           position: getPosition(sheet[i].position)
-        })
+        }
+        // 身份证号对得上才带回旧头像；不带这个 key 时行对象与原来完全同构
+        if (row.card && oldHeads[row.card]) row.head = oldHeads[row.card]
+        data.value.push(row)
       }
     }
   })
@@ -574,26 +608,44 @@ function uploadFileBatch(options) {
         if (body.code === 0) {
           // 【第十二届】师生两套命名：学生 = 身份证后6位；教师 = 姓名 + 身份证后6位
           const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
-          let cardTail = ''
-          let personName = ''
-          if (/^\d{6}$/.test(nameNoExt)) {
-            cardTail = nameNoExt                 // 学生：整段就是身份证后6位
-          } else if (/^\D.*\d{6}$/.test(nameNoExt)) {
-            cardTail = nameNoExt.slice(-6)       // 教师：尾部 6 位是身份证后6位
-            personName = nameNoExt.slice(0, -6)  //       前面是姓名
-          } else {
+          const parsed = parsePhotoName(nameNoExt)
+          if (!parsed) {
+            // beforeUpload 已经拦过一次格式；这里留一道，防有人改绑定时漏掉
             ElMessage.error('文件名格式错误：' + file.name)
             return
           }
-          const idx = data.value.findIndex((item) => {
-            if (!item.card) return false
+          const { cardTail, personName } = parsed
+
+          // 【第十二届】收集全部命中再判，而不是 findIndex 取第一个：后 6 位重复时
+          // 原来会静默把照片写到第一行并报成功，第二个人看起来是「没传上」。
+          const hits = []
+          data.value.forEach((item, i) => {
+            if (!item.card) return
             const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-            if (tail !== cardTail) return false
+            if (tail !== cardTail) return
             // 学生照片只看身份证后6位、要求该行身份是「学生」；教师照片还要姓名一致
-            return personName ? item.type === 1 && item.name === personName : item.type === 0
+            const matched = personName ? item.type === 1 && item.name === personName : item.type === 0
+            if (matched) hits.push(i)
           })
-          if (idx !== -1) data.value[idx].head = info.url
-          else ElMessage.error((personName ? '未找到匹配的教师：' : '未找到匹配的学生：') + file.name)
+
+          if (hits.length === 0) {
+            ElMessage.error((personName ? '未找到匹配的教师：' : '未找到匹配的学生：') + file.name)
+          } else if (hits.length > 1) {
+            ElMessage.error(
+              '无法唯一匹配：' + file.name + ' —— 本表身份证号后6位为 ' + cardTail + ' 的有 ' +
+                hits.length + ' 人（第 ' + hits.map((i) => i + 1).join('、') +
+                ' 行），请改用「上传照片」按行单独传'
+            )
+          } else {
+            const target = data.value[hits[0]]
+            // 【第十二届】重传覆盖是正常路径（换照片），但要让「覆盖了别人」变得可见
+            if (target.head) {
+              ElMessage.success(
+                '第 ' + (hits[0] + 1) + ' 行' + (target.name ? ' ' + target.name : '') + ' 的照片已替换'
+              )
+            }
+            target.head = info.url
+          }
         } else {
           ElMessage.error('文件上传失败')
         }
@@ -602,6 +654,23 @@ function uploadFileBatch(options) {
     .catch((err) => {
       if (!err.shown) ElMessage.error(err.message || '文件上传失败')
     })
+}
+
+/**
+ * 【第十二届】从「去掉扩展名的文件名」里解析出身份证后 6 位 + 姓名（仅教师）。
+ * 解析不出来返回 null。beforeUpload 与 uploadFileBatch 共用这一份判据，
+ * 避免两处正则各写一遍后漂移。
+ *   学生：`123456`      → { cardTail: '123456', personName: '' }
+ *   教师：`张三123456`  → { cardTail: '123456', personName: '张三' }
+ */
+function parsePhotoName(nameNoExt) {
+  if (/^\d{6}$/.test(nameNoExt)) {
+    return { cardTail: nameNoExt, personName: '' }
+  }
+  if (/^\D.*\d{6}$/.test(nameNoExt)) {
+    return { cardTail: nameNoExt.slice(-6), personName: nameNoExt.slice(0, -6) }
+  }
+  return null
 }
 
 /**
@@ -625,7 +694,7 @@ function beforeUpload(file) {
    *   - 师生电子照片：蓝底、免冠证件照、JPG、每张不超过 100KB
    *   - 学生照片命名：「身份证后6位.jpg」
    *   - 教师照片命名：「姓名+身份证后6位.jpg」
-   * 客户端硬校验（JPG + ≤100KB），蓝底与命名格式仅在前端提示，无法像素级校验。
+   * 客户端硬校验：JPG + ≤100KB + 命名格式；只有「蓝底」无法像素级校验，仅在前端提示。
    */
   const isJpg = file.type === 'image/jpeg'
 
@@ -639,7 +708,71 @@ function beforeUpload(file) {
     ElMessage.error('照片格式只能是JPG')
     return false
   }
+  // 【第十二届】命名格式硬校验。原来只在 uploadFileBatch 里判，那时文件已经传上 OSS
+  // 并写进 files 表 —— 格式错的照片就成了没人认领的孤儿文件。前移到 here：格式不对
+  // 直接不发请求。批量直接绑本函数，单张经 beforeUploadSingle 调进来，两路都过这道。
+  const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
+  if (!parsePhotoName(nameNoExt)) {
+    ElMessage.error(
+      '文件名格式错误：' + file.name + '（学生照片：身份证号后6位；教师照片：姓名+身份证号后6位）'
+    )
+    return false
+  }
   return isJpg && sizeOk
+}
+
+/**
+ * 【第十二届】单独上传头像的校验器 —— **只给隐藏的那条单张 el-upload 用**
+ * （模板里绑的是它，不是 beforeUpload）。
+ *
+ * 【为什么另起一个函数，而不是全塞进 beforeUpload】
+ * beforeUpload 是两条路共用的「基础闸」：批量直接绑它，单张经本函数调它，所以它只能判
+ * 格式/体积这类「与哪一行无关」的事。而「文件名对不对得上这一行的人」需要行下标与行内
+ * 姓名/身份证号，只有单张路径拿得到 —— 这正是下面这段的职责。
+ *
+ * 【格式校验已在 beforeUpload 里做过一遍】
+ * 所以对「格式就不合法」的文件（如 照片.jpg），用户看到的是 beforeUpload 那句格式提示；
+ * 只有格式合法但写错人时，才落到下面这句「请改为 xxx.jpg」。单张不靠文件名定位（走
+ * upAvatar 存下的行下标 Arrayindex），这里的校验只为让入库的 Files.filename 与批量
+ * 上传同一口径（`info.filename = file.name` 会落库，后端只 setdefault 不校验）。
+ *
+ * 规则与 uploadFileBatch 完全一致：
+ *   - 学生行：去扩展名后 === 该行身份证号后 6 位
+ *   - 教师行：去扩展名后 === 该行姓名 + 该行身份证号后 6 位
+ */
+function beforeUploadSingle(file) {
+  // 格式 / 体积沿用批量那套，逻辑一个字不重写
+  if (!beforeUpload(file)) return false
+
+  const item = data.value[Arrayindex]
+  if (!item) {
+    // Arrayindex 是模块级变量，正常路径下由 upAvatar 刚刚写入；这里是防哑雷
+    ElMessage.error('未定位到人员行，请重新点击该行的「上传照片」')
+    return false
+  }
+  if (item.type !== 0 && item.type !== 1) {
+    ElMessage.error('请先选择该行的身份，再上传照片')
+    return false
+  }
+  if (!item.card) {
+    ElMessage.error('请先填写该行的身份证号，再上传照片')
+    return false
+  }
+  const isTeacher = item.type === 1
+  if (isTeacher && !item.name) {
+    ElMessage.error('请先填写该行的姓名，再上传照片')
+    return false
+  }
+
+  // 身份证短于 6 位时按整串比对，与 uploadFileBatch 的取法保持一致
+  const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
+  const expected = isTeacher ? item.name + tail : tail
+  const actual = file.name.substring(0, file.name.lastIndexOf('.'))
+  if (actual !== expected) {
+    ElMessage.error('文件名不符合命名规则，请改为：' + expected + '.jpg 后再上传')
+    return false
+  }
+  return true
 }
 
 /* 【第十二届改造·第二轮】getQiniuToken() 已删除。

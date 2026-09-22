@@ -20,7 +20,12 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="类型" prop="establishment">
-                <el-select v-model="form.establishment" style="width: 100%" placeholder="请选择">
+                <el-select
+                  v-model="form.establishment"
+                  style="width: 100%"
+                  placeholder="请选择"
+                  @change="onScopeChange"
+                >
                   <el-option
                     v-for="opt in cfg.establishmentOptions"
                     :key="opt"
@@ -45,7 +50,19 @@
             -->
             <el-col :span="12">
               <el-form-item label="指定曲目" prop="name1">
-                <el-input v-model="form.name1" placeholder="指定曲目" />
+                <el-select
+                  v-model="form.name1"
+                  style="width: 100%"
+                  placeholder="请选择指定曲目"
+                  :disabled="!form.establishment || !form.group"
+                >
+                  <el-option
+                    v-for="opt in name1Options"
+                    :key="opt"
+                    :label="opt"
+                    :value="opt"
+                  />
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -54,7 +71,12 @@
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="参演组别" prop="group">
-                <el-select v-model="form.group" style="width: 100%" placeholder="参赛组别选择">
+                <el-select
+                  v-model="form.group"
+                  style="width: 100%"
+                  placeholder="参赛组别选择"
+                  @change="onScopeChange"
+                >
                   <el-option
                     v-for="opt in cfg.groupOptions"
                     :key="opt"
@@ -514,6 +536,61 @@ function makeForm() {
 
 const form = ref(makeForm())
 
+/* ------------------------- 指定曲目候选（第十二届） ------------------------- */
+
+/**
+ * 【第十二届】指定曲目候选，按「类型 × 组别」查。
+ * 出处：第十二届红头文件附件1。
+ *
+ * 每个元素 = 红头文件该条的**前一部分**（曲名 + 演奏范围/别称），
+ * 砍掉后面的「作曲：…」「改编：…」「选自：…」以及句末的「。」。
+ * 切法是机械的：在第一个「，作曲」或「，选自」处切断。例：
+ *   《挽歌》选段（从第40小节开始至结束），作曲：冼星海，改编：尼古拉斯·史密斯。
+ *   → 《挽歌》选段（从第40小节开始至结束）
+ *   《赞美诗与退场赞美诗》，选自《青少年管乐队训练曲集（基础1）》。
+ *   → 《赞美诗与退场赞美诗》
+ * 之所以这样切：前一部分是**选手必须知道、导出表里必须有的**演奏信息
+ * （从第几小节开始、第几首、别称），后一部分只是出处/署名。
+ *
+ * 元素本身就是最终入库值，不加编号、不做映射：后端 name1 是
+ * CharField(max_length=255)，导出（XLSX/PDF）与详情页（ShowContent.vue）
+ * 都把它当人类可读文本原样输出，数字 ID 会被直接印出来。
+ *
+ * 拉丁曲名按通用写法补回被 PDF 抽取吞掉的空格（Poco Loco / March for Military Band）；
+ * 拉丁词与后随的「（」之间不留空格。中文括号内一律全角。
+ * 铜管乐团小学组、中学组共用同一份（红头文件里两组别的曲目相同，均三选一）。
+ */
+const NAME1_OPTIONS = {
+  '管乐团|小学组': ['《挽歌》选段（从第40小节开始至结束）', '《赞美诗与退场赞美诗》'],
+  '管乐团|中学组': ['《石榴青青》选段（从第56小节至结束）', '《号角音乐与赋格》'],
+  '管乐团|大学组': ['《素描五首》第一首、第五首', '《黄河》选段（《黄河颂》+《保卫黄河》）'],
+  '铜管乐团|小学组': [
+    '《Poco Loco》（有一点点慵懒）',
+    '《Rondeau》（回旋曲）',
+    '《March for Military Band》（军乐队进行曲）'
+  ],
+  '铜管乐团|中学组': [
+    '《Poco Loco》（有一点点慵懒）',
+    '《Rondeau》（回旋曲）',
+    '《March for Military Band》（军乐队进行曲）'
+  ]
+}
+
+const name1Options = computed(
+  () => NAME1_OPTIONS[`${form.value.establishment}|${form.value.group}`] || []
+)
+
+/**
+ * 用户手动改「类型」或「参演组别」后，已选曲目若不在新组合的候选里就清空。
+ * 【为何用 @change 而不是 watch】编辑页 getMessage() 是 `form.value = r` 整体回填，
+ * watch 会在回填那一刻触发、把历史数据误清掉；@change 只在用户操作时触发。
+ */
+function onScopeChange() {
+  if (form.value.name1 && !name1Options.value.includes(form.value.name1)) {
+    form.value.name1 = ''
+  }
+}
+
 /* ------------------------- 校验规则 ------------------------- */
 
 /**
@@ -525,6 +602,29 @@ const form = ref(makeForm())
 function nameValidator(rule, value, callback) {
   if (!(value.charAt(0) === '《' && value.charAt(value.length - 1) === '》')) {
     callback(new Error('名称需加《》'))
+  }
+  callback()
+}
+
+/**
+ * 【第十二届·指定曲目（name1）专用】只判「包含《…》」，不判首尾。
+ *
+ * 【为什么不复用上面的 nameValidator】指定曲目改成下拉框后，入库值取自
+ * NAME1_OPTIONS，形如 `《挽歌》选段（从第40小节开始至结束）`——结尾是「）」
+ * 不是「》」，9 条候选里有 7 条过不了「首《》末《》」，会失焦报红并卡住提交。
+ * 而自选曲目（name）是人手输入的，仍按老规矩要求首《》末《》，两者要求不同，
+ * 故各自一个校验器；nameValidator 因此**逐字不动**。
+ *
+ * 放宽后 9 条候选全部通过，且往届自由文本（如《往届自由填写的指定曲目》）也通过，
+ * 历史数据回填不会被新校验拦住。唯一收紧点：《》（括号内为空）现在被拦，
+ * 原「首《》末《》」是放行的。
+ *
+ * 与 nameValidator 同样的写法：先 callback(Error) 再 callback()，
+ * async-validator 的 callback 只认第一次调用，末尾那次在已报错时是空操作。
+ */
+function name1Validator(rule, value, callback) {
+  if (!/《[^《》]+》/.test(value)) {
+    callback(new Error('指定曲目需包含《曲名》'))
   }
   callback()
 }
@@ -583,16 +683,16 @@ const rules = reactive({
     { required: true, validator: nameValidator, trigger: 'blur' }
   ],
   name1: [
-    { required: true, message: '需填写指定曲目', trigger: 'blur' },
+    { required: true, message: '需选择指定曲目', trigger: 'blur' },
     { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' },
-    { required: true, validator: nameValidator, trigger: 'blur' }
+    { required: true, validator: name1Validator, trigger: 'blur' }
   ],
   contact_name: [
-    { required: true, message: '请输入联系人', trigger: 'blur' },
+    { required: true, message: '请输入领队姓名', trigger: 'blur' },
     { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
   ],
   contact_phone: [
-    { required: true, message: '请输入联系人电话', trigger: 'blur' },
+    { required: true, message: '请输入领队电话', trigger: 'blur' },
     { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
   ],
   contact_way: [

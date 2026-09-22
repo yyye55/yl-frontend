@@ -39,9 +39,13 @@ import { ElLoading } from 'element-plus'
 // 后果（实测）：产物 CSS 里完全没有 .el-message / .el-message-box 规则，
 // toast 与确认框退化成 #app 之后文档流里的普通 div —— 位置在视口下方，等于「点了没反应」。
 // 这里按 unplugin 的同款路径引样式，base 变量等依赖由这些入口自带。
-// 注：以后若用到 ElNotification / v-loading 指令，同样要在这里补对应 style/css。
+// 注：以后若用到 ElNotification 等，同样要在这里补对应 style/css。
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
+// 【第十二届·暂存】报名表单提交期间用 v-loading 铺遮罩锁住整块表单（见 OrchestraForm.vue）。
+// 指令本身已在下面 app.directive('loading', ...) 注册，这里补的是它的样式 ——
+// 缺了这行遮罩不会显示，等于提交期间表单没被锁住。
+import 'element-plus/es/components/loading/style/css'
 
 // 全局样式
 import './styles/index.css'

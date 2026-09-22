@@ -121,7 +121,17 @@
             :width="cfg.actionWidth"
           >
             <template #default="{ row }">
-              <!-- dist 原文是三元链：-1 -> 3 个控件 + 编辑/删除；0 -> 查看详情 + 编辑/删除；其余 -> 只有查看详情 -->
+              <!--
+                dist 原文是三元链：-1 -> 3 个控件 + 编辑/删除；0 -> 查看详情 + 编辑/删除；其余 -> 只有查看详情
+
+                【第十二届·暂存改造 / 一处可见行为变更】「编辑」**只保留在 status === -1（已驳回）**，
+                待审核（0）不再提供。依据：暂存规范 §十三「只有驳回状态才允许修改报名」——
+                修改要走 edit-draft 把正式 Report 换成草稿再改，后端对非驳回状态直接回
+                REPORT_NOT_REJECTED，此时还摆一个点进去必然报错的按钮，比没有更糟。
+
+                「删除」按钮原样保留（0 和 -1 都还在），它不属于本次暂存改造的范围。
+                状态取值：-2 未填写 / -1 已驳回 / 0 待审核 / 1 组委会通过（见 Status.vue）。
+              -->
               <template v-if="row.status === -1">
                 <Remark :data="row.remark" />
                 <ShowContent :data="row" />
@@ -130,7 +140,6 @@
               </template>
               <template v-else-if="row.status === 0">
                 <ShowContent :data="row" />
-                <el-button @click="edit(row)">编辑</el-button>
                 <el-button @click="remove(row.id)">删除</el-button>
               </template>
               <template v-else>

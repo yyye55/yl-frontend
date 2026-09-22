@@ -2,7 +2,16 @@
   <div class="bg">
     <p class="title">{{ cfg.title }}</p>
 
-    <div class="my-form">
+    <!--
+      【§十 步骤 1-3】提交期间必须禁止再次点击提交、禁止继续改表单。
+      v-loading 会铺一层遮罩，遮罩本身拦截所有指针事件 —— 一行就把整块表单锁住，
+      不用逐控件加 :disabled（那样漏一个就等于没锁，且 20 多个控件容易漏）。
+    -->
+    <div
+      v-loading="draftState.isSubmitting"
+      element-loading-text="正在提交，请勿关闭页面……"
+      class="my-form"
+    >
       <el-form
         ref="formRef"
         :model="form"
@@ -241,11 +250,47 @@
           <HaveToRead />
         </el-form-item>
 
+        <!--
+          【第十二届·暂存】按钮区改动说明：
+          1) 「暂存」由 dist 的「仅新增页可见 + 只写 localStorage」改为**两个模式都可见**，
+             并且落服务端草稿（规范 §六、§二十二）。编辑页此前完全没有暂存能力，
+             用户改到一半刷新页面就全丢了。
+          2) 状态文案取 draftStatusText（未保存 / 正在暂存…… / 已暂存 /
+             暂存失败，请重试 / 草稿已在其他页面修改 / 正在提交…… / 已正式提交）。
+             「已暂存」**不带时刻** —— 用户要的是"存住了没有"，时分秒没用又占地方。
+             切走再回来、刷新页面都还能认回自己那份草稿，见 resumeDraftSession。
+          3) 提交中用 :loading + 按钮禁用双重收口；冲突未解决前禁止再暂存 ——
+             这两个约束由 composable 的状态机保证，模板只如实反映。
+        -->
         <el-form-item>
-          <el-button type="primary" :disabled="!form.read" @click="onSubmit">
-            {{ cfg.mode === 'create' ? '立即报名' : '立即修改' }}
+          <el-button
+            type="primary"
+            :disabled="!form.read || draftState.isSubmitting"
+            :loading="draftState.isSubmitting"
+            @click="onSubmit"
+          >
+            {{ draftState.isSubmitting
+              ? '正在提交……'
+              : cfg.mode === 'create' ? '立即报名' : '立即修改' }}
           </el-button>
-          <el-button v-if="cfg.mode === 'create'" @click="tempSave(true)">暂存</el-button>
+          <el-button
+            :disabled="draftState.isSaving || draftState.isSubmitting || draftState.hasVersionConflict"
+            :loading="draftState.isSaving"
+            @click="onTempSave"
+          >
+            暂存
+          </el-button>
+          <span class="draft-status" :class="`draft-status--${draftStatusLevel}`">
+            {{ draftStatusText }}
+          </span>
+          <el-button
+            v-if="draftState.hasVersionConflict"
+            type="warning"
+            link
+            @click="onReloadDraft"
+          >
+            重新加载服务器草稿
+          </el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -445,6 +490,9 @@ import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
 import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
+
+// 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 / 自动暂存都在里面）
+import { useDraftSession } from '@/composables/useDraftSession'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
@@ -898,6 +946,161 @@ function tempSave(showTip = false) {
   if (showTip) ElMessage.success('本地保存成功')
 }
 
+/* ------------------------- 服务端草稿（暂存） ------------------------- */
+
+/**
+ * scope 由「报送渠道」决定，**只用于拼 URL**（/api/school/... 或 /api/city/...），
+ * 绝不写进请求体 —— 后端从登录态推导 user_id / 权限（规范 §五、§二十八）。
+ * 4 个变体恰好各自对应一个渠道，复用 VARIANTS 里已有的 api 键，不新增配置项。
+ */
+const draftScope = cfg.mode === 'create' ? cfg.api.create : cfg.api.update
+
+/**
+ * 草稿指针的落脚点。
+ *
+ * draftId / version 原本只活在 useDraftSession 的 reactive state 里，而路由一切换
+ * 本组件就被卸载 —— 于是「填着填着切到报名汇总再切回来」会得到一份全新 state，
+ * 界面从「已暂存」掉回「未保存」（内容其实一直在服务器上）。
+ *
+ * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 每 60 秒写一次），
+ * 再存一份内容只会多一个可能不一致的来源。指针里就一个门牌号，内容回服务器拉。
+ * 至于拉到之后要不要覆盖本地 —— 见 onMounted 里传给 resumeDraftSession 的
+ * restoreContent，那里是「不弄丢用户刚敲的字」的底线。
+ *
+ * 键里带 scope 与 route.path：不同报送渠道、不同乐团各存各的，互不串门。
+ * 用 route.path 而非 route.name —— 与上面 cacheName 的取法保持一致。
+ */
+const draftSessionKey = `draft_session:${draftScope}:${route.path}`
+const draftSessionStore = {
+  load: () => getCache(draftSessionKey),
+  save: (meta) => addCache(draftSessionKey, meta),
+  clear: () => clearCache(draftSessionKey)
+}
+
+const {
+  state: draftState,
+  statusText: draftStatusText,
+  statusLevel: draftStatusLevel,
+  save: saveDraft,
+  submit: submitDraft,
+  stopAutoSave: stopDraftAutoSave,
+  startAutoSave: startDraftAutoSave,
+  listDrafts,
+  loadDraft,
+  resumeSession: resumeDraftSession,
+  enterEditFromRejected,
+  reloadFromServer: reloadDraftFromServer,
+  DRAFT_ERR: DRAFT_ERR_CODE
+} = useDraftSession({
+  scope: draftScope,
+
+  // 取表单：草稿 payload 由 src/services/draftPayload.js 统一构建，页面不自己拼（§十六）
+  getForm: () => form.value,
+  getFiles: () => ({ fileList: fileList.value, fileList1: fileList1.value }),
+
+  // 恢复：写回 form 与两个文件列表。Teacher/Person 两张子表都有
+  // `watch(() => props.showdata)`，赋值即自动同步，无需另外调它们的 setter。
+  applyRestored: (restored) => {
+    form.value = restored.form
+    fileList.value = restored.fileList
+    fileList1.value = restored.fileList1
+  },
+
+  onSubmitted: (data) => {
+    if (cfg.mode === 'create') {
+      // 与 dist 原成功分支一致：清缓存 → 重置 → 关当前页 → 开报名汇总
+      // （草稿指针由 useDraftSession.submit 自己清，见那里的 clearSession 调用）
+      clearCache(route.path)
+      if (timer) {
+        clearInterval(timer)
+        timer = null
+      }
+      form.value = makeForm()
+      fileList.value = []
+      fileList1.value = []
+      ElMessage.success('报名成功')
+      closeWindow(route.path)
+      openWindow(cfg.redirect.path, cfg.redirect.label)
+    } else {
+      ElMessage.success('修改成功')
+    }
+    // report_id 是本次提交产生的正式报名 ID（§十一），目前无后续跳转需求，先记日志便于排查
+    console.info('[draft] 正式提交完成 report_id=', data && data.reportId)
+  },
+
+  /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已停止自动暂存，这里只提示 */
+  onFatal: (e) => {
+    ElMessage.warning((e && e.msg) || '草稿不存在或已被删除')
+  },
+
+  // 草稿指针的落脚点：让「切走再回来」还认得自己的草稿（见上方 draftSessionStore）
+  sessionStore: draftSessionStore
+})
+
+/**
+ * 统一的草稿错误提示。
+ *
+ * 【409 的关键约定（§二十一）】只提示 + 提供「重新加载服务器草稿」这一条出路：
+ * 绝不自动用本地旧数据覆盖服务器，也绝不自动把 version 改成 server_version 再强存。
+ * 恢复动作必须由用户明确点击，否则自动暂存会持续用旧内容压掉别的页面的修改。
+ */
+function notifyDraftError(err) {
+  const e = err || {}
+  if (e.kind === DRAFT_ERR_CODE.CONFLICT) {
+    return ElMessageBox.alert(
+      '该草稿已在其他页面或设备更新。为避免覆盖最新内容，请重新加载草稿。',
+      '暂存冲突',
+      { confirmButtonText: '重新加载服务器草稿', type: 'warning' }
+    )
+      .then(() => onReloadDraft())
+      .catch(() => {})
+  }
+  if (e.kind === DRAFT_ERR_CODE.NETWORK) {
+    return ElMessage.error('网络中断，暂存失败，已保存内容不会丢失，请稍后重试')
+  }
+  ElMessage.error(e.msg || '暂存失败，请重试')
+}
+
+/** 手动暂存：先把两张子表的当前值同步进 form，再走服务端草稿 */
+async function onTempSave() {
+  if (!personRef.value || !teacherRef.value) return
+  // 不调 getData()：那个方法会跑完整校验，用户在填写中途点暂存不该被拦下。
+  // 用 getCacheData()，与 dist 的 tempSave 取的是同一份数据。
+  form.value.person = personRef.value.getCacheData()
+  form.value.teacher = teacherRef.value.getCacheData()
+
+  try {
+    const res = await saveDraft()
+    /*
+     * 本地镜像一并刷新。
+     *
+     * 【必须判 cacheName】cacheName 只在**新增页**的 onMounted 里赋值（dist 的
+     * `this.cacheName = this.$route.path`），编辑页从来是 null。暂存按钮现在两个模式
+     * 都显示，若不判就会在编辑页以 `addCache(null, ...)` 往 localStorage 里写一个
+     * 键名为 "null" 的垃圾条目 —— 既没用，又会一直残留在用户浏览器里。
+     */
+    if (cacheName.value) tempSave()
+    if (res && res.skipped && res.reason === 'unchanged') {
+      ElMessage.info('内容没有变化，无需重复暂存')
+    } else {
+      ElMessage.success('暂存成功')
+    }
+  } catch (err) {
+    notifyDraftError(err)
+  }
+}
+
+/** 冲突后由用户点击触发的重新加载 */
+async function onReloadDraft() {
+  try {
+    await reloadDraftFromServer()
+    ElMessage.success('已重新加载服务器上的草稿')
+  } catch (err) {
+    // 这里刻意不走 notifyDraftError：若重新加载本身又失败，不该再弹一次冲突框形成死循环
+    ElMessage.error((err && err.msg) || '重新加载失败，请稍后重试')
+  }
+}
+
 /* ------------------------- 编辑页回填 ------------------------- */
 
 /**
@@ -976,6 +1179,66 @@ let timer = null
 // 本项目已有等价实现 @/composables/useTabs，语义逐行对齐，直接复用而不另造一套。
 const { openWindow, closeWindow } = useTabs()
 
+/**
+ * 【§二十四】进入新增页时检测是否已有未提交的草稿。
+ *
+ * 【为什么是「询问」而不是「静默自动恢复」】草稿里是**上一次**填的内容。
+ * 用户这次可能是来报另一支乐团的，静默恢复会让他以为自己在填新表，
+ * 实际却混进了旧数据。所以只在确实检测到草稿时弹一次，由用户选。
+ *
+ * 后端草稿接口未部署时 listDrafts() 会走网络异常分支，这里整体吞掉：
+ * 检测不到就按全新表单走，不打扰用户、也不弹错。
+ */
+async function detectExistingDraft() {
+  try {
+    const drafts = await listDrafts()
+    if (!Array.isArray(drafts) || drafts.length === 0) return
+    // 取最近保存的一条（只依赖 updated_at，不假设后端返回顺序）
+    const latest = drafts
+      .slice()
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]
+    if (!latest || latest.draft_id == null) return
+
+    const when = latest.updated_at ? `（最后保存：${latest.updated_at}）` : ''
+    await ElMessageBox.confirm(
+      `检测到您有一份未提交的草稿${when}，是否继续填写？`,
+      '发现草稿',
+      { confirmButtonText: '继续填写', cancelButtonText: '重新开始', type: 'info' }
+    )
+    await loadDraft(latest.draft_id)
+    ElMessage.success('已恢复草稿内容')
+  } catch (err) {
+    // 用户选「重新开始」→ ElMessageBox 以 'cancel' reject，保持空白表单即可，其余静默
+    if (err === 'cancel' || err === 'close') return
+  }
+}
+
+/**
+ * 编辑页入口。
+ *
+ * 【§十三】「修改报名」必须走 edit-draft 把正式 Report 换出一份草稿来改，
+ * 而不是直接 PUT 正式 Report —— 否则「驳回 → 修改 → 再提交」这条链路里，
+ * 用户改到一半的内容会直接写进正式数据。
+ */
+async function enterEdit() {
+  try {
+    await enterEditFromRejected(route.params.id)
+  } catch (err) {
+    const e = err || {}
+    if (e.kind === DRAFT_ERR_CODE.NOT_REJECTED) {
+      // 非驳回状态本就不允许修改：列表页已按 §十三 只对「已驳回」放开编辑入口，
+      // 直接输 URL 进来的情况给明确提示，**不提供任何绕过路径**
+      ElMessage.error(e.msg || '该报名不是驳回状态，无法修改')
+      return
+    }
+    // 草稿接口不可用（后端尚未部署）→ 退回旧的正式 Report 回填，
+    // 保证「查看/核对已提交内容」不受影响；此时暂存与提交会失败并明确提示，
+    // 绝不会静默写坏正式数据。
+    ElMessage.warning('草稿服务暂时不可用，当前仅回填显示，暂存与提交会失败')
+    getMessage()
+  }
+}
+
 onMounted(() => {
   if (cfg.mode === 'create') {
     // dist: this.cacheName=this.$route.path; this.form=this.getCache(this.cacheName);
@@ -983,6 +1246,10 @@ onMounted(() => {
     // 注意 dist 传的是 $route.path（不含 :id），编辑页无此逻辑
     cacheName.value = route.path
     const cached = getCache(cacheName.value)
+    // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
+    // 它可能比服务端草稿新（刚敲完就切走）——下面 resumeDraftSession 据此决定要不要让
+    // 服务端内容盖上来，见那里的 restoreContent。
+    const hadLocalCache = !!cached
     if (cached) {
       form.value = cached
       fileList.value = cached.fileList ? cached.fileList : []
@@ -997,8 +1264,22 @@ onMounted(() => {
     timer = setInterval(() => {
       tempSave()
     }, 6e4)
+
+    // 【第十二届·暂存】服务端自动暂存（§二十二，45 秒一次，没有变化不发）
+    startDraftAutoSave()
+
+    /*
+     * 先认领上一轮留下的草稿指针（切走再回来、刷新页面都算），认领成功就不弹
+     * 「检测到您有一份未提交的草稿」—— 那份本来就是用户自己正在填的，弹窗只会打断。
+     * 认领失败（从没存过 / 指针已失效 / 这次没拉到）才退回原来的「检测已有草稿」。
+     *
+     * 认领是网络请求，所以不 await：它内部已把失败全部吃掉，不会抛到 onMounted 外面。
+     */
+    resumeDraftSession({ restoreContent: !hadLocalCache }).then((resumed) => {
+      if (!resumed) detectExistingDraft()
+    })
   } else {
-    getMessage()
+    enterEdit()
   }
 
   // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
@@ -1008,6 +1289,7 @@ onMounted(() => {
 // dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
+  stopDraftAutoSave()
 })
 
 /* ------------------------- 提交 ------------------------- */
@@ -1034,25 +1316,15 @@ function onSubmit() {
     }
     if (fileList.value && fileList.value.length === 0) return ElMessage.error('未上传视频')
 
-    const allPeople = []
-
-    if (form.value.teacher && form.value.teacher.length > 0) {
-      if (form.value.teacher.length > 3) return ElMessage.error('指导教师最多3人！')
-      form.value.teacher.forEach((t) => {
-        allPeople.push(t)
-      })
-    }
-
-    if (form.value.person && form.value.person.length > 0) {
-      form.value.person.forEach((p) => {
-        allPeople.push(p)
-        // 【第十二届】dist 此处另有三处副作用（studentCount / reserveCount / percussionCount
-        // 自增）和一条空语句 `0===i.type && i.position`（求值后丢弃），已一并删除：
-        //   · 那三个变量全文只被写入、从无读取处（逐标识符检索确认，各出现 3 次 = 声明 1 + 自增 1 + 读取 0），是死代码；
-        //   · 它们算的正是已被 config/personRules.js 的 validatePersonCount 取代的旧口径
-        //     （type===0 一刀切、打击乐不分角色），留着会被后人误当成有效口径取用。
-        // allPeople.push(p) 保留 —— 唯一有真实作用的一步，下方 `t.person = allPeople` 依赖它。
-      })
+    /*
+     * 【合并说明 2026-09-23】这一段曾与 origin/main 冲突，两侧都动了它：
+     *   · origin/main 只改了 allPeople 循环里的**注释**，代码一字未动；
+     *   · 本分支把整个 allPeople 数组删了（提交体改由 buildDraftPayload 产出，见下方长注释）。
+     * 故取本分支版本。origin/main 那段注释的结论（三个计数器是死代码）已被下方
+     * 「【第十二届·暂存改造】」长注释与 config/personRules.js 覆盖，信息未丢失。
+     */
+    if (form.value.teacher && form.value.teacher.length > 3) {
+      return ElMessage.error('指导教师最多3人！')
     }
 
     // 【第十二届改造】使用统一的人员规则校验
@@ -1070,12 +1342,28 @@ function onSubmit() {
     if (form.value.person === undefined) form.value.person = []
     if (form.value.teacher === undefined) form.value.teacher = []
 
-    const t = JSON.parse(JSON.stringify(form.value))
-    t.person = allPeople
-    t.spectrum = fileList1.value[0].id
-    // 【dist 原文】本族**没有** ProgramForm 族那样的 t.file 守卫，直接取 [0].id
-    t.file = fileList.value[0].id
-    t.time_length = 60 * form.value.minute + parseInt(form.value.second)
+    /*
+     * 【第十二届·暂存改造】这里原本要手工拼一份提交体 t：
+     *     const t = JSON.parse(JSON.stringify(form.value))
+     *     t.person = allPeople                    // 教师在前、人员在后
+     *     t.spectrum = fileList1.value[0].id
+     *     t.file     = fileList.value[0].id
+     *     t.time_length = 60*minute + parseInt(second)
+     * 现在提交体统一由 src/services/draftPayload.js 的 buildDraftPayload() 产出
+     * （规范 §十五/§十六：payload 的组装必须集中在一处），所以 t 及其专用的
+     * allPeople 数组已成死代码，连同上面那段 push 循环一并删除。
+     *
+     * 三者语义逐条对齐，删除不改变任何提交内容：
+     *   t.person       ← buildDraftPayload 里 [...teacher.map(), ...person.map()]，同样是教师在前
+     *   t.spectrum     ← firstFileId(fileList1)，同样取列表第一项，且**只取 ID**（§十八）
+     *   t.file         ← firstFileId(fileList)，同样取列表第一项
+     *   t.time_length  ← Number(minute||0)*60 + Number(second||0)，换掉 parseInt 是为了
+     *                     second 为空时得到 0 而不是 NaN（NaN 会让后端写库报错）
+     * 两个文件列表在 onSubmit 开头已经校验过非空，firstFileId 在这里必然拿到 ID。
+     *
+     * 【注意】buildDraftPayload 只认 form.teacher / form.person / fileList / fileList1，
+     * 因此上面那几行「把子表值同步进 form」的赋值是**必需**的，不能删。
+     */
 
     // 【第十二届改造】使用统一的时长校验规则
     const durationValidation = validateDuration(
@@ -1093,33 +1381,21 @@ function onSubmit() {
       cancelButtonText: '取消',
       type: 'warning'
     })
-      .then(() => {
-        const mod = MODULES[cfg.mode === 'create' ? cfg.api.create : cfg.api.update]
-        const call = cfg.mode === 'create' ? mod.report.create(t) : mod.report.update(t)
-
-        call.then(({ data: res }) => {
-          // 【dist 原文】判据是 `1===e.code`（只把 1 当失败），不是 `0!==code`。见文件头第三节。
-          if (res.code === 1) {
-            ElMessage.error(res.msg)
-          } else if (cfg.mode === 'create') {
-            fileList.value = []
-            fileList1.value = []
-            form.value = {}
-            clearCache(route.path)
-            form.value.person = []
-            form.value.teacher = []
-            form.value = makeForm()
-            ElMessage.success(res.msg)
-            // dist 原文：
-            //   this.closeWindow(this.$route.path),
-            //   this.openWindow("/<scope>/elementary/list","报名汇总")
-            // 两个调用的顺序与目标（路径 + 标签文案）完全一致。
-            closeWindow(route.path)
-            openWindow(cfg.redirect.path, cfg.redirect.label)
-          } else {
-            ElMessage.success(res.msg)
-          }
-        })
+      .then(async () => {
+        /*
+         * 【§十 正式提交】不再直接调 report.create / report.update，改为：
+         *     强制最后一次暂存（拿到最新 version）→ 用该 version 提交草稿
+         * 这两个动作都在 composable 的 submit() 里按顺序完成，且**排在同一条串行队列上**，
+         * 所以不会出现「自动暂存还在飞、提交又发一版」的竞态。
+         *
+         * 成功分支移动到 onSubmitted（见上面的 useDraftSession 配置），
+         * 保证「报名成功 → 清缓存 → 跳报名汇总」这条既有动线一字不变。
+         */
+        try {
+          await submitDraft()
+        } catch (err) {
+          notifyDraftError(err)
+        }
       })
       .catch(() => ElMessage.info('已取消'))
   })
@@ -1181,5 +1457,31 @@ function onSubmit() {
    必须用 :deep()：.el-upload 根节点上没有 data-v 属性，裸选择器命中不了。 */
 :deep(.upload-demo) {
   width: 100%;
+}
+
+/* 【第十二届·暂存】草稿状态文案。四档配色与 statusLevel 一一对应。
+   注意"颜色不能是唯一的信息载体"：文案本身（已暂存 / 暂存失败…）已经说明状态，
+   颜色只是强化，色盲用户读文字同样能分辨。 */
+.draft-status {
+  margin-left: 12px;
+  font-size: 13px;
+  line-height: 32px;
+  vertical-align: middle;
+}
+
+.draft-status--info {
+  color: #909399;
+}
+
+.draft-status--success {
+  color: #67c23a;
+}
+
+.draft-status--warning {
+  color: #e6a23c;
+}
+
+.draft-status--danger {
+  color: #f56c6c;
 }
 </style>

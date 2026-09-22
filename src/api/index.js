@@ -24,6 +24,7 @@ import { chouqianApi } from './chouqian'
 import { scanApi } from './scan'
 import { liveApi, exportApi } from './live'
 import { fileApi, qiniuApi, userApi } from './misc'
+import { reportDraftApi } from './reportDraft'
 
 export {
   login,
@@ -41,7 +42,8 @@ export {
   exportApi,
   fileApi,
   qiniuApi,
-  userApi
+  userApi,
+  reportDraftApi
 }
 
 export default {
@@ -59,5 +61,7 @@ export default {
   export: exportApi,
   files: fileApi,
   qiniu: qiniuApi,
-  user: userApi
+  user: userApi,
+  // 报名暂存（草稿）。scope 由调用方传 'school' | 'city'，见 api/reportDraft.js
+  reportDraft: reportDraftApi
 }

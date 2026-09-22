@@ -163,6 +163,18 @@ export function validatePersonCount(establishment, group, persons) {
   let formalCount = 0
   let reserveCount = 0
   let percussionCount = 0
+  /*
+   * 指挥单独计数，**只**用于下面那行「构成明细」展示。
+   *
+   * 修的是 0305af3 引入的 ReferenceError：那轮给错误文案加上了
+   * `（正式X / 预备Y / 指挥Z）` 明细，引用了 conductorCount，却忘了声明它 ——
+   * 于是本函数**每次**调用都在那一行抛 `conductorCount is not defined`。
+   * 唯一调用点是 OrchestraForm.onSubmit，异常发生在 el-form 的 validate 回调里，
+   * 表现为「点『立即报名』毫无反应」（只有控制台一行红线），报名提交完全不可用。
+   *
+   * 它**不**参与 formalMin / formalMax / reserveMax / percussionMax 任何一条判断，
+   * 与下方循环里 position===2 的注释（指挥不占正式、也不占预备名额）不矛盾。
+   */
   let conductorCount = 0
 
   // 遍历所有人员统计
@@ -192,14 +204,21 @@ export function validatePersonCount(establishment, group, persons) {
     if (p.type !== 0) return
     if (p.position === 0) {
       formalCount++
-      // 乐器 === '打击乐' 统计（只统计正式成员）
-      // 比对前必须先 trim：Excel 导入的「打击乐 」（尾随空格）原样入库，
-      // 不 trim 会统计不到，从而绕过铜管乐团「打击乐不超过8人」这条硬约束。
+      // 打击乐统计（只统计正式成员）。
+      // 走 isPercussion 而不是裸 ===：Excel 导入的 instrument 是原样透传的，
+      // 「打击乐 」（尾随空格）能通过导入，裸比对会漏计、绕过 percussionMax 这条硬约束。
+      // 本行**改回**了 isPercussion —— 它自 0305af3 起就定义在文件上方、连同理由一起，
+      // 但那一次只写了函数、没接上调用点，trim 修复实际没生效（函数是死代码）。
       if (isPercussion(p.instrument)) {
         percussionCount++
       }
     } else if (p.position === 1) {
       reserveCount++
+    } else if (p.position === 2) {
+      // 指挥：只记账、不设限。
+      // 既不属于正式成员、也不占用预备名额，故**不参与**上面任何一条 upper/lower bound，
+      // 只为 formalBreakdown 那行明细提供数字（用户看不出指挥算没算进去，正是要它显示的原因）。
+      conductorCount++
     }
     // position===2（指挥）不计入正式/预备，也不占用预备名额，只在构成明细里单独展示
   })

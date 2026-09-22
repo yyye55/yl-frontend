@@ -83,7 +83,36 @@ export function isMeaningfulPayload(p) {
  * @param {(restored) => void} opts.applyRestored —— 把 {form,fileList,fileList1} 写回页面
  * @param {(data) => void} opts.onSubmitted   —— 提交成功回调（跳转等）
  * @param {boolean} [opts.autoSave]           —— 是否启用自动暂存
+ * @param {{load:Function,save:Function,clear:Function}} [opts.sessionStore]
+ *        —— 草稿指针的落脚点，见下方长注释；不传则退化为「窗口期内存活」
  */
+
+/*
+ * ===========================================================================
+ * 【sessionStore：为什么草稿身份不能只活在这个 composable 里】
+ * ===========================================================================
+ * draftId / draftVersion / lastSavedAt 都是 **reactive state，每个调用方一份**。
+ * 而 useDraftSession 的调用方是 OrchestraForm.vue，路由一切换它就被卸载 ——
+ * 于是「填着填着切到报名汇总看一眼，再切回来」会得到一份全新的 state：
+ * draftId 为 null，界面从「已暂存」掉回「未保存」。内容其实一直在服务器上，
+ * 只是没人记得它的门牌号。同理，刷新页面也一样。
+ *
+ * 解法是把**指针**存到组件之外：
+ *
+ *     sessionStore  ← 存取 { draftId, reportId, version, state }
+ *
+ * 【只存指针，绝不存内容】指针里没有表单内容，只有一个门牌号。真正的内容在
+ * 重挂载时由 resumeSession() 回服务器拉（§八：草稿详情是权威版本）。
+ * 为什么不顺手把内容也存进 localStorage？因为页面**已经有一份**表单缓存了
+ * （OrchestraForm 的 tempSave，每 60 秒一次），再存一份只会多一个可能不一致的来源。
+ * 而既有的那份什么时候更新、要不要让服务端内容盖上来，见 resumeSession 的
+ * restoreContent —— 那是「不弄丢用户刚敲的字」这条底线所在，改动前务必先读。
+ *
+ * 【失效了要能干净退出】指针指向的草稿可能已被删除、或已提交转正。
+ * resumeSession 遇到这两种情况会清掉指针并返回 false，交回调用方走老路；
+ * 网络类失败则**保留**指针（下次进来还能再试），同样返回 false 不粘住页面。
+ */
+
 export function useDraftSession({
   scope,
   getForm,
@@ -91,7 +120,8 @@ export function useDraftSession({
   applyRestored,
   onSubmitted,
   onFatal,
-  autoSave = true
+  autoSave = true,
+  sessionStore = null
 }) {
   const state = reactive({
     draftId: null,
@@ -115,6 +145,36 @@ export function useDraftSession({
   let timer = null
   /** 串行链（见文件头）。永不 reject。 */
   let chain = Promise.resolve()
+
+  /* ------------------------- 草稿指针 ------------------------- */
+
+  /**
+   * 指针的内容。**只有身份，没有内容**（理由见文件头）。
+   * 存的是 draftVersion/draftState 的当前值，用于 PUT 时的乐观锁 ——
+   * 不存的话重挂载后第一次保存会带 version=null 而被后端判成冲突。
+   */
+  function persistSession() {
+    if (!sessionStore || !state.draftId) return
+    try {
+      sessionStore.save({
+        draftId: state.draftId,
+        reportId: state.reportId,
+        version: state.draftVersion,
+        state: state.draftState
+      })
+    } catch (e) {
+      // 存不进去（隐私模式 / 配额满）不该影响暂存本身，静默降级成"窗口期内有效"
+    }
+  }
+
+  function clearSession() {
+    if (!sessionStore) return
+    try {
+      sessionStore.clear()
+    } catch (e) {
+      /* 同上 */
+    }
+  }
 
   /* ------------------------- payload ------------------------- */
 
@@ -151,6 +211,7 @@ export function useDraftSession({
     state.lastSavedAt = clock()
     state.saveError = null
     state.isDirty = false
+    persistSession()
   }
 
   /**
@@ -249,13 +310,14 @@ export function useDraftSession({
     state.reportId = d.report_id != null ? String(d.report_id) : null
     if (d.version !== undefined && d.version !== null) state.draftVersion = d.version
     if (d.state !== undefined && d.state !== null) state.draftState = d.state
+    persistSession()
   }
 
   /**
    * 按草稿详情恢复页面（§八 / §二十三）。
    * 必须恢复**完整 payload**，并同步 draftId / reportId / version / state。
    */
-  async function loadDraft(draftId) {
+  async function loadDraft(draftId, { restoreContent = true } = {}) {
     const res = await reportDraftApi.getById(scope, draftId)
     const body = res.data || {}
     if (body.code !== 0) {
@@ -265,16 +327,91 @@ export function useDraftSession({
     const d = body.data || {}
     adoptDraftMeta(d)
 
-    const restored = restoreDraftPayload(d.payload, getForm())
-    applyRestored(restored)
-    await nextTick()
+    if (restoreContent) {
+      const restored = restoreDraftPayload(d.payload, getForm())
+      applyRestored(restored)
+      await nextTick()
 
-    // 恢复完立刻对齐签名：让"用户没再改动"就等于"与草稿一致"，
-    // 否则下一次自动暂存会立刻多发一次内容完全相同的请求。
-    lastSignature = payloadSignature(currentPayload())
-    state.isDirty = false
+      // 恢复完立刻对齐签名：让"用户没再改动"就等于"与草稿一致"，
+      // 否则下一次自动暂存会立刻多发一次内容完全相同的请求。
+      lastSignature = payloadSignature(currentPayload())
+      state.isDirty = false
+    } else {
+      /*
+       * 【内容留在本地 —— 这个分支是为了不丢用户刚敲的字】
+       *
+       * 页面每 60 秒把当前表单写进 localStorage，服务端每 45 秒暂存一次。
+       * 两者是**同一份表单在不同时刻的快照**：用户敲完最后几个字就切走的话，
+       * 本地那份可能比服务端新，而服务端那份可能比本地新。谁新谁旧这里判不出来。
+       *
+       * 那就按「不丢字」优先：内容用本地（== 用户最后看到的），只借服务端的
+       * 身份与 version。把签名置空，下一次自动暂存就会主动把本地这份推上去，
+       * 拿的还是正确的 version，不会平白撞 409。
+       */
+      lastSignature = null
+      state.isDirty = true
+    }
+
     state.lastSavedAt = d.updated_at ? clock(new Date(d.updated_at)) : null
     return d
+  }
+
+  /**
+   * 重挂载时认领上一次留下的草稿（§八 / §二十三）。
+   *
+   * 【要解决的是这个症状】填着填着切到报名汇总再切回来，刚才还显示「已暂存」，
+   * 回来变成「未保存」—— 内容一直在服务器上，只是新实例不记得门牌号。
+   * 顺带修掉一个更隐蔽的后果：draftId 丢了之后下一次自动暂存会走 **POST 创建**，
+   * 靠后端 create_or_get_draft 的幂等兜底才没有产生第二条草稿。
+   *
+   * @param {{restoreContent?: boolean}} [opt]
+   *        restoreContent=true（默认）：内容也以服务端草稿为准（§八 它是权威版本）。
+   *        restoreContent=false：页面本地缓存里握着用户**最后看到的**内容，
+   *        不能被一份可能更旧的草稿盖掉 —— 只借身份与 version，内容留在本地。
+   *        判据是「本地有没有缓存」，由调用方掌握（composable 看不到 localStorage）。
+   * @returns {Promise<boolean>} 是否认领成功。失败一律**不抛**，交回调用方走老路。
+   */
+  async function resumeSession({ restoreContent = true } = {}) {
+    if (!sessionStore) return false
+
+    let saved = null
+    try {
+      saved = sessionStore.load()
+    } catch (e) {
+      saved = null
+    }
+    const draftId = saved && saved.draftId != null ? String(saved.draftId) : null
+    if (!draftId) return false
+
+    try {
+      const d = await loadDraft(draftId, { restoreContent })
+
+      // 已提交的草稿不能再当"填写中的草稿"用：它已经转成正式报名了。
+      // 留着指针会让下次进来又去拉一份改不动的草稿，且一保存就撞 409。
+      if (state.draftState === 1) {
+        clearSession()
+        return false
+      }
+      return true
+    } catch (err) {
+      const e = normalizeDraftError(err)
+
+      /*
+       * 失效的指针要清掉（NOT_FOUND / 已提交 / 冲突 / payload 不合法），
+       * 否则每次进页面都要为它白发一次请求。
+       * 只有**这一次没读到**的三种情况例外，指针留着下次再试：断网、服务端出错、
+       * 登录态过期 —— 这三种里用户没做错任何事，草稿大概率还在。
+       */
+      const transient =
+        e.kind === DRAFT_ERR.NETWORK || e.kind === DRAFT_ERR.HTTP || e.kind === DRAFT_ERR.AUTH
+      if (!transient) clearSession()
+
+      // 内存里一律不留半吊子身份，否则 saveOnce 会拿着一个读不到的 draftId 去 PUT
+      state.draftId = null
+      state.reportId = null
+      state.draftVersion = null
+      return false
+    }
   }
 
   /** 编辑中的草稿摘要列表（§九） */
@@ -347,6 +484,8 @@ export function useDraftSession({
       state.reportId = d.reportId
       state.submitted = true
       clearPendingQueue()
+      // 草稿已转正式报名，指针使命结束。留着它下次进来会去拉一份不可编辑的草稿。
+      clearSession()
 
       if (onSubmitted) onSubmitted(d)
       return d
@@ -383,7 +522,10 @@ export function useDraftSession({
     if (state.hasVersionConflict) return TEXT.conflict
     if (state.isSaving) return TEXT.saving
     if (state.saveError) return TEXT.failed
-    if (state.lastSavedAt) return `${TEXT.saved} ${state.lastSavedAt}`
+    // 只报「已暂存」，不带时刻 —— 用户要的是「存住了没有」，时分秒既没用又占地方。
+    // 因而 lastSavedAt 现在只是个**「有没有保存过」的标记**（statusLevel 也用它），
+    // 时间戳本身保留着仅为排查时能对得上。
+    if (state.lastSavedAt) return TEXT.saved
     return TEXT.idle
   })
 
@@ -413,6 +555,7 @@ export function useDraftSession({
     startAutoSave,
     stopAutoSave,
     loadDraft,
+    resumeSession,
     listDrafts,
     enterEditFromRejected,
     reloadFromServer,

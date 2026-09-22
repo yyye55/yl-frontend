@@ -255,8 +255,10 @@
           1) 「暂存」由 dist 的「仅新增页可见 + 只写 localStorage」改为**两个模式都可见**，
              并且落服务端草稿（规范 §六、§二十二）。编辑页此前完全没有暂存能力，
              用户改到一半刷新页面就全丢了。
-          2) 状态文案取 draftStatusText（未保存 / 正在暂存…… / 已暂存 HH:MM:SS /
+          2) 状态文案取 draftStatusText（未保存 / 正在暂存…… / 已暂存 /
              暂存失败，请重试 / 草稿已在其他页面修改 / 正在提交…… / 已正式提交）。
+             「已暂存」**不带时刻** —— 用户要的是"存住了没有"，时分秒没用又占地方。
+             切走再回来、刷新页面都还能认回自己那份草稿，见 resumeDraftSession。
           3) 提交中用 :loading + 按钮禁用双重收口；冲突未解决前禁止再暂存 ——
              这两个约束由 composable 的状态机保证，模板只如实反映。
         -->
@@ -953,6 +955,28 @@ function tempSave(showTip = false) {
  */
 const draftScope = cfg.mode === 'create' ? cfg.api.create : cfg.api.update
 
+/**
+ * 草稿指针的落脚点。
+ *
+ * draftId / version 原本只活在 useDraftSession 的 reactive state 里，而路由一切换
+ * 本组件就被卸载 —— 于是「填着填着切到报名汇总再切回来」会得到一份全新 state，
+ * 界面从「已暂存」掉回「未保存」（内容其实一直在服务器上）。
+ *
+ * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 每 60 秒写一次），
+ * 再存一份内容只会多一个可能不一致的来源。指针里就一个门牌号，内容回服务器拉。
+ * 至于拉到之后要不要覆盖本地 —— 见 onMounted 里传给 resumeDraftSession 的
+ * restoreContent，那里是「不弄丢用户刚敲的字」的底线。
+ *
+ * 键里带 scope 与 route.path：不同报送渠道、不同乐团各存各的，互不串门。
+ * 用 route.path 而非 route.name —— 与上面 cacheName 的取法保持一致。
+ */
+const draftSessionKey = `draft_session:${draftScope}:${route.path}`
+const draftSessionStore = {
+  load: () => getCache(draftSessionKey),
+  save: (meta) => addCache(draftSessionKey, meta),
+  clear: () => clearCache(draftSessionKey)
+}
+
 const {
   state: draftState,
   statusText: draftStatusText,
@@ -963,6 +987,7 @@ const {
   startAutoSave: startDraftAutoSave,
   listDrafts,
   loadDraft,
+  resumeSession: resumeDraftSession,
   enterEditFromRejected,
   reloadFromServer: reloadDraftFromServer,
   DRAFT_ERR: DRAFT_ERR_CODE
@@ -984,6 +1009,7 @@ const {
   onSubmitted: (data) => {
     if (cfg.mode === 'create') {
       // 与 dist 原成功分支一致：清缓存 → 重置 → 关当前页 → 开报名汇总
+      // （草稿指针由 useDraftSession.submit 自己清，见那里的 clearSession 调用）
       clearCache(route.path)
       if (timer) {
         clearInterval(timer)
@@ -1005,7 +1031,10 @@ const {
   /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已停止自动暂存，这里只提示 */
   onFatal: (e) => {
     ElMessage.warning((e && e.msg) || '草稿不存在或已被删除')
-  }
+  },
+
+  // 草稿指针的落脚点：让「切走再回来」还认得自己的草稿（见上方 draftSessionStore）
+  sessionStore: draftSessionStore
 })
 
 /**
@@ -1217,6 +1246,10 @@ onMounted(() => {
     // 注意 dist 传的是 $route.path（不含 :id），编辑页无此逻辑
     cacheName.value = route.path
     const cached = getCache(cacheName.value)
+    // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
+    // 它可能比服务端草稿新（刚敲完就切走）——下面 resumeDraftSession 据此决定要不要让
+    // 服务端内容盖上来，见那里的 restoreContent。
+    const hadLocalCache = !!cached
     if (cached) {
       form.value = cached
       fileList.value = cached.fileList ? cached.fileList : []
@@ -1234,7 +1267,17 @@ onMounted(() => {
 
     // 【第十二届·暂存】服务端自动暂存（§二十二，45 秒一次，没有变化不发）
     startDraftAutoSave()
-    detectExistingDraft()
+
+    /*
+     * 先认领上一轮留下的草稿指针（切走再回来、刷新页面都算），认领成功就不弹
+     * 「检测到您有一份未提交的草稿」—— 那份本来就是用户自己正在填的，弹窗只会打断。
+     * 认领失败（从没存过 / 指针已失效 / 这次没拉到）才退回原来的「检测已有草稿」。
+     *
+     * 认领是网络请求，所以不 await：它内部已把失败全部吃掉，不会抛到 onMounted 外面。
+     */
+    resumeDraftSession({ restoreContent: !hadLocalCache }).then((resumed) => {
+      if (!resumed) detectExistingDraft()
+    })
   } else {
     enterEdit()
   }

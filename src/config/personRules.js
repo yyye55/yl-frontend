@@ -221,7 +221,8 @@ export function needSightReading(establishment, group) {
  * @returns {{ valid: boolean, error: string }}
  */
 export function validateDuration(minutes, seconds, establishment, group) {
-  const totalSeconds = minutes * 60 + seconds
+  // 两个入参来自 el-input（无 .number 修饰符），是字符串；不转数字会变成字符串拼接（'600' + '0' = '6000'）
+  const totalSeconds = Number(minutes) * 60 + Number(seconds)
   const limitSeconds = getDurationLimitSeconds(establishment, group)
   const limitMinutes = getDurationLimit(establishment, group)
   

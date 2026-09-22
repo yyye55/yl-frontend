@@ -3,13 +3,11 @@
     <!-- 操作栏 -->
     <div class="options">
       <el-upload
-        :action="domain"
-        :data="QiniuData"
         :multiple="true"
         accept="image/jpeg,image/png"
         :show-file-list="false"
         :before-upload="beforeUpload"
-        :on-success="uploadSuccessBatch"
+        :http-request="uploadFileBatch"
       >
         <el-button type="text" style="color:#1890ff">批量上传头像</el-button>
       </el-upload>
@@ -100,12 +98,10 @@
     <!-- 隐藏的上传组件（供单个上传使用） -->
     <el-upload
       ref="uploadRef"
-      :action="domain"
-      :data="QiniuData"
       :show-file-list="false"
       :hidden="true"
       :before-upload="beforeUpload"
-      :on-success="(res, file) => uploadSuccess(res, file, uploadIndex)"
+      :http-request="uploadFileSingle"
       style="display:none"
     >
       <button ref="uploadBtn">click</button>
@@ -125,10 +121,10 @@
  * 功能：批量添加行、批量上传头像（按文件名=身份证号匹配）、
  * 单个上传头像、删除行、校验。
  */
-import { ref, reactive, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { qiniuApi } from '@/api/misc'
 import { fileApi } from '@/api/misc'
+import { uploadToOss } from '@/services/ossUpload'
 
 const props = defineProps({
   showdata: { type: Array, default: () => [] }
@@ -141,10 +137,8 @@ const uploadIndex = ref(0)
 const uploadRef = ref(null)
 const uploadBtn = ref(null)
 
-const QiniuData = reactive({ token: '', key: 'ylbxt/avatar/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
-let filename = ''
+// 【第十二届改造·第二轮】QiniuData / domain / host / filename 已移除：
+// key 改由后端生成，url 由上传服务返回，前端不再硬编码七牛域名。
 
 // 回填
 watch(() => props.showdata, (val) => {
@@ -178,46 +172,56 @@ function upAvatar(index) {
 }
 
 function beforeUpload(file) {
-  filename = file.name
-  QiniuData.key = 'ylbxt/avatar/'
-  QiniuData.key += rename(file.name)
   const isImg = file.type === 'image/jpeg' || file.type === 'image/png'
   const isSize = file.size / 1024 / 1024 < 1
   if (!isImg) { ElMessage.error('格式只能是jpg或者png'); return false }
   if (!isSize) { ElMessage.error('文件大小不能超过1M'); return false }
-  qiniuApi.getToken().then((res) => {
-    if (res.data.code === 0) QiniuData.token = res.data.uptoken
-  })
   return true
 }
 
-function uploadSuccess(res, file, index) {
-  const info = { filename, url: host + res.key }
-  fileApi.saveFileInfo({ filename, url: info.url }).then((r) => {
-    if (r.data.code === 0) {
-      data.value[index].head = info.url
-    } else {
-      ElMessage.error('文件上传失败')
-    }
-  })
+/*
+ * 【第十二届改造】上传通道由七牛直传换成阿里云 OSS（biz: image）。
+ * 与 CrewTable.vue 逐字对称，改动理由见该文件的同名注释。
+ *
+ * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise
+ * 时才跑自己那套内部成功路径，本项目不用它的 file-list，返回非 Promise
+ * 让行为完全由下面的 .then 控制。
+ */
+function uploadFileSingle(options) {
+  const index = uploadIndex.value
+  uploadToOss({ file: options.file, biz: 'image' })
+    .then(({ url }) => {
+      fileApi.saveFileInfo({ filename: options.file.name, url }).then((r) => {
+        if (r.data.code === 0) {
+          data.value[index].head = url
+        } else {
+          ElMessage.error('文件上传失败')
+        }
+      })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
-function uploadSuccessBatch(res, file) {
-  const info = { filename: file.name, url: host + res.key }
-  fileApi.saveFileInfo({ filename: info.filename, url: info.url }).then((r) => {
-    if (r.data.code === 0) {
-      // 按文件名（身份证号）匹配
-      const card = info.filename.substring(0, info.filename.indexOf('.'))
-      const idx = data.value.findIndex(row => row.card === card)
-      if (idx >= 0) data.value[idx].head = info.url
-    } else {
-      ElMessage.error('文件上传失败')
-    }
-  })
-}
-
-function rename(name) {
-  return name
+function uploadFileBatch(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'image' })
+    .then(({ url }) => {
+      fileApi.saveFileInfo({ filename: file.name, url }).then((r) => {
+        if (r.data.code === 0) {
+          // 按文件名（身份证号）匹配
+          const card = file.name.substring(0, file.name.indexOf('.'))
+          const idx = data.value.findIndex(row => row.card === card)
+          if (idx >= 0) data.value[idx].head = url
+        } else {
+          ElMessage.error('文件上传失败')
+        }
+      })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 function getData() {

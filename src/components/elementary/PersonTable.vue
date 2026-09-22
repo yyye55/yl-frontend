@@ -46,10 +46,8 @@
 
         <el-upload
           style="display: inline-block"
-          :on-success="uploadSuccessBatch"
-          :data="QiniuData"
+          :http-request="uploadFileBatch"
           :before-upload="beforeUpload"
-          :action="domain"
           multiple
           accept="image/jpeg"
           :show-file-list="false"
@@ -58,10 +56,8 @@
         </el-upload>
 
         <el-upload
-          :on-success="uploadSuccess"
-          :data="QiniuData"
+          :http-request="uploadFileSingle"
           :before-upload="beforeUpload"
-          :action="domain"
           hidden
           :show-file-list="false"
         >
@@ -208,12 +204,17 @@
  *    `let filename` / `let Arrayindex`：setup() 每个组件实例各跑一遍，作用域与
  *    Vue 2 的「每实例一份、非响应式」完全一致；而且它们只在同步流程里被读，
  *    不需要响应式（dist 里也没有任何模板引用它们）。
+ *    → 【第十二届改造·第二轮】`let filename` 已删除：它唯一的用途是给七牛上传的
+ *      info.filename 赋值（见下方缺陷 f），改用 options.file.name 现取后失去意义。
+ *      `let Arrayindex` 保留 —— upAvatar 写入、uploadFileSingle 读取，与上传通道无关。
  *
  * 3) 工具 / 接口来源（dist 是全局的，本项目改为显式 import）
  *    - this.$api.files.saveFileInfo   → `import { fileApi } from '@/api/misc'` → fileApi.saveFileInfo
  *    - this.$api.communal.getQiNiuToken → `import { qiniuApi } from '@/api/misc'` → qiniuApi.getToken
  *      （两处映射均已核对 src/api/misc.js 的实际导出名）
+ *      → 【第十二届改造·第二轮】该映射连同 qiniuApi 导入一并删除，见下方 7)。
  *    - this.rename(...)               → `import { rename } from '@/utils/excel'`
+ *      → 【第十二届改造·第二轮】该导入已删除：它只用于给七牛拼 ObjectKey。
  *    - this.downloadStaticFile(...)   → `import { downloadStaticFile } from '@/utils/excel'`
  *      【dist 已确认】dist 的实现（app.js，Vue.prototype.downloadStaticFile）是
  *        const a=document.createElement("a"); a.href=路径; a.download=文件名;
@@ -256,6 +257,20 @@
  *
  * 6) getData / getCacheData → defineExpose，签名与返回值逐字保留。
  *
+ * 7) 【第十二届改造·第二轮】上传通道：七牛直传 → 阿里云 OSS（biz: image）
+ *    小文件改由后端代传进 OSS，经 @/services/ossUpload 的 uploadToOss()。
+ *    本组件共 3 个 el-upload，只动前两个（**外层那个是 Excel 导入，纯本机解析、
+ *    不联网，保持原样**）：
+ *      - 内层「批量上传头像」：`:action`/`:data`/`:on-success` → `:http-request="uploadFileBatch"`
+ *      - 内层「单张上传头像」：同上 → `:http-request="uploadFileSingle"`
+ *    脚本侧删除 QiniuData / domain / host / filename / getQiniuToken() / qiniuApi 导入 /
+ *    rename 导入；`onMounted` 里那次 getQiniuToken() 预取随之去掉。
+ *    ⚠️ 成功后的业务逻辑逐字保留，一步都没省：仍然调 fileApi.saveFileInfo(info)
+ *      （info 的 filename/type/size/url 四个字段同名同义），仍然在 body.code===0 时
+ *      回写 `data.value[...].head`；批量的「身份证后6位+姓名」匹配算法原样。
+ *    注意本组件的体积上限比后端规则更严（这里 100KB，后端 image 规则是 1MB），
+ *    前面那道 beforeUpload 是主闸，biz: image 只作兜底。
+ *
  * 【dist 已知缺陷（按原样保留，未顺手修复）】
  *   a. `upAvatar(e){ event.preventDefault(), this.Arrayindex=e, this.$refs.uploadAvatar.click() }`
  *      —— 引用的是**全局 window.event**（浏览器非标准但普遍存在），而不是形参；
@@ -273,6 +288,8 @@
  *      最后一次写入的文件名。单文件上传时二者必然一致（一次 beforeUpload 对一个 on-success），
  *      批量上传走的是另一个方法（用 file.name），所以此处没有观察到不一致；
  *      但由于是「实例级可变变量」，理论上并发上传会串，dist 即如此。
+ *      → 【第十二届改造·第二轮已消灭】单张上传改用 `file.name` 现取，
+ *        这条串号风险不复存在（见下方 7)。
  *   g. 【无法确认】`getPosition` 有 `"伴奏" → 3` 分支，而界面上的「角色」下拉只提供
  *      0 正式队员 / 1 预备队员 / 2 指挥 三项；该分支只可能由导入的 Excel 命中
  *      （src/components/common/ShowPerson.vue 的注释也确认 position=3 表示「伴奏」）。
@@ -287,11 +304,12 @@
  *      父组件只调用 getData/getCacheData（已全量检索 $refs.person.* 确认）。
  */
 
-import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { fileApi, qiniuApi } from '@/api/misc'
-import { rename, downloadStaticFile } from '@/utils/excel'
+import { fileApi } from '@/api/misc'
+import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
+import { uploadToOss } from '@/services/ossUpload'
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.person），可为 undefined / null */
@@ -299,9 +317,9 @@ const props = defineProps({
 })
 
 const data = ref([])
-const QiniuData = reactive({ token: '', key: 'ylbxt/avatar/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
+// 【第十二届改造·第二轮】QiniuData / domain / host / filename 已移除：
+// 上传改走阿里云 OSS（biz: image，小文件由后端代传），key 由后端生成、
+// url 由上传服务返回，前端不再硬编码七牛域名。
 
 /** 部署前缀（dist 是写死的 "/ylbxt/"），用法见文件头「移植理由 3」最后一段 */
 const BASE = import.meta.env.BASE_URL
@@ -309,8 +327,8 @@ const BASE = import.meta.env.BASE_URL
 /** 隐藏的单个头像上传 input 的触发按钮（dist: this.$refs.uploadAvatar） */
 const uploadAvatar = ref(null)
 
-/* dist 里这两个是「挂在 this 上、未写进 data」的实例属性，见文件头「移植理由 2」 */
-let filename = ''
+/* dist 里这个是「挂在 this 上、未写进 data」的实例属性，见文件头「移植理由 2」。
+   同组的 filename 已随七牛链路移除（原名改用 options.file.name 现取）。 */
 let Arrayindex = 0
 
 watch(
@@ -324,7 +342,8 @@ onMounted(() => {
   nextTick(() => {
     data.value = props.showdata ? props.showdata : []
   })
-  getQiniuToken()
+  // 【第十二届改造·第二轮】此处原先预取七牛 uptoken（getQiniuToken()）。
+  // 改走 OSS 后凭证由上传服务在真正要传时才取，不再需要挂载时预取。
 })
 
 /** dist: add(){ this.data.push({}) } —— 与 TeacherTable 不同，这里推的是空对象 */
@@ -496,74 +515,81 @@ function getPosition(position) {
   }
 }
 
-/**
- * dist:
- *   uploadSuccess(e,t){
- *     const n={};
- *     n.filename=this.filename, n.type=t.raw.type, n.size=t.size, n.url=this.host+e.key,
- *     this.$api.files.saveFileInfo(n).then(({data:e})=>{ 0===e.code
- *       ? this.$set(this.data[this.Arrayindex],"head",n.url) : Message.error("文件上传失败") })
- *   }
+/*
+ * 【第十二届改造·第二轮】上传通道由七牛直传换成阿里云 OSS（biz: image）。
+ * 原来是 `:on-success` 回调 uploadSuccess / uploadSuccessBatch，现在改为
+ * `:http-request` 调统一上传服务，成功后的落库与回写逻辑逐字保留：
+ *   - 单张：fileApi.saveFileInfo({filename,type,size,url}) → body.code===0 时写 head
+ *   - 批量：同上，再按「文件名前6位=身份证后6位 且 剩余=姓名」匹配到行
+ *
+ * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时才跑
+ * 自己那套内部成功路径（往 fileList 里塞条目），本组件靠 :show-file-list="false"
+ * 不显示列表，返回非 Promise 让行为完全由下面的 .then 控制。
+ *
+ * 【顺带修掉的缺陷】dist 的 uploadSuccess 用 `info.filename = this.filename`
+ * （也就是 beforeUpload 里存下的那个模块级变量，见文件头「dist 已知缺陷 f」），
+ * 并发上传时有串号风险；改用 options.file.name 现取，不再共享状态。
  */
-function uploadSuccess(res, file) {
-  const info = {}
-  info.filename = filename
-  info.type = file.raw.type
-  info.size = file.size
-  info.url = host + res.key
 
-  fileApi.saveFileInfo(info).then(({ data: body }) => {
-    if (body.code === 0) data.value[Arrayindex].head = info.url
-    else ElMessage.error('文件上传失败')
-  })
+/** dist 原文见 git 历史：uploadSuccess(e,t){ n.filename=this.filename, ... } */
+function uploadFileSingle(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'image' })
+    .then(({ url }) => {
+      const info = {}
+      info.filename = file.name
+      info.type = file.type
+      info.size = file.size
+      info.url = url
+
+      fileApi.saveFileInfo(info).then(({ data: body }) => {
+        if (body.code === 0) data.value[Arrayindex].head = info.url
+        else ElMessage.error('文件上传失败')
+      })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 /**
- * dist:
- *   uploadSuccessBatch(e,t){
- *     const n={};
- *     n.filename=t.name, n.type=t.raw.type, n.size=t.size, n.url=this.host+e.key,
- *     saveFileInfo(n).then(({data:e})=>{
- *       if(0===e.code){
- *         const e=t.name.substring(0,t.name.lastIndexOf("."));
- *         if(e.length<6) return void Message.error("文件名格式错误："+t.name);
- *         const r=e.substring(0,6), i=e.substring(6),
- *               o=this.data.findIndex(e=>{ if(!e.card||!e.name) return !1;
- *                 const t=e.card.length>=6?e.card.substring(e.card.length-6):e.card;
- *                 return t===r&&e.name===i })
- *         -1!==o ? this.$set(this.data[o],"head",n.url) : Message.error("未找到匹配的人员："+t.name)
- *       } else Message.error("文件上传失败")
- *     })
- *   }
+ * dist 原文见 git 历史：uploadSuccessBatch(e,t){ n.filename=t.name, ... }
  * 匹配规则：文件名（去扩展名）前 6 位 === 身份证号后 6 位，且剩余部分 === 姓名。
  */
-function uploadSuccessBatch(res, file) {
-  const info = {}
-  info.filename = file.name
-  info.type = file.raw.type
-  info.size = file.size
-  info.url = host + res.key
+function uploadFileBatch(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'image' })
+    .then(({ url }) => {
+      const info = {}
+      info.filename = file.name
+      info.type = file.type
+      info.size = file.size
+      info.url = url
 
-  fileApi.saveFileInfo(info).then(({ data: body }) => {
-    if (body.code === 0) {
-      const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
-      if (nameNoExt.length < 6) {
-        ElMessage.error('文件名格式错误：' + file.name)
-        return
-      }
-      const cardTail = nameNoExt.substring(0, 6)
-      const personName = nameNoExt.substring(6)
-      const idx = data.value.findIndex((item) => {
-        if (!item.card || !item.name) return false
-        const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-        return tail === cardTail && item.name === personName
+      fileApi.saveFileInfo(info).then(({ data: body }) => {
+        if (body.code === 0) {
+          const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
+          if (nameNoExt.length < 6) {
+            ElMessage.error('文件名格式错误：' + file.name)
+            return
+          }
+          const cardTail = nameNoExt.substring(0, 6)
+          const personName = nameNoExt.substring(6)
+          const idx = data.value.findIndex((item) => {
+            if (!item.card || !item.name) return false
+            const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
+            return tail === cardTail && item.name === personName
+          })
+          if (idx !== -1) data.value[idx].head = info.url
+          else ElMessage.error('未找到匹配的人员：' + file.name)
+        } else {
+          ElMessage.error('文件上传失败')
+        }
       })
-      if (idx !== -1) data.value[idx].head = info.url
-      else ElMessage.error('未找到匹配的人员：' + file.name)
-    } else {
-      ElMessage.error('文件上传失败')
-    }
-  })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 /**
@@ -576,8 +602,10 @@ function uploadSuccessBatch(res, file) {
  *     return n ? (t ? (t&&n) : (Message.error("格式只能是jpg"),!1))
  *              : (Message.error("文件大小不能超过100k"),!1)
  *   }
- * 注意 dist 的顺序：先重置 key、再追加随机名（**每次 beforeUpload 都会重置**，
- * 所以这里不存在 UploadScanDialog 那种 key 累加的缺陷），再判体积、后判格式。
+ * 注意 dist 的顺序：先判体积、后判格式，下面逐字保留。
+ *
+ * 【第十二届改造·第二轮】删去写 QiniuData.key / filename 的两行（以及只服务于
+ * 拼 key 的 rename 导入）：key 改由后端生成，文件名由处理器从 options.file 现取。
  */
 function beforeUpload(file) {
   /*
@@ -586,13 +614,8 @@ function beforeUpload(file) {
    *   - 学生照片命名：「身份证后6位+姓名.jpg」
    *   - 教师照片命名：「按系统规定命名」
    * 客户端硬校验（JPG + ≤100KB），蓝底与命名格式仅在前端提示，无法像素级校验。
-   * 【保留 dist 缺陷】QiniuData.key 每次都重置（不会累加），故此处写法正确。
    */
-  QiniuData.key = 'ylbxt/'
-  filename = file.name
-
   const isJpg = file.type === 'image/jpeg'
-  QiniuData.key += rename(file.name)
 
   // dist 原文顺序：先判体积、再判格式（保留）
   const sizeOk = file.size / 1024 < 100
@@ -607,13 +630,10 @@ function beforeUpload(file) {
   return isJpg && sizeOk
 }
 
-/** dist: getQiniuToken(){ $api.communal.getQiNiuToken().then(({data:e})=>{ 0===e.code ? this.QiniuData.token=e.uptoken : Message.error(e.msg) }) } */
-function getQiniuToken() {
-  qiniuApi.getToken().then(({ data: body }) => {
-    if (body.code === 0) QiniuData.token = body.uptoken
-    else ElMessage.error(body.msg)
-  })
-}
+/* 【第十二届改造·第二轮】getQiniuToken() 已删除。
+   dist: getQiniuToken(){ $api.communal.getQiNiuToken().then(...) }
+   它原来只在 onMounted 里被调用一次，用途是把七牛 uptoken 填进 QiniuData.token。
+   改走阿里云 OSS 后凭证由 @/services/ossUpload 在真正要上传时才取，挂载时预取没有必要。 */
 
 defineExpose({ getData, getCacheData })
 </script>

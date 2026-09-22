@@ -118,9 +118,9 @@ const routes = [
     meta: { requiresAuth: true, role: 1, title: '市级后台' },
     children: [
       { path: 'index',                     name: '/city/index',                  component: () => import('@/views/city/index.vue'),           meta: { title: '首页', icon: 'House' } },
-      { path: 'elementary/create',         name: '/city/elementary/create',      component: () => import('@/views/city/elementary-create.vue'),meta: { title: '小学组-新增' } },
-      { path: 'elementary/edit/:id',       name: '/city/elementary/edit/:id',    component: () => import('@/views/city/elementary-edit.vue'), meta: { title: '小学组-编辑' } },
-      { path: 'elementary/list',           name: '/city/elementary/list',        component: () => import('@/views/city/elementary-list.vue'),  meta: { title: '小学组-列表', icon: 'Document' } },
+      { path: 'elementary/create',         name: '/city/elementary/create',      component: () => import('@/views/city/elementary-create.vue'),meta: { title: '中小学组-新增' } },
+      { path: 'elementary/edit/:id',       name: '/city/elementary/edit/:id',    component: () => import('@/views/city/elementary-edit.vue'), meta: { title: '中小学组-编辑' } },
+      { path: 'elementary/list',           name: '/city/elementary/list',        component: () => import('@/views/city/elementary-list.vue'),  meta: { title: '中小学组-列表', icon: 'Document' } },
       // 【第十二届摘除】教师组新增/编辑/列表（group=2，第十一届模型）。页面文件保留，见文件头说明。
       // 摘除理由之一：create 页会向 Report 写 group="2"，而本作用域报名汇总不带 group 参数（查全部），
       // 该记录会混进正常报表。详见文件头。
@@ -139,9 +139,9 @@ const routes = [
     meta: { requiresAuth: true, role: 0, title: '学校后台' },
     children: [
       { path: 'index',                     name: '/school/index',                component: () => import('@/views/school/index.vue'),          meta: { title: '首页', icon: 'House' } },
-      { path: 'elementary/create',         name: '/school/elementary/create',    component: () => import('@/views/school/elementary-create.vue'),meta: { title: '小学组-新增' } },
-      { path: 'elementary/edit/:id',       name: '/school/elementary/edit/:id',  component: () => import('@/views/school/elementary-edit.vue'), meta: { title: '小学组-编辑' } },
-      { path: 'elementary/list',           name: '/school/elementary/list',      component: () => import('@/views/school/elementary-list.vue'),  meta: { title: '小学组-列表', icon: 'Document' } },
+      { path: 'elementary/create',         name: '/school/elementary/create',    component: () => import('@/views/school/elementary-create.vue'),meta: { title: '大学组-新增' } },
+      { path: 'elementary/edit/:id',       name: '/school/elementary/edit/:id',  component: () => import('@/views/school/elementary-edit.vue'), meta: { title: '大学组-编辑' } },
+      { path: 'elementary/list',           name: '/school/elementary/list',      component: () => import('@/views/school/elementary-list.vue'),  meta: { title: '大学组-列表', icon: 'Document' } },
       // 【第十二届摘除】教师组新增/编辑/列表（group=3，第十一届模型）。页面文件保留，见文件头说明。
       // { path: 'teacher/create',   name: '/school/teacher/create',   component: () => import('@/views/school/teacher-create.vue'), meta: { title: '教师组-新增' } },
       // { path: 'teacher/edit/:id', name: '/school/teacher/edit/:id', component: () => import('@/views/school/teacher-edit.vue'),   meta: { title: '教师组-编辑' } },

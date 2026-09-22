@@ -144,10 +144,28 @@ export function normalizeDraftError(err) {
   const serverVersion = data.server_version != null ? data.server_version
     : (data.version != null ? data.version : null)
 
-  if (code === 'DRAFT_VERSION_CONFLICT' || status === 409) {
+  /*
+   * 【顺序要紧：具体的业务码必须先于通用的 HTTP 状态判断】
+   *
+   * 后端有**三种**情况都返回 409（apps/core/report_drafts.py:42 / :47 / :60）：
+   *   DRAFT_VERSION_CONFLICT      真·版本冲突
+   *   REPORT_NOT_REJECTED         报名不是驳回状态（edit-draft / 重新提交）
+   *   DRAFT_DATA_INTEGRITY_ERROR  已提交草稿缺 report_id（服务端数据问题）
+   * 原先把 `status === 409` 写在最前面，于是后两者一律被吞成 CONFLICT。
+   *
+   * 后果不是文案不准，是**守卫被整个绕过**：OrchestraForm.enterEdit 只在
+   * kind===NOT_REJECTED 时拦下「非驳回状态的报名」并直接 return；被误判成
+   * CONFLICT 后会落进它下面的通用 catch，弹「草稿服务暂时不可用」并继续
+   * getMessage()，**本该被拒绝的编辑入口照常打开**。故先按码判，判不出来再退到状态。
+   *
+   * 例外：DRAFT_DATA_INTEGRITY_ERROR 刻意**不**单列，落到下面的 status===409。
+   * 它同样该「停止自动暂存」（useDraftSession 只在 CONFLICT 时停），而它的 msg
+   * 是原样透传的，用户仍看得到真实原因，不至于被误导成版本冲突。
+   */
+  if (code === 'DRAFT_VERSION_CONFLICT') {
     return { kind: DRAFT_ERR.CONFLICT, msg: body.msg || '草稿已在其他页面更新', serverVersion, status }
   }
-  if (code === 'DRAFT_NOT_FOUND' || status === 404) {
+  if (code === 'DRAFT_NOT_FOUND') {
     return { kind: DRAFT_ERR.NOT_FOUND, msg: body.msg || '草稿不存在或已被删除', serverVersion: null, status }
   }
   if (code === 'REPORT_NOT_REJECTED') {
@@ -156,7 +174,19 @@ export function normalizeDraftError(err) {
   if (code === 'DRAFT_ALREADY_SUBMITTED') {
     return { kind: DRAFT_ERR.ALREADY_SUBMITTED, msg: body.msg || '该草稿已经提交', serverVersion: null, status }
   }
-  if (code === 'INVALID_DRAFT_PAYLOAD' || status === 400) {
+  if (code === 'INVALID_DRAFT_PAYLOAD') {
+    return { kind: DRAFT_ERR.INVALID, msg: body.msg || '暂存内容不合法，请检查填写项', serverVersion: null, status }
+  }
+
+  // 到这里说明后端没给可识别的字符串业务码（含本项目既有 failure() 的数字码 1），
+  // 只能退回 HTTP 状态判断。
+  if (status === 409) {
+    return { kind: DRAFT_ERR.CONFLICT, msg: body.msg || '草稿已在其他页面更新', serverVersion, status }
+  }
+  if (status === 404) {
+    return { kind: DRAFT_ERR.NOT_FOUND, msg: body.msg || '草稿不存在或已被删除', serverVersion: null, status }
+  }
+  if (status === 400) {
     return { kind: DRAFT_ERR.INVALID, msg: body.msg || '暂存内容不合法，请检查填写项', serverVersion: null, status }
   }
   if (status === 401 || status === 403) {

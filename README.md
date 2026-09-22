@@ -217,7 +217,7 @@ yl-frontend/
 
 | 编号 | 业务要求 | 前端为何无法解决 | 后端建议 |
 | --- | --- | --- | --- |
-| BE-01 | 后端 group / establishment 枚举值确认 | 前端推测的占位 0-4 仅用于表单下拉，提交时仍按 formInit 常量；后端确认前，5 组数据字典可能不一致 | report 表 group/establishment 枚举确认并写入 src/config/groupConfig.js BACKEND_*_VALUE |
+| BE-01 | 后端 group / establishment 枚举值确认 | 前端推测的占位 0-4 仅用于表单下拉，提交时仍按 formInit 常量；后端确认前，5 组数据字典可能不一致 | report 表 group/establishment 枚举确认并写入 `src/config/personRules.js` 的 `orchestraType` / `level`（原 `src/config/groupConfig.js` 已删除） |
 | BE-02 | 每所学校限报一支队伍 | 数据库唯一性约束必须在后端 | report 表加 (school_id) UNIQUE |
 | BE-03 | 名单确定后不得更改 | 状态锁定字段必须由后端控制 | 增加 report.is_locked 字段，submit 后置 true；编辑 API 拒绝 is_locked 行 |
 | BE-04 | 资格审核识别「非本校师生」 | 需要跨表 join 身份证号、参赛人员 | 在 report.check API 中实现身份证+学校匹配校验 |

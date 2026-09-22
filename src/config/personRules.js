@@ -14,11 +14,20 @@
  * 
  * 【乐器识别】
  * - 乐器字段：item.instrument === '打击乐'
+ *
+ * 【后端字段 - 已验证】
+ * Report.group / Report.establishment 均为 CharField，直接存中文字符串
+ * （如 group="小学组"、establishment="管乐团"），不是数字枚举。
+ *   证据1：apps/api/views.py scoped_total() / stats_admin() 按 group 字符串过滤。
+ *   证据2：apps/api/export_services.py admin_data1_rows() 直接用 item.establishment。
+ * 故 PERSON_RULES 里的 orchestraType / level 两个字段即可直接作为后端值提交，
+ * 不需要再维护一张「前端 key → 后端值」的映射表。
+ * （相关后端待办 BE-01：stats 尚未按 establishment+group 联合分组，见 BACKEND_ISSUES.md）
  */
 
 /**
  * 人员编制规则
- * key: 与 TWELFTH_GROUPS 中的 FRONTEND_KEY 对应
+ * key: 规则键（wind_primary / wind_middle / wind_university / brass_primary / brass_middle）
  */
 export const PERSON_RULES = {
   'wind_primary': {
@@ -94,18 +103,11 @@ export const PERSON_RULES = {
  * @param {string} group - 组别 ('小学组' / '中学组' / '大学组')
  */
 export function getRuleKey(establishment, group) {
-  const map = {
-    '管乐团': {
-      '小学组': 'wind_primary',
-      '中学组': 'wind_middle',
-      '大学组': 'wind_university'
-    },
-    '铜管乐团': {
-      '小学组': 'brass_primary',
-      '中学组': 'brass_middle'
-    }
-  }
-  return map[establishment]?.[group] || null
+  // 反查 PERSON_RULES：每条已带 orchestraType / level，无需再维护一份手写映射表。
+  // 新增组别时只改 PERSON_RULES 一处，不会再出现「表加了、映射忘加」的漏改。
+  return Object.keys(PERSON_RULES).find(
+    k => PERSON_RULES[k].orchestraType === establishment && PERSON_RULES[k].level === group
+  ) || null
 }
 
 /**

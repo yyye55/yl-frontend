@@ -1,9 +1,5 @@
 <template>
   <el-header class="main-header">
-    <!-- 点击昵称 -> 打开帮助弹窗（dist: on:{click:()=>{e.showHelp=!0}}） -->
-    <div @click="$emit('help')">
-      <span>{{ nickname }}</span>
-    </div>
     <!-- 点击 -> 打开"修改信息"弹窗（dist: on:{click:()=>e.$refs.modify.show()}） -->
     <div @click="$emit('modify')">
       <el-icon><User /></el-icon>
@@ -48,25 +44,26 @@
  *    即原版没有折叠开关；
  *  - 原版头部只有上面三个可点击 div，没有下拉菜单；
  *  - "个人中心"在原版不存在，且原实现跳转的 {layout}/user 在 /online 下是死链。
+ *
+ * 【第十二届改动】按要求移除昵称那一栏，故 dist 原文中的**第 1 个 div**
+ * （上面第 23 行那条 `t("div",{on:{click:()=>{e.showHelp=!0}}},[…nickname…])`）
+ * 及其 `showHelp` 触发**已不再实现**。el-header 下现为两个 div：
+ * 修改信息（`$emit('modify')`）/ 退出登录（本地 logout）。
+ *
+ * 上面那段 dist 原文记录予以保留，作为「照证据修正」的凭据；**勿据此把昵称栏恢复回来**。
  */
 
-import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Bottom } from '@element-plus/icons-vue'
-import { useUserStore } from '@/store/modules/user'
 import { useTabsStore } from '@/store/modules/tabs'
 import { clearAllMsg } from '@/utils/auth'
 import { logout as apiLogout } from '@/api/auth'
 
-defineEmits(['modify', 'help'])
+defineEmits(['modify'])
 
 const router = useRouter()
-const userStore = useUserStore()
 const tabsStore = useTabsStore()
-
-// dist: data(){ user: this.getUser() }，模板里取 user.nickname
-const nickname = computed(() => (userStore.user && userStore.user.nickname) || '')
 
 function logout() {
   apiLogout().then(({ data: res }) => {

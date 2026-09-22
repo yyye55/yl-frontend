@@ -32,7 +32,7 @@
             </el-col>
           </el-row>
 
-          <!-- ============ 第 2 行：自选曲目 /（可选）指定曲目 ============ -->
+          <!-- ============ 第 2 行：自选曲目 / 指定曲目 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="自选曲目" prop="name">
@@ -40,12 +40,10 @@
               </el-form-item>
             </el-col>
             <!--
-              【变体】只有 5e02（/city/elementary/create）的「指定曲目」带
-              `v-if="'管乐团'===form.establishment"`；3d27 / 30d4 / 0b72 三个模块里
-              这个 el-col 是无条件渲染的（dist 渲染函数里没有 e._e() 分支）。
-              由 cfg.name1VIf 控制。
+              【第十二届】管乐团、铜管乐团现场展示曲目均为指定曲目和自选曲目各一首，
+              故「指定曲目」在 4 个变体里一律无条件渲染。
             -->
-            <el-col v-if="!cfg.name1VIf || form.establishment === '管乐团'" :span="12">
+            <el-col :span="12">
               <el-form-item label="指定曲目" prop="name1">
                 <el-input v-model="form.name1" placeholder="指定曲目" />
               </el-form-item>
@@ -58,7 +56,7 @@
               <el-form-item label="参演组别" prop="group">
                 <el-select v-model="form.group" style="width: 100%" placeholder="参赛组别选择">
                   <el-option
-                    v-for="opt in groupOptionsForCurrent()"
+                    v-for="opt in cfg.groupOptions"
                     :key="opt"
                     :label="opt"
                     :value="opt"
@@ -126,6 +124,66 @@
         <div class="bg2">
           <el-row :gutter="40">
             <el-col :span="12">
+              <el-form-item label="乐团集体电子照">
+                <el-upload
+                  class="upload-demo"
+                  drag
+                  :limit="1"
+                  :data="QiniuData"
+                  v-model:file-list="fileList1"
+                  :before-upload="beforeUpload1"
+                  :on-remove="handleRemove1"
+                  :http-request="uploadFile1"
+                  :action="domain"
+                  :on-exceed="handleExceed"
+                  :on-success="uploadSuccess1"
+                >
+                  <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                  <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+                  <template #tip>
+                    <div class="el-upload__tip">
+                      <!--
+                        【第十二届改造】红头文件要求：
+                          - 分辨率不低于 600dpi
+                          - JPEG 或 TIFF 格式
+                          - 用于制作秩序册
+                        原 dist 提示有 typo「JEPG」，已订正。
+                        600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
+                      -->
+                      乐团集体电子照用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
+                    </div>
+                  </template>
+                </el-upload>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="上传视频">
+                <el-upload
+                  class="upload-demo"
+                  drag
+                  :limit="1"
+                  :data="QiniuData"
+                  v-model:file-list="fileList"
+                  :before-upload="beforeUpload"
+                  :on-remove="handleRemove"
+                  :http-request="uploadFile"
+                  :action="domain"
+                  :on-exceed="handleExceed"
+                  :on-success="uploadSuccess"
+                >
+                  <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+                  <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+                  <template #tip>
+                    <div class="el-upload__tip">
+                      视频格式为MP4或MOV，大小不超过700MB。
+                    </div>
+                  </template>
+                </el-upload>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="40">
+            <el-col :span="24">
               <el-form-item label="乐团简介" prop="desc">
                 <el-input
                   v-model="form.desc"
@@ -133,70 +191,11 @@
                   placeholder="请输入内容"
                   maxlength="300"
                   show-word-limit
-                  :rows="15"
+                  :rows="8"
                 />
               </el-form-item>
             </el-col>
           </el-row>
-
-          <el-form-item label="乐团集体电子照片">
-            <el-upload
-              class="upload-demo"
-              drag
-              :limit="1"
-              :data="QiniuData"
-              v-model:file-list="fileList1"
-              :before-upload="beforeUpload1"
-              :on-remove="handleRemove1"
-              :http-request="uploadFile1"
-              :action="domain"
-              :on-exceed="handleExceed"
-              :on-success="uploadSuccess1"
-            >
-              <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-              <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  <!--
-                    【第十二届改造】红头文件要求：
-                      - 分辨率不低于 600dpi
-                      - JPEG 或 TIFF 格式
-                      - 用于制作秩序册
-                    原 dist 提示有 typo「JEPG」，已订正。
-                    600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
-                  -->
-                  乐团集体电子照片用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
-                </div>
-              </template>
-            </el-upload>
-          </el-form-item>
-        </div>
-
-        <!-- ============ 上传视频 ============ -->
-        <div class="bg3">
-          <el-form-item label="上传视频">
-            <el-upload
-              class="upload-demo"
-              drag
-              :limit="1"
-              :data="QiniuData"
-              v-model:file-list="fileList"
-              :before-upload="beforeUpload"
-              :on-remove="handleRemove"
-              :http-request="uploadFile"
-              :action="domain"
-              :on-exceed="handleExceed"
-              :on-success="uploadSuccess"
-            >
-              <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-              <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  视频格式为MP4或MOV，大小不超过700MB。
-                </div>
-              </template>
-            </el-upload>
-          </el-form-item>
         </div>
 
         <!-- ============ 指导教师 / 参展人员 ============ -->
@@ -249,9 +248,9 @@
  * | | ProgramForm 族（Create I / Edit I，12 路由） | OrchestraForm 族（本组件，4 路由） |
  * |---|---|---|
  * | dist 组件名 | name:"ElementaryCreate" / "ElementaryEdit"（另有 "Student" 等同名者） | **同样**是 name:"ElementaryCreate" / "ElementaryEdit" |
- * | 主字段 | 合唱团名称 / 曲目1 / 曲目2 + 原创·中国作品 radio + 表演人数 + 伴奏形式 | 乐团名称 / **类型** / 自选曲目 /（指定曲目）/ 参演组别 / 时长 / 参展学校名称 / 领队* |
+ * | 主字段 | 合唱团名称 / 曲目1 / 曲目2 + 原创·中国作品 radio + 表演人数 + 伴奏形式 | 乐团名称 / **类型** / 自选曲目 / 指定曲目 / 参演组别 / 时长 / 参展学校名称 / 领队* |
  * | 曲目字段 | name1 + name2，origin1/2、territory1/2（radio） | **只有 name1**，无 name2 / origin / territory |
- * | 乐团简介 | 无 | 有（textarea，maxlength 300，rows 15） |
+ * | 乐团简介 | 无 | 有（textarea，maxlength 300，rows 8） |
  * | 上传块 | 曲谱（PDF≤20M）+ 视频 | **乐团集体电子照（JPEG/TIFF≤20MB）** + 视频（MP4/MOV≤700M） |
  * | 红字提示 | 无（仅在视频 tip 里） | 指导教师/参展人员 各有一条 14px #ff0000 的 `<p>` |
  * | 院校/单位字段 | school_name 由「阶段/区县/高校名称」变体决定 | 固定 `参展学校名称` |
@@ -266,13 +265,20 @@
  * ===========================================================================
  * | 路由 | dist 模块 | 作用域 id | 标题 | 类型 选项 | 参演组别 选项 | 指定曲目 v-if | getById/update | 提交后 |
  * |---|---|---|---|---|---|---|---|---|
- * | /city/elementary/create   | 5e02 | c01ac1ca | 赛事报名 | 管乐团·铜管乐团 | 小学组·中学组        | **有** | -/city/create   | 跳 /city/elementary/list 报名汇总 |
+ * | /city/elementary/create   | 5e02 | c01ac1ca | 赛事报名 | 管乐团·铜管乐团 | 小学组·中学组        | **有**（※已改，见第六节） | -/city/create   | 跳 /city/elementary/list 报名汇总 |
  * | /school/elementary/create | 3d27 | 6517e16c | 赛事报名 | 管乐团          | 大学组              | 无     | -/school/create | 跳 /school/elementary/list 报名汇总 |
- * | /city/elementary/edit/:id   | 30d4 | 0ce6ffa5 | 报名修改 | 管乐团·铜管乐团 | 小学组·中学组·**大学组** | 无     | city/city   | 无（只提示） |
+ * | /city/elementary/edit/:id   | 30d4 | 0ce6ffa5 | 报名修改 | 管乐团·铜管乐团 | 小学组·中学组·**大学组**（※已改，见第五节） | 无     | city/city   | 无（只提示） |
  * | /school/elementary/edit/:id | 0b72 | a05320c6 | 报名修改 | 管乐团          | 大学组              | 无     | school/school | 无（只提示） |
  *
  * 【注意·非对称】「参演组别」的选项，city 新增是 2 个（小学组/中学组），
- * city 编辑却是 **3 个**（小学组/中学组/大学组）。这是 dist 原文，照搬不改。
+ * city 编辑却是 **3 个**（小学组/中学组/大学组）。这是 dist 原文。
+ * **第十二届已把 city 编辑的「大学组」去掉，现与 city 新增一致** —— 见第五节。
+ *
+ * 【注意·非对称】「指定曲目」的 v-if，dist 里**只有 5e02 一个模块有**：
+ *   5e02 (city 新增)  : `"管乐团"===form.establishment ? <el-col>[指定曲目] : 不渲染`
+ *   3d27/30d4/0b72    : 无 v-if，无条件渲染
+ *   同族四个模块两种写法 —— 逐 chunk grep dist 原文比对确认，非推断。
+ * **第十二届已统一为 4 个变体一律无条件渲染** —— 见第六节。
  *
  * 【注意·非对称】表单初值只有 **3d27** 带业务默认值：
  *   3d27: form:{read:!1,minute:0,second:0,**group:"大学组",establishment:"管乐团"**,dinner_reservation:[]}
@@ -342,8 +348,67 @@
  * （按钮 32→24px、表格单元格 padding 8px→4px、字号变小），会改动界面。
  * 【保留未改】`oninput="value=value.replace(...)"`：dist 原文（在原生 input 上过滤非数字），
  * 与 ProgramForm 保持同一写法，实际效果在浏览器中验证。
+ *
+ * ===========================================================================
+ * 五、【第十二届偏离】参演组别为什么按「报送渠道」而不是按「乐团类型」联动
+ * ===========================================================================
+ * 【背景】dist 原文（上表 30d4 行）给 city 编辑页的「参演组别」写死了 3 个选项
+ *   小学组/中学组/大学组，而 city 新增页（5e02）只有 2 个 小学组/中学组。
+ *   同渠道、同类型、两个页面两套选项 —— 这一处非对称是 dist 自身的缺陷。
+ *
+ * 【判定依据】红头文件（《…第十二届管乐展示活动 - 系统需求》）
+ *   （一）报名对象：「管乐团分为小学组、中学组和大学组。铜管乐团分为小学组和中学组。」
+ *   （三）展示时长：小学组12分钟 / 中学组15分钟 / 大学组18分钟；铜管乐团（小学、中学）均10分钟。
+ *   —— 即全场一共 5 个合法组合：管乐×3 + 铜管×2（BACKEND_ISSUES.md:80 的后端分组同此）。
+ *
+ *   红头文件这句话定义的是**全场的合法组合**，不等于**某个渠道页面上能选的组合**。
+ *   报名主体在账号申请表（附件4）里是二选一：「市州 / 高校」，两类账号走不同渠道：
+ *     · 高校渠道（school）—— 只报大学组。代码里 establishmentOptions 只有「管乐团」
+ *       一项、groupOptions 只有「大学组」；**铜管乐团整体缺席高校端**，
+ *       正是因为按红头文件铜管乐团压根没有大学组。两条互相印证。
+ *     · 市州渠道（city ）—— 报中小学，即小学组/中学组。
+ *
+ * 【结论】city 渠道不该出现「大学组」，与乐团类型（管乐/铜管）无关：
+ *   管乐团 × city → 小学组、中学组（大学组归高校渠道）
+ *   铜管乐团 × city → 小学组、中学组
+ *   管乐团 × school → 大学组
+ *   故 dist 30d4 多出的「大学组」于第十二届**移除**，city 编辑页与新增页统一为 2 个选项。
+ *
+ * 【连带删除的实现】原先为按类型联动写的 `cfg.groupOptionsFor(establishment)` 函数、
+ *   模板里的 `groupOptionsForCurrent()` 调用，以及「切换类型时清空非法 group」的
+ *   `watch`，在本次改动后**全部成为死代码，已一并删除**。
+ *   其中那个 watch 还有一处副作用必须记录：编辑页 `getMessage()` 是 `form.value = r`
+ *   整体替换，会触发它；若后端存有历史数据「铜管乐团 + 大学组」，watch 会把 group
+ *   静默清成空字符串，用户打开编辑页会看到组别栏是空的（校验能拦住提交，不会写坏数据）。
+ *   删除该 watch 后此问题一并消失。
+ *
+ * 【未改动】`minuteValidator` 里按 establishment 判断时长的分支保持原样：
+ *   大学组 18 分钟的判据仍然可达 —— 高校渠道（school）就是「管乐团 + 大学组」。
+ *
+ * ===========================================================================
+ * 六、【第十二届偏离】指定曲目
+ * ===========================================================================
+ * 【背景】同族四个模块对「指定曲目」有两种写法（逐 chunk grep dist 原文比对）：
+ *   · 5e02 (city 新增)：带条件
+ *       `"管乐团"===form.establishment ? <el-col>[指定曲目] : 不渲染`
+ *     即选中「铜管乐团」时，整个指定曲目输入框**不渲染**。
+ *   · 3d27 / 30d4 / 0b72：`t("el-col",{attrs:{span:12}}` 前没有任何三元条件，
+ *     无条件渲染。
+ *
+ * 【判定依据】红头文件原文（与代码同处一个 chunk，可直接对照）：
+ *   「（三）展示曲目。管乐团、铜管乐团现场展示曲目均为指定曲目和自选曲目各一首，
+ *     指定曲目详见附件1。」
+ *   ——「管乐团、铜管乐团」并列，铜管乐团同样是指定 + 自选各一首。
+ *   故 5e02 的条件把铜管乐团本该有的输入框藏掉，是 dist 自身的缺陷。
+ *
+ * 【实际后果】5e02 选中「铜管乐团」时，用户看不到也填不了指定曲目，
+ *   而红头文件要求铜管乐团同样有指定曲目 —— 该字段被静默丢失。
+ *   另：`rules.name1` 本身是 `required: true`（"需填写指定曲目"）。
+ *
+ * 【结论】**4 个变体一律无条件渲染「指定曲目」**（管乐团 / 铜管乐团都一样）。
+ *   实现上就是去掉 5e02 那个三元条件，与其余三个模块原本的写法对齐。
  */
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -358,7 +423,7 @@ import { rename } from '@/utils/excel'
 import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
-import { validatePersonCount, validateDuration, getPersonStatusText, getDurationLimit } from '@/config/personRules'
+import { validatePersonCount, validateDuration } from '@/config/personRules'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
@@ -383,7 +448,6 @@ const VARIANTS = {
     api: { create: 'city' },
     establishmentOptions: ['管乐团', '铜管乐团'],
     groupOptions: ['小学组', '中学组'],
-    name1VIf: true,
     formDefaults: {},
     redirect: { path: '/city/elementary/list', label: '报名汇总' }
   },
@@ -393,7 +457,6 @@ const VARIANTS = {
     api: { create: 'school' },
     establishmentOptions: ['管乐团'],
     groupOptions: ['大学组'],
-    name1VIf: false,
     // 3d27 独有的业务默认值（5e02/30d4/0b72 都没有），见文件头第二节
     formDefaults: { group: '大学组', establishment: '管乐团' },
     redirect: { path: '/school/elementary/list', label: '报名汇总' }
@@ -405,16 +468,11 @@ const VARIANTS = {
     api: { getById: 'city', update: 'city' },
     establishmentOptions: ['管乐团', '铜管乐团'],
     /*
-     * 【第十二届修正】dist 原文是 ['小学组', '中学组', '大学组']，但红头文件第十二届
-     * 明确「铜管乐团分为小学组、中学组」（无大学组），因此这里需要按 establishment
-     * 联动 group 选项。
-     *
-     * 实现策略：用函数 `groupOptionsFor(establishment)` 在运行时返回正确列表，
-     * 模板调用方式 v-for="opt in groupOptionsFor(form.establishment)"。
+     * 【第十二届修正】dist 原文是 ['小学组', '中学组', '大学组']，
+     * 现改为 ['小学组', '中学组']，与 city 新增页（5e02）一致。
+     * 依据与理由见文件头第五节「参演组别为什么按渠道而不是按乐团类型联动」。
      */
-    groupOptions: ['小学组', '中学组', '大学组'], // 兼容旧 dist 默认值（实际不用）
-    groupOptionsFor: (est) => (est === '铜管乐团' ? ['小学组', '中学组'] : ['小学组', '中学组', '大学组']),
-    name1VIf: false,
+    groupOptions: ['小学组', '中学组'],
     formDefaults: {}
   },
   /* ---------------- 编辑（Edit II）：0b72 ---------------- */
@@ -423,29 +481,11 @@ const VARIANTS = {
     api: { getById: 'school', update: 'school' },
     establishmentOptions: ['管乐团'],
     groupOptions: ['大学组'],
-    name1VIf: false,
     formDefaults: {}
   }
 }
 
 const cfg = VARIANTS[props.variant]
-
-/**
- * 【第十二届改造】按当前 establishment 返回可选的 group 列表。
- *
- * 背景：dist 原文 30d4（city 编辑）的 cfg.groupOptions 是硬编码的
- * ['小学组', '中学组', '大学组']，与红头文件第十二届「铜管乐团无大学组」冲突。
- *
- * 优先级：
- *   1) 若 cfg.groupOptionsFor 存在（即 dist 30d4 这条），按 establishment 联动
- *   2) 否则用 cfg.groupOptions（其余三个变体都是 dist 原文定义死的，无需联动）
- */
-function groupOptionsForCurrent() {
-  if (typeof cfg.groupOptionsFor === 'function') {
-    return cfg.groupOptionsFor(form.value.establishment)
-  }
-  return cfg.groupOptions
-}
 
 const route = useRoute()
 const formRef = ref(null)
@@ -521,7 +561,7 @@ function minuteValidator(rule, value, callback) {
     if (form.value.group === '大学组' && (value > 18 || (18 === Number(value) && second > 0))) {
       callback(new Error('管乐团大学组展示时长须在18分钟以内'))
     }
-  } else {
+  } else if (form.value.establishment === '铜管乐团') {
     // 铜管乐团 ≤ 10分钟
     if (value > 10 || (10 === Number(value) && second > 0)) {
       callback(new Error('铜管乐团展示时长须在10分钟以内'))
@@ -576,24 +616,6 @@ const rules = reactive({
 /** 集体照缺失的提示文案：新增页是「未上传乐团集体照」，编辑页是「未上传集体照」（dist 原文） */
 const photoMissingMsg = computed(() =>
   cfg.mode === 'create' ? '未上传乐团集体照' : '未上传集体照'
-)
-
-/**
- * 【第十二届改造】当 establishment 变化时，若当前 group 不在新可选列表中，
- * 自动清空 group，让用户重新选择。
- *
- * 例：用户选「铜管乐团」，当前 group=「大学组」 → 清空 group 并触发校验提示。
- * 反之：用户从「铜管乐团」切回「管乐团」时，若 group 是「小学组/中学组」，保留即可。
- */
-watch(
-  () => form.value.establishment,
-  (newEst) => {
-    if (!newEst || typeof cfg.groupOptionsFor !== 'function') return
-    const allowed = cfg.groupOptionsFor(newEst)
-    if (!allowed.includes(form.value.group)) {
-      form.value.group = ''
-    }
-  }
 )
 
 /* ------------------------- 上传逻辑（逐行照搬 dist） ------------------------- */
@@ -1029,6 +1051,6 @@ function onSubmit() {
    导致「乐团集体电子照」比「上传视频」宽 13px。撑满内容列后两者完全一致。
    必须用 :deep()：.el-upload 根节点上没有 data-v 属性，裸选择器命中不了。 */
 :deep(.upload-demo) {
-  width: 40%;
+  width: 100%;
 }
 </style>

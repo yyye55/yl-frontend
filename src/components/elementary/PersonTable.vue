@@ -21,9 +21,10 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
+              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；批量上传文件名格式为<span style="color: black">身份证后6位.jpg</span> 例如：<span style="color: black">123456.jpg</span> 则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应。 </p>
       <el-upload
         class="import-bar"
-        style="margin: 10px; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
+        style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
         action="/"
         :show-file-list="false"
         :on-change="importExcel"
@@ -67,8 +68,6 @@
         >
           <button ref="uploadAvatar" type="button">click</button>
         </el-upload>
-
-        <p style="color: red; margin-bottom: 10px; flex-basis: 100%">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；批量上传文件名格式为<i style="color: blue">身份证后6位.jpg</i> 例如：<i style="color: blue">123456.jpg</i> 则与身份证号码后六位为 <i style="color: blue">123456 </i>的人员对应。 </p>
       </el-upload>
     </div>
 

@@ -13,7 +13,7 @@
  * - 视奏：仅管乐团需要，铜管乐团不需要
  * 
  * 【乐器识别】
- * - 乐器字段：item.instrument === '打击乐'
+ * - 乐器字段：item.instrument === '打击乐'（比对前先 trim，见 isPercussion）
  *
  * 【后端字段 - 已验证】
  * Report.group / Report.establishment 均为 CharField，直接存中文字符串
@@ -119,6 +119,23 @@ export function getPersonRules(frontendGroupKey) {
 }
 
 /**
+ * 是否为打击乐
+ *
+ * 乐器字段有两个来源，且其中一个是脏的：
+ *   1. 界面下拉（PersonTable.vue）—— 唯一取值 '打击乐'
+ *   2. Excel 导入（PersonTable.importExcel 的 `instrument: sheet[i].instrument`）—— 原样透传。
+ *      而 exportCheck 只校验 instrument 非空、**不校验取值**，故单元格里写「打击乐 」
+ *      （尾随空格）也能通过导入，进而不被统计，绕过「不超过8人」这条红头文件明写的硬约束。
+ * 故比对前先去掉首尾空白。JS 的 String.prototype.trim() 会去掉全部 WhiteSpace，
+ * 其中已包含全角空格 U+3000 与不换行空格 U+00A0（二者属 Unicode Zs），无需额外正则。
+ *
+ * @param {*} instrument - 乐器值，理论上为字符串，实际可能为任意类型（导入未做类型校验）
+ */
+function isPercussion(instrument) {
+  return typeof instrument === 'string' && instrument.trim() === '打击乐'
+}
+
+/**
  * 校验人员编制
  * @param {string} establishment - 乐团类型 ('管乐团' / '铜管乐团')
  * @param {string} group - 组别 ('小学组' / '中学组' / '大学组')
@@ -130,9 +147,14 @@ export function validatePersonCount(establishment, group, persons) {
   const rules = getPersonRules(ruleKey)
   
   if (!rules) {
+    // 【第十二届】原文案「未找到对应组别的人员编制规则」既不说哪个组合、也不说改哪里。
+    // 该路径只在编辑页回填到 PERSON_RULES 之外的历史组合时触发（新增页选项受 cfg 约束，
+    // 实测 4 条路由都选不出非法组合）。此时组别栏会原值回显一个下拉里不存在的值
+    // （实测：显示「大学组」而选项只有 小学组/中学组），若文案不点名，用户无从下手。
+    // 故把实际组合念出来并指明动作。仅改文案，拦截行为不变。
     return { 
       valid: false, 
-      errors: ['未找到对应组别的人员编制规则'], 
+      errors: [`未找到「${establishment} + ${group}」的人员编制规则，请重新选择类型或参演组别`], 
       stats: { formal: 0, reserve: 0, percussion: 0 } 
     }
   }
@@ -141,6 +163,19 @@ export function validatePersonCount(establishment, group, persons) {
   let formalCount = 0
   let reserveCount = 0
   let percussionCount = 0
+  /*
+   * 指挥单独计数，**只**用于下面那行「构成明细」展示。
+   *
+   * 修的是 0305af3 引入的 ReferenceError：那轮给错误文案加上了
+   * `（正式X / 预备Y / 指挥Z）` 明细，引用了 conductorCount，却忘了声明它 ——
+   * 于是本函数**每次**调用都在那一行抛 `conductorCount is not defined`。
+   * 唯一调用点是 OrchestraForm.onSubmit，异常发生在 el-form 的 validate 回调里，
+   * 表现为「点『立即报名』毫无反应」（只有控制台一行红线），报名提交完全不可用。
+   *
+   * 它**不**参与 formalMin / formalMax / reserveMax / percussionMax 任何一条判断，
+   * 与下方循环里 position===2 的注释（指挥不占正式、也不占预备名额）不矛盾。
+   */
+  let conductorCount = 0
 
   // 遍历所有人员统计
   //
@@ -165,22 +200,33 @@ export function validatePersonCount(establishment, group, persons) {
     if (p.type !== 0) return
     if (p.position === 0) {
       formalCount++
-      // 乐器 === '打击乐' 统计（只统计正式成员）
-      if (p.instrument === '打击乐') {
+      // 打击乐统计（只统计正式成员）。
+      // 走 isPercussion 而不是裸 ===：Excel 导入的 instrument 是原样透传的，
+      // 「打击乐 」（尾随空格）能通过导入，裸比对会漏计、绕过 percussionMax 这条硬约束。
+      // 本行**改回**了 isPercussion —— 它自 0305af3 起就定义在文件上方、连同理由一起，
+      // 但那一次只写了函数、没接上调用点，trim 修复实际没生效（函数是死代码）。
+      if (isPercussion(p.instrument)) {
         percussionCount++
       }
     } else if (p.position === 1) {
       reserveCount++
+    } else if (p.position === 2) {
+      // 指挥：只记账、不设限。
+      // 既不属于正式成员、也不占用预备名额，故**不参与**上面任何一条 upper/lower bound，
+      // 只为 formalBreakdown 那行明细提供数字（用户看不出指挥算没算进去，正是要它显示的原因）。
+      conductorCount++
     }
-    // position===2（指挥）刻意不计数：它不属于正式成员，也不占用预备名额
   })
 
   // 校验正式成员人数
+  // 【第十二届】附上构成明细：口径改为按 position 分流后，只报一个总数会让用户看不出
+  // 是哪个角色被算进去了/没被算进去（如 31 正式 + 5 预备：旧口径按 36 通过、新口径 31 不通过）。
+  const formalBreakdown = `（正式${formalCount} / 预备${reserveCount} / 指挥${conductorCount}）`
   if (formalCount < rules.formalMin) {
-    errors.push(`正式成员人数不能少于${rules.formalMin}人，当前${formalCount}人`)
+    errors.push(`正式成员人数不能少于${rules.formalMin}人，当前${formalCount}人${formalBreakdown}`)
   }
   if (formalCount > rules.formalMax) {
-    errors.push(`正式成员人数不能超过${rules.formalMax}人，当前${formalCount}人`)
+    errors.push(`正式成员人数不能超过${rules.formalMax}人，当前${formalCount}人${formalBreakdown}`)
   }
   
   // 校验预备成员人数

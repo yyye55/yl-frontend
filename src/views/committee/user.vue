@@ -32,6 +32,8 @@
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
+    - 重置密码的 prompt：`inputValidator`（空串与纯空格都不放行）+ `inputType: 'password'`
+      （dist 无；不加的话空输入会被提示「重置成功」而密码没变，且新密码是明文显示）
 -->
 <template>
   <div class="bg">
@@ -194,11 +196,24 @@ function getData() {
  * 后端 apps/api/views.py register_user_routes("/committee", 2) 的 PUT /api/committee/user/
  * 调用的是 user_update_admin —— 它会接受任意 user_id 修改（不像 /api/user 那样限制自己），
  * 这是 committee 域特有的管理能力。
+ *
+ * 【本仓库增强，dist 无】inputValidator + inputType。
+ *  症状：弹窗里什么都不输（或只打空格）就点「确定」，页面提示「重置成功」，密码却没变。
+ *  原因：后端 user_update_admin 的条件是 `if data.get("password")`，空串 falsy 被跳过、
+ *        接口仍返回 success()；而 `'   '`（纯空格）是 truthy，会真的把密码改成一串空格。
+ *  做法：inputValidator 把空串与纯空格都拦下（红字 + 确定按钮不关弹窗，EP 原生行为，
+ *        依据本机 element-plus@2.14.6 message-box 源码 handleAction 第 187 行 / validate 第 200-214 行）；
+ *        inputType 设成 'password'（EP 默认 'text'，原本新密码是明文显示）。
+ *  不做：不限制长度 —— rules 里的 6-32 是用户自助改密码的规则，管理员重置临时短密码不该被堵。
+ *  与 admin/user.vue 的同名函数保持一致（两处一起改，见其文件头）。
  */
 function resetPassword(id) {
   ElMessageBox.prompt('请输入新密码', '重置密码', {
     confirmButtonText: '确定',
-    cancelButtonText: '取消'
+    cancelButtonText: '取消',
+    // 空串与纯空格都拦下（后端把 '   ' 当真值，会真的设成新密码）
+    inputValidator: (v) => (v && v.trim() ? true : '请输入新密码'),
+    inputType: 'password'
   }).then(({ value }) => {
     committeeApi.user.update({ id, password: value }).then((res) => {
       const body = res && res.data

@@ -123,18 +123,19 @@
 
         【已确认的刻意省略】dist 还有一个 `openImageDialog()`（拉取已上传图片回填 fileList
         后置 `dialogImageVisible=!0`，并调用 `getQiniuToken()`）。它本身也是死代码，
-        **本项目刻意不移植**（2026-09 决定）。因此 `getQiniuToken()` 在本文件中无调用点。
-        若将来要启用本对话框，需同时补回 openImageDialog 对 getQiniuToken 的调用，
-        否则 QiniuData.token 为空、七牛直传会失败。
+        **本项目刻意不移植**（2026-09 决定）。
+
+        【第十二届改造·第二轮】上面那条「启用时要补回 getQiniuToken 调用」的提醒已失效：
+        上传改走 OSS 后不再需要任何七牛凭证，`getQiniuToken()` 已删除，
+        模板也从 `:action`/`:data`/`:on-success` 换成 `:http-request="uploadFile"`。
+        将来启用本对话框时不需要补任何 token 逻辑。
       -->
       <el-upload
         class="upload-demo"
         drag
         :limit="5"
-        :on-success="uploadSuccess"
-        :data="QiniuData"
+        :http-request="uploadFile"
         :before-upload="beforeUpload"
-        :action="domain"
         :file-list="fileList"
         :on-remove="removeSuccess"
         :on-exceed="handleExceed"
@@ -179,19 +180,22 @@
  * API：
  *   GET /api/live/list → 列表数据
  *   GET /api/scan/files?type=1 → 已上传审核图
- *   GET /api/qiniu/token → 取七牛上传凭证（后端 apps/api/views.py:282）
- *   POST https://upload.qiniup.com → 七牛直传（非本站接口）
+ *   【第十二届改造·第二轮已废弃】GET /api/qiniu/token 取七牛凭证 +
+ *     POST https://upload.qiniup.com 七牛直传（非本站接口）
+ *     上传改走阿里云 OSS：小文件（biz: doc）由后端代传，经 @/services/ossUpload
+ *     的 uploadToOss()。本页不再调用七牛任何接口，/api/qiniu/token 本体保留至
+ *     全部上传点验证通过后再下线。
  *
  * 【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
  *   - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
  */
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { liveApi } from '@/api/live'
 import { scanApi } from '@/api/scan'
-import { qiniuApi } from '@/api/misc'
+import { uploadToOss } from '@/services/ossUpload'
 import ShowOnlinePerson from '@/components/online/ShowOnlinePerson.vue'
 import OnlineStatus from '@/components/online/OnlineStatus.vue'
 import Remark from '@/components/common/Remark.vue'
@@ -210,10 +214,8 @@ const dialogImageVisible = ref(false)
 const dialogImageUrl = ref('')
 const dialogVisible = ref(false)
 const fileList = ref([])
-const filename = ref('')
-const QiniuData = reactive({ token: '', key: 'ylbxt/' })
-const domain = 'https://upload.qiniup.com'
-const host = 'https://img.atyth.com/'
+// 【第十二届改造·第二轮】filename / QiniuData / domain / host 已移除：
+// key 改由后端生成，url 由上传服务返回，前端不再硬编码七牛域名。
 
 // ===================== lifecycle =====================
 import { useTabsStore } from '@/store'
@@ -263,43 +265,20 @@ function edit(row) {
   })
 }
 
-/**
- * 【dist 证据】A：getQiniuToken()
- *   getQiniuToken(){
- *     this.$api.communal.getQiNiuToken().then(({data:e})=>{
- *       0===e.code ? this.QiniuData.token=e.uptoken : s.a.error(e.msg)
- *     })
- *   }
+/*
+ * 【第十二届改造·第二轮】七牛直传 → 阿里云 OSS（biz: doc，小文件由后端代传）
  *
- * 【当前无调用点 —— 刻意】dist 中唯一的调用者是 openImageDialog()（自身也是死代码），
- * 本项目刻意未移植 openImageDialog，详见模板中上传对话框上方的说明。
- * 保留本函数仅为与 dist 的 methods 集合对齐；启用对话框时必须恢复其调用。
- */
-function getQiniuToken() {
-  qiniuApi.getToken().then((res) => {
-    const d = res.data
-    if (d.code === 0) {
-      QiniuData.token = d.uptoken
-    } else {
-      ElMessage.error(d.msg)
-    }
-  })
-}
-
-/**
- * 【dist 证据】A：beforeUpload(file)
- *   beforeUpload(e){
- *     this.filename=e.name, this.QiniuData.key+=this.rename(e.name);
- *     const t = e.size/1024/1024 < 20;          // 尺寸是否合格（严格小于 20）
- *     const n = "application/pdf" === e.type;   // 是否 pdf
- *     return n ? (t ? n&&t : (s.a.error("文件大小不能超过20M"), !1))
- *              : (s.a.error("请上传 .pdf 文件"), !1)
- *   }
- * 注意是 `< 20` 而非 `<= 20`：恰好 20MB 视为超限。
+ * 一并移除的三段 dist 遗留：
+ *   - getQiniuToken()：dist 中唯一的调用者 openImageDialog 自身就是死代码，
+ *     本项目本就没移植它，这个函数一直是零调用。现在整条七牛链路都走了，删掉。
+ *   - beforeUpload 里写 QiniuData.key / filename 的两行：key 改由后端生成，
+ *     且原来的 `QiniuData.key +=` 是累加，一次选多个文件会拼出错乱的 key。
+ *   - 本地 rename()（就是 `return name`）：只为拼 key 而存在。
+ *
+ * 【dist 证据】原 beforeUpload 的体积判定是 `e.size/1024/1024 < 20`
+ * （注意是 `< 20` 而非 `<= 20`：恰好 20MB 视为超限），下方判定逐字保留。
  */
 function beforeUpload(file) {
-  filename.value = file.name
-  QiniuData.key += rename(file.name)
   const sizeOk = file.size / 1024 / 1024 < 20
   const isPdf = file.type === 'application/pdf'
   if (!isPdf) {
@@ -313,8 +292,29 @@ function beforeUpload(file) {
   return true
 }
 
-function rename(name) {
-  return name
+/**
+ * 【第十二届改造·第二轮】替代原 uploadSuccess（它靠 el-upload 内置 XHR 回调）。
+ *
+ * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时
+ * 才跑自己那套内部成功路径（往 fileList 里塞条目），本页的 fileList 是手工
+ * push 的（dist 就是 `this.fileList.push(...)`），返回非 Promise 让行为
+ * 完全由下面的 .then 控制，条目结构与原来逐字段一致。
+ */
+function uploadFile(options) {
+  const file = options.file
+  uploadToOss({ file, biz: 'doc' })
+    .then(({ url }) => {
+      fileList.value.push({
+        uid: options.file.uid,
+        url,
+        name: file.name,
+        size: file.size,
+        type: file.type
+      })
+    })
+    .catch((err) => {
+      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+    })
 }
 
 function handleExceed() {
@@ -328,25 +328,6 @@ function removeSuccess(file) {
 
 function beforeClose() {
   fileList.value = []
-}
-
-/**
- * 【dist 证据】A：uploadSuccess(res, file)
- *   uploadSuccess(e,t){
- *     this.fileList.push({uid:t.uid, url:this.host+e.key, name:this.filename, size:t.size, type:t.raw.type}),
- *     this.QiniuData.key="ylbxt/"
- *   }
- * 由 el-upload 内置 XHR 在七牛返回 200 后回调（dist 未使用 http-request 自定义上传）。
- */
-function uploadSuccess(res, file) {
-  fileList.value.push({
-    uid: file.uid,
-    url: host + res.key,
-    name: filename.value,
-    size: file.size,
-    type: file.raw.type
-  })
-  QiniuData.key = 'ylbxt/'
 }
 
 /**

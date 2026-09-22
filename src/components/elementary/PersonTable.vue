@@ -310,6 +310,7 @@ import { fileApi } from '@/api/misc'
 import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
+import { checkPersonBasics } from '@/config/personFields'
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.person），可为 undefined / null */
@@ -401,6 +402,13 @@ function checkLine(item) {
   if (item.instrument === undefined || item.instrument === '') {
     return { flag: false, msg: '使用乐器需选择' }
   }
+  // 【第十二届·补格式校验】以上全是 dist 原判定 —— 它们只回答"填没填"，
+  // 于是姓名填「123」、身份证少两位、年龄填 -5、学校填「12345」、电话填 10 位
+  // 都能一路提交到后端（后端 card 是 CharField，也没有格式约束）。
+  // 规则集中在 config/personFields.js，与 Excel 导入那条路径共用同一份。
+  // 放在**最后**是为了不改动上面任何一条的优先级：先报"缺了什么"，再报"填错了什么"。
+  const formatErr = checkPersonBasics(item)
+  if (formatErr) return { flag: false, msg: formatErr }
   return { flag: true, msg: '验证成功' }
 }
 
@@ -433,6 +441,10 @@ function exportCheck(item) {
   if (item.position !== '正式队员' && item.position !== '预备队员' && item.position !== '指挥') {
     return { flag: false, msg: '角色格式只能是正式队员、预备队员、指挥' }
   }
+  // 【第十二届·补格式校验】理由同 checkLine 末尾：导入路径是把单元格文本原样透传的，
+  // 校验不在这里挡住，脏数据就直接进库了（乐器字段已经栽过一次，见 personRules.js）。
+  const formatErr = checkPersonBasics(item)
+  if (formatErr) return { flag: false, msg: formatErr }
   return { flag: true, msg: '验证成功' }
 }
 

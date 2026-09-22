@@ -178,6 +178,7 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
+import { checkPersonBasics } from '@/config/personFields'
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.person），可为 undefined / null */
@@ -263,6 +264,10 @@ function checkLine(item) {
   if (!item.phone) return { flag: false, msg: '电话号码不能为空' }
   if (item.type === undefined || item.type === '') return { flag: false, msg: '身份需选择' }
   if (item.position === undefined || item.position === '') return { flag: false, msg: '角色需选择' }
+  // 【第十二届·补格式校验】见 config/personFields.js。以上全是 dist 原判定，
+  // 只判"填没填"；格式放在最后，不改动上面任何一条的优先级。
+  const formatErr = checkPersonBasics(item)
+  if (formatErr) return { flag: false, msg: formatErr }
   return { flag: true, msg: '验证成功' }
 }
 
@@ -294,6 +299,9 @@ function exportCheck(item) {
   ) {
     return { flag: false, msg: '角色格式只能是正式队员、预备队员、指挥、伴奏' }
   }
+  // 【第十二届·补格式校验】理由同 checkLine 末尾：导入是原样透传单元格文本的。
+  const formatErr = checkPersonBasics(item)
+  if (formatErr) return { flag: false, msg: formatErr }
   return { flag: true, msg: '验证成功' }
 }
 

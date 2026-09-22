@@ -661,17 +661,36 @@ defineExpose({ getData, getCacheData })
   text-align: center;
 }
 
+/* 【列宽依据 —— 不是照 dist 抄的，是按实测重排的】
+ *
+ * dist 原值 50/120/180/120/130/140/150/130/130/140/140/160 合计 1590px，
+ * 在 1440 屏下（容器实测 1404px）溢出 186px；而且四列**本身就装不下**：
+ * 身份证号缺 3px、学校名称缺 43px、使用乐器缺 3px、操作缺 22px，
+ * 同时性别/年龄/电子照片/身份四列共浪费 200px。
+ *
+ * 现值按「canvas measureText 量最坏情况文本 + 元素自身 padding/border」实测重排：
+ *   姓名「欧阳娜娜」/ 身份证 18 位 / 学校全称 10 字 / 使用乐器「次中音萨克斯」/ 操作列两个按钮
+ * 合计 1382px < 1404px，因此 .box 不再产生横向滚动 ——
+ * .sticky-column 的 `right: 0` 随之变成空操作，原本「操作列盖住使用乐器与电子照片」
+ * 的遮挡问题一并消失，无需另改。
+ *
+ * 前 7 列与 TeacherTable 逐字对齐（两表同页上下排布，对齐后视觉连成一体）——
+ * 改这里请同步改 TeacherTable.vue，否则两张表会错位。
+ *
+ * 单元格 padding 同步由 10px 收到 6px：12 列 × 左右各 4px = 省 96px，
+ * 而 el-input 是撑满单元格 content box 的，收 padding 等于直接给各列文字区让位。
+ * 因此上面这些数值是「按 6px padding 的余量」定的，两者必须一起改。 */
 .box-line-title,
 .box-line {
   display: grid;
-  grid-template-columns: 50px 120px 180px 120px 130px 140px 150px 130px 130px 140px 140px 160px;
+  grid-template-columns: 38px 96px 182px 72px 78px 184px 128px 86px 114px 142px 80px 182px;
   justify-content: stretch;
 }
 
 .box-col {
   border-left: 1px solid #8c939d;
   border-bottom: 1px solid #8c939d;
-  padding: 5px 10px;
+  padding: 5px 6px;
   display: flex;
   justify-content: center;
   align-items: center;

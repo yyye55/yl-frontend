@@ -163,6 +163,7 @@ export function validatePersonCount(establishment, group, persons) {
   let formalCount = 0
   let reserveCount = 0
   let percussionCount = 0
+  let conductorCount = 0
 
   // 遍历所有人员统计
   //
@@ -183,18 +184,24 @@ export function validatePersonCount(establishment, group, persons) {
   // position 语义与后端 ReportPerson.position 一致（见 registration_form.py:3）：
   //   0=正式队员  1=预备队员  2=指挥  4=指导老师
   persons.forEach(p => {
+    // 【第十二届】指挥单独统计，且必须放在下面那句 type!==0 的提前返回**之前**：
+    // 中小学指挥须为本校在职教师（type=1），放到后面就永远数不到，会恒为 0。
+    // 这里只用于下方构成明细的展示，不并入正式/预备人数（口径见上）。
+    if (p.position === 2) conductorCount++
     // type=1 是教师。指导教师另表登记（TeacherTable，position 固定为 4），不算乐团编制。
     if (p.type !== 0) return
     if (p.position === 0) {
       formalCount++
       // 乐器 === '打击乐' 统计（只统计正式成员）
-      if (p.instrument === '打击乐') {
+      // 比对前必须先 trim：Excel 导入的「打击乐 」（尾随空格）原样入库，
+      // 不 trim 会统计不到，从而绕过铜管乐团「打击乐不超过8人」这条硬约束。
+      if (isPercussion(p.instrument)) {
         percussionCount++
       }
     } else if (p.position === 1) {
       reserveCount++
     }
-    // position===2（指挥）刻意不计数：它不属于正式成员，也不占用预备名额
+    // position===2（指挥）不计入正式/预备，也不占用预备名额，只在构成明细里单独展示
   })
 
   // 校验正式成员人数

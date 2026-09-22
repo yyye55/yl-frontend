@@ -17,22 +17,22 @@
       <el-table :data="teacher" border style="width:100%">
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
         <el-table-column prop="person_info.name" label="姓名" align="center" header-align="center" />
-        <el-table-column prop="person_info.card" label="身份证号" align="center" header-align="center" />
+        <el-table-column prop="person_info.card" label="身份证号" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.gender" label="性别" align="center" header-align="center" />
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
-        <el-table-column prop="person_info.school" label="学校名称" align="center" header-align="center" />
-        <el-table-column prop="person_info.phone" label="联系电话" align="center" header-align="center" />
+        <el-table-column prop="person_info.school" label="学校名称" width="200" align="center" header-align="center" />
+        <el-table-column prop="person_info.phone" label="联系电话" width="150" align="center" header-align="center" />
       </el-table>
 
       <div class="show-title">参演人员</div>
       <el-table :data="person" border style="width:100%">
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
         <el-table-column prop="person_info.name" label="姓名" align="center" header-align="center" />
-        <el-table-column prop="person_info.card" label="身份证号" align="center" header-align="center" />
+        <el-table-column prop="person_info.card" label="身份证号" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.gender" label="性别" align="center" header-align="center" />
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
-        <el-table-column prop="person_info.school" label="学校名称" align="center" header-align="center" />
-        <el-table-column prop="person_info.phone" label="联系电话" align="center" header-align="center" />
+        <el-table-column prop="person_info.school" label="学校名称" width="200" align="center" header-align="center" />
+        <el-table-column prop="person_info.phone" label="联系电话" width="150" align="center" header-align="center" />
         <el-table-column label="身份" align="center" header-align="center">
           <template #default="{ row }">
             <span v-if="row.type === 0">学生</span>
@@ -40,7 +40,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="角色" align="center" header-align="center">
+        <el-table-column label="角色" width="100" align="center" header-align="center">
           <template #default="{ row }">
             <span v-if="row.position === 0">正式队员</span>
             <span v-else-if="row.position === 1">预备队员</span>
@@ -49,7 +49,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="person_info.instrument" label="使用乐器" align="center" header-align="center" />
+        <el-table-column prop="person_info.instrument" label="使用乐器" width="150" align="center" header-align="center" />
         <el-table-column prop="person_info.head" label="头像" width="100" align="center" header-align="center">
           <template #default="{ row }">
             <img :src="row.person_info.head" style="width:59px;height:82px" />

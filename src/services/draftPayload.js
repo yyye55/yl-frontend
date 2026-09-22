@@ -81,8 +81,16 @@ function firstFileId(list) {
 function personToPayload(row) {
   const r = row || {}
   return {
-    // §十六 的键名。后端 store_people 有字段白名单，多带它会被安全忽略。
-    person_id: has(r.id) ? String(r.id) : null,
+    /*
+     * 【键名是 id，不是 person_id】后端 apps/core/report_drafts.py 的 PERSON_FIELDS
+     * 是**精确白名单**，多一个键就 400：
+     *     unknown = set(item) - PERSON_FIELDS
+     *     if unknown: raise DraftError("person[%s] 存在不允许字段")
+     * 而 PERSON_FIELDS 里叫 `id`（同一文件 payload_from_report() 回吐时也写 `id`）。
+     * 原先发的是 person_id —— 于是**只要报名表里有一个人，暂存和提交就全部 400**，
+     * 空表反而通过。已用真实后端复现，见 __debug__/emit-real-payload.mjs 的输出。
+     */
+    id: has(r.id) ? String(r.id) : null,
     name: str(r.name),
     // 身份证号必须字符串：Number() 会丢掉 18 位里的有效精度（§十七）
     card: str(r.card),
@@ -102,8 +110,9 @@ function personToPayload(row) {
 function payloadToPerson(row) {
   const r = row || {}
   return {
-    // 表单行用 id 承载 person_id（PersonTable 的既有约定）
-    id: has(r.person_id) ? r.person_id : undefined,
+    // 表单行用 id 承载人员 ID（PersonTable 的既有约定）。
+    // payload 里这个键也叫 id —— 与后端 PERSON_FIELDS 一致，见 personToPayload 的说明。
+    id: has(r.id) ? r.id : undefined,
     name: r.name ?? '',
     card: r.card ?? '',
     age: r.age ?? '',

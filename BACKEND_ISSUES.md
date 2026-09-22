@@ -240,6 +240,12 @@ ALTER TABLE report ADD CONSTRAINT uq_school UNIQUE (school_id);
 | POST | `/api/oss/video-token` | 获取 OSS 临时凭证 | BE-05 |
 | GET | `/api/school/report/exists` | 学校是否已报名 | BE-08 |
 | GET | `/api/repertoire/list` | 指定曲目字典查询 | BE-11 |
+| POST | `/api/{city,school}/report/drafts` | 创建报名草稿 | BE-12 |
+| PUT | `/api/{city,school}/report/drafts/{draft_id}` | 更新报名草稿（乐观锁） | BE-12 |
+| GET | `/api/{city,school}/report/drafts/{draft_id}` | 草稿详情 | BE-12 |
+| GET | `/api/{city,school}/report/drafts` | 草稿摘要列表 | BE-12 |
+| POST | `/api/{city,school}/report/drafts/{draft_id}/submit` | 草稿转正式报名 | BE-12 |
+| POST | `/api/{city,school}/reports/{report_id}/edit-draft` | 驳回后进入修改 | BE-12 |
 
 ### 需要修改的接口
 
@@ -303,7 +309,78 @@ ALTER TABLE report ADD CONSTRAINT uq_school UNIQUE (school_id);
 
 ---
 
-## 十、文档维护说明
+## 十、BE-12：报名暂存（草稿）接口契约
+
+> 前端已按本契约**全量实现**（见 `docs/报名暂存实施报告.md`），后端就绪前所有草稿请求会失败，
+> 但**不会**把用户踢到 404 页（草稿走的是独立 axios 实例，绕开了 `request.js` 的整页跳转）。
+
+### 请求约定（前端已按此发出，后端按此解析即可）
+
+- **scope 在路径里，不在 body 里**：`/api/school/...` 或 `/api/city/...`。
+  body 中**绝不**出现 `scope` / `user_id` / `status` / `state` —— 一律由后端从登录态推导。
+- **Content-Type 是 `application/x-www-form-urlencoded`，但 body 是 JSON 文本**。
+  这是本项目既有约定（`utils/request.js:79-86`：避免 CORS 预检）。
+  后端 `apps/core/services.py:parse_body` 先 `json.loads(request.body)`、失败才退到 `request.POST`，
+  所以**能正常解析**，无需改动。
+- **认证**：`Authorization: <token>`（与其他接口完全一致）。
+- **错误表达**：HTTP 200 + `code`。成功 `code: 0`；业务失败 `code` 为**字符串**（下表），
+  也兼容本项目既有的 `code: 1` + 中文 `msg` 写法 —— 前端两种都认。
+
+### 各接口
+
+```
+POST /api/{scope}/report/drafts
+  body: { "payload": { …完整报名快照… } }
+  → { "code": 0, "msg": "", "data": {
+        "draft_id": 1001, "report_id": null, "version": 1, "state": 0,
+        "updated_at": "2026-09-23 10:00:00" } }
+
+PUT  /api/{scope}/report/drafts/{draft_id}
+  body: { "version": 3, "payload": { … } }          ← version 是乐观锁，必须校验
+  → 同上结构，version 递增
+  ✗ 版本不匹配 → HTTP 409 或 code: "DRAFT_VERSION_CONFLICT"
+                 data 里带 "server_version"
+
+GET  /api/{scope}/report/drafts/{draft_id}
+  → { "code": 0, "data": { draft_id, report_id, version, state, updated_at, payload: {…} } }
+
+GET  /api/{scope}/report/drafts          ← 摘要列表，不含 payload
+  → { "code": 0, "data": [ { draft_id, report_id, version, state, updated_at, … } ] }
+
+POST /api/{scope}/report/drafts/{draft_id}/submit
+  body: { "version": 3 }                            ← **只发 version，不发 payload**
+  → { "code": 0, "data": { "draft_id":…, "report_id": 5000,
+                           "draft_state": 1, "report_status": 0 } }
+
+POST /api/{scope}/reports/{report_id}/edit-draft    ← 空 body {}
+  → { "code": 0, "data": { draft_id, report_id, version, state, updated_at, payload: {…} } }
+```
+
+### 业务码
+
+| code | 含义 | 前端行为 |
+|---|---|---|
+| `DRAFT_VERSION_CONFLICT` | 版本冲突 | 停止自动暂存、**不覆盖服务器**、提示用户点「重新加载服务器草稿」 |
+| `DRAFT_NOT_FOUND` | 草稿不存在 | 停止自动暂存并告知用户重新进入 |
+| `REPORT_NOT_REJECTED` | 报名不是驳回状态 | 编辑页给明确提示，不提供绕过路径 |
+| `DRAFT_ALREADY_SUBMITTED` | 已提交 | **按成功处理**，用返回的 `report_id` 继续，绝不重建报名 |
+| `INVALID_DRAFT_PAYLOAD` | payload 不合法 | 提示「暂存内容不合法」 |
+
+### 三条必须后端确认的点
+
+1. **路径单复数**：本清单按规范原文写 —— 草稿用单数 `/report/drafts`，驳回编辑用复数
+   `/reports/{id}/edit-draft`。而项目现状**全是单数** `/report/...`。二者必须统一；
+   若后端定为单数，前端只改 `src/api/reportDraft.js` 的 `PATHS.editDraft` 一行。
+2. **`version` 必须每次都回**。前端在收到 `code:0` 后立刻用它覆盖本地 version（规范 §二十）。
+   若某次响应漏了 `version`，前端会继续用旧值，**下一次保存必然 409**。
+3. **payload 里的 ID 是字符串**（`person_id` / `file` / `spectrum` 形如 `"35"`）。
+   Django 写库时会自行转 int，但如果后端对 payload 做严格类型校验，请按字符串接收。
+   同理 `group` / `establishment` 是**中文字符串**（`"小学组"` / `"管乐团"`），
+   **不是**整数枚举 —— 统计与导出按字符串过滤，改整数会让它们全部失效。
+
+---
+
+## 十一、文档维护说明
 
 - **文档作者**：前端负责人
 - **更新方式**：后端完成每条 BE 后，请回复"BE-XX 已完成"，前端将在后续轮次更新本文档

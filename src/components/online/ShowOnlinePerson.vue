@@ -2,7 +2,9 @@
   <!-- dist chunk-104e4496 模块 8dc0 中的 "人员信息" 列 scoped slot -->
   <!-- props: { crew, leader } -->
   <el-button type="text" @click="dialogTableVisible = true">查看人员信息</el-button>
-  <el-dialog v-model="dialogTableVisible" title="人员信息">
+  <!-- append-to-body：本组件在 el-table 的「人员信息」列单元格里，不加会被后面的列盖住。
+       原因见 ShowPerson.vue 顶部关于 .el-table__cell{z-index:1} 的说明。 -->
+  <el-dialog v-model="dialogTableVisible" title="人员信息" append-to-body>
     <!-- 带队教师表 -->
     <div class="show-title">带队教师</div>
     <el-table :data="leaderRows" border size="mini" style="width:100%">

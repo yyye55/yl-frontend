@@ -3,7 +3,9 @@
     <el-button style="font-size:12px;margin-right:6px" @click="dialogTableVisible = true">
       查看驳回信息
     </el-button>
-    <el-dialog v-model="dialogTableVisible" title="驳回原因">
+    <!-- append-to-body：本组件在 el-table 的操作列单元格里，不加会被后面的列盖住。
+         原因见 ShowPerson.vue 顶部关于 .el-table__cell{z-index:1} 的说明。 -->
+    <el-dialog v-model="dialogTableVisible" title="驳回原因" append-to-body>
       <p style="font-size:15px">{{ data }}</p>
     </el-dialog>
   </div>

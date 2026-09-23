@@ -120,10 +120,11 @@ export async function makeXLSX(fileName, aoa) {
 
 /**
  * 后端实际文件名映射（apps/api/export_services.py）
- * 管理员/组委会导出的文件名由后端固定生成，前端不应覆盖。
- * 理由：后端 workbook_response 设置 Content-Disposition filename，后端决定文件名。
- *       前端传 fileName 会变成 filename.xlsx（因为后端已经是 .xlsx）。
- *       因此去掉前端覆盖，直接使用后端返回的 blob，浏览器会根据 Content-Disposition 自动命名。
+ * 下列取值是后端的实际结果，作为「前端该取什么名字」的事实参考（后端 workbook_response
+ * 会设置 Content-Disposition filename）。
+ * 【更正】原文写「前端不应覆盖，浏览器会根据 Content-Disposition 自动命名」——不成立：
+ * blob URL 背后没有 HTTP 响应，<a> 读不到响应头（实测见 downloadPdfFile）。
+ * 现在文件名一律由前端给：调用方显式传入，缺省时用本函数的默认值。
  *
  * 后端实际文件名：
  *   /api/export/data     → "数据导出.xlsx"
@@ -141,8 +142,12 @@ export function downloadExcelFile(blob, fileName) {
   const url = window.URL.createObjectURL(b)
   const a = document.createElement('a')
   a.href = url
-  // 【第十二届修复】不传 fileName 时，浏览器使用后端 Content-Disposition 中的实际文件名
-  a.download = fileName ? (fileName + '.xlsx') : undefined
+  // 【第十二届修复】文件名必须始终给一个真名字，不能赋 undefined：download 是
+  // DOMString 反射属性，赋 undefined 会被 String() 化成 "undefined"，存盘名变成
+  // "undefined.xlsx"。原注释写的「不传时浏览器用后端 Content-Disposition」不成立 ——
+  // blob URL 拿不到响应头，实测见下面的 downloadPdfFile。
+  // 当前 8 个调用点全部传了名字，这个兜底分支未被触发。
+  a.download = (fileName || '导出数据') + '.xlsx'
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -151,13 +156,32 @@ export function downloadExcelFile(blob, fileName) {
 
 /**
  * 从 blob 下载 pdf
+ *
+ * 【第十二届改动】文件名不再由页面硬编码，收归本函数；默认名与后端
+ * GET /api/export/report 的 Content-Disposition 一致（"报名信息表.pdf"）。
+ * 原先 city 页传 "报名信息表"、school 页传 "报名信息表导出"，后者与后端不一致。
+ *
+ * 【为什么不能「不传名就让浏览器用后端名字」——实测结论】
+ * blob: URL 背后没有 HTTP 响应，所以 `<a>` 拿不到那次 axios 请求的
+ * Content-Disposition。用 Edge 实测（playwright，见 .scratch 探针）：
+ *     a.download 不赋值   → 存成 blob 的 UUID，如 "43232db3-….pdf"
+ *     a.download = ''     → 同上，仍是 UUID
+ *     a.download = undefined → 字面量字符串 → "undefined.pdf"
+ *                            （download 是 DOMString 反射属性，赋 undefined 会被 String() 化）
+ * ⇒ a.download 必须始终是一个真名字，且不能赋 undefined。
+ *
+ * 【如果要真正跟随后端改名】得在调用方按接口文档第 4 节解析
+ * res.headers['content-disposition']（RFC5987 / RFC2047 两种编码）再传进来。
+ * 注意 Content-Disposition 不是 CORS 安全列表内的响应头：开发环境前端 localhost
+ * 直连后端 47.108.29.34 属跨域，后端不额外配 Access-Control-Expose-Headers 的话
+ * JS 读出来恒为 undefined，只能退回默认名 —— 因此默认名这道兜底不能省。
  */
 export function downloadPdfFile(blob, fileName) {
   const b = new Blob([blob])
   const url = window.URL.createObjectURL(b)
   const a = document.createElement('a')
   a.href = url
-  a.download = fileName + '.pdf'
+  a.download = (fileName || '报名信息表') + '.pdf'
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

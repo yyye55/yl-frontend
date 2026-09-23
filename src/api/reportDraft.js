@@ -43,18 +43,18 @@
  * 失败才退到 request.POST.dict()，所以这样发它照样解析得出来。
  *
  * ===========================================================================
- * 【⚠ 后端接口不一致问题（转交后端，前端不自行修改后端）】
+ * 【后端接口落地情况 —— 2026-09-23 逐条核对过，下面这段是**现状**不是待办】
  * ===========================================================================
- * 1) 路径单复数不一致：本文件按规范原文实现 ——
- *      草稿   用单数  /api/{scope}/report/drafts
- *      驳回编辑用复数  /api/{scope}/reports/{report_id}/edit-draft
- *    而本项目后端（apps/api/views.py 的 register_scope_routes）现状全是**单数**
- *    /api/{scope}/report/...。二者必须统一，否则 edit-draft 会 404。
- *    前端此处按规范原文写，后端若定为单数，改本文件 PATHS 一处即可。
+ * 1) 路径单复数**实测是一致的**，不要按旧注释去"修"：
+ *      草稿    /api/{scope}/report/drafts            （Views 复数）
+ *      驳回编辑 /api/{scope}/reports/{report_id}/edit-draft（Views 复数）
+ *    本文件 PATHS.editDraft 写的复数与后端 views.py 的
+ *    `prefix + "/reports/{report_id}/edit-draft"` 逐字匹配，**能通**。
+ *    （本文件早前有一段注释声称后端是单数、edit-draft 会 404 —— 那是当时后端
+ *      尚未实现时的推测，已被证伪。据此改 PATHS 反而会改坏。）
  *
- * 2) 这 6 个接口后端**一个都还没有**：全仓 `grep -rni draft --include=*.py` 零命中，
- *    路由表里也没有 /report/drafts*。前端先按契约实现，后端就绪前调用会失败
- *    （由本实例自己的错误归一处理，不会整页跳 404）。
+ * 2) 这 6 个接口后端**全部已实现**（apps/api/views.py 的 register_draft_routes，
+ *    挂在 /api/school 与 /api/city 两处），并已被仓库外的探针实测跑通。
  */
 
 import axios from 'axios'
@@ -110,6 +110,7 @@ export const DRAFT_ERR = {
   CONFLICT: 'conflict',                 // 409：版本冲突，草稿已被别处更新
   NOT_FOUND: 'not_found',               // 草稿不存在
   NOT_REJECTED: 'not_rejected',         // 报名不是驳回状态，不能进入修改
+  QUOTA: 'quota',                       // 409：超出每校限报额度（不是版本冲突，见下）
   INVALID: 'invalid',                   // 400：payload 不合法
   ALREADY_SUBMITTED: 'already_submitted', // 已提交（按成功处理，见 §十二）
   AUTH: 'auth',                         // 401/403
@@ -172,10 +173,42 @@ export function normalizeDraftError(err) {
     return { kind: DRAFT_ERR.NOT_REJECTED, msg: body.msg || '该报名不是驳回状态，无法进入修改', serverVersion: null, status }
   }
   if (code === 'DRAFT_ALREADY_SUBMITTED') {
+    // 注：后端目前**从不返回**这个码（重复提交走的是「state==SUBMITTED 时直接回成功 +
+    // 原 report_id」）。保留分支是为了兼容规范 §十二 里描述的那种实现，不是死代码。
     return { kind: DRAFT_ERR.ALREADY_SUBMITTED, msg: body.msg || '该草稿已经提交', serverVersion: null, status }
   }
   if (code === 'INVALID_DRAFT_PAYLOAD') {
     return { kind: DRAFT_ERR.INVALID, msg: body.msg || '暂存内容不合法，请检查填写项', serverVersion: null, status }
+  }
+  if (code === 'SUBMISSION_VALIDATION_FAILED') {
+    // 后端 InvalidSubmission 的真实码（report_drafts.py:50-51）。提交阶段的必填/时长
+    // 等校验失败走它。此前没单列，靠 status===400 兜成同一档，kind 恰好一致，
+    // 但文案会退到笼统的「暂存内容不合法」；这里让它默认说清是提交校验没过。
+    return { kind: DRAFT_ERR.INVALID, msg: body.msg || '提交校验未通过，请检查填写项', serverVersion: null, status }
+  }
+  if (code === 'REPORT_QUOTA_EXCEEDED') {
+    /*
+     * 【必须单列，否则会退化成假的「版本冲突」】
+     *
+     * 后端 ReportQuotaExceeded（report_drafts.py:73-75）挂在 **409** 上，理由是
+     * 「业务上拒绝这次写入」——但它和 version 冲突没有任何关系。不单列就会被下面的
+     * `status === 409` 吞成 CONFLICT，后果与 :156-159 记的那次误判同一类，这次更重：
+     *
+     *   提交时撞额度 → kind=CONFLICT → OrchestraForm.notifyDraftError 弹的是
+     *   **硬编码**的「该草稿已在其他页面或设备更新」，并只给一个按钮
+     *   「重新加载服务器草稿」；而 body.msg 里后端给的真实原因
+     *   （应先点名是哪个组别已占额）**一个字都不会出现在屏幕上**。
+     *   用户点那个按钮也永远解决不了额度问题。
+     *
+     * 【额度口径 2026-09-23 放宽】不再是「每校一支」，改为
+     * 「每所学校每个组别限报一支；小学组、中学组可各报一支（最多两支），大学组限报一支」。
+     * 依据是组委会的新口径，**已不是红头文件正文一(二)的原文**。
+     * 前端不自己判额度（判了也会和后端漂移），一律以后端为准、只负责把 msg 显示对。
+     *
+     * 所以这里既要把 kind 摘出来，也要保住 msg —— 它是用户**唯一**能知道发生了什么的渠道。
+     * serverVersion 置 null：额度错误没有版本可言，留着会被冲突恢复逻辑读走。
+     */
+    return { kind: DRAFT_ERR.QUOTA, msg: body.msg || '超出报送名额限制', serverVersion: null, status }
   }
 
   // 到这里说明后端没给可识别的字符串业务码（含本项目既有 failure() 的数字码 1），
@@ -195,12 +228,19 @@ export function normalizeDraftError(err) {
   return { kind: DRAFT_ERR.HTTP, msg: body.msg || `暂存请求失败（HTTP ${status}）`, serverVersion, status }
 }
 
-/** 把「后端认为已经提交」的响应统一成提交成功的数据形状 */
+/**
+ * 把「后端认为已经提交」的响应统一成提交成功的数据形状。
+ *
+ * 【键名以 state 为准，draft_state 只是兼容】后端 report_drafts.py 的 draft_summary()
+ * 返回的键是 `state`，从来没有 `draft_state`。前端早前只读 draft_state，
+ * 拿到的一直是 undefined —— 功能上靠 `code === 0 + report_id` 兜住了，
+ * 但这个字段实际是死的。两个都读，谁在都认。
+ */
 function asSubmitted(data) {
   return {
     draftId: data && data.draft_id != null ? String(data.draft_id) : null,
     reportId: data && data.report_id != null ? String(data.report_id) : null,
-    draftState: data ? data.draft_state : null,
+    draftState: data ? (data.state ?? data.draft_state ?? null) : null,
     reportStatus: data ? data.report_status : null
   }
 }
@@ -283,7 +323,9 @@ export function unwrapSave(res) {
 export function unwrapSubmit(res) {
   const body = res && res.data ? res.data : {}
   const d = body.data || {}
-  const alreadyReported = body.code === 'DRAFT_ALREADY_SUBMITTED' || d.draft_state === 1
+  // state 是后端实际返回的键名；draft_state 是历史上前端读错的键，一并留着兼容
+  const alreadyReported =
+    body.code === 'DRAFT_ALREADY_SUBMITTED' || d.state === 1 || d.draft_state === 1
   if (body.code === 0 || alreadyReported) {
     if (d.report_id == null) {
       throw Object.assign(new Error(body.msg || '提交未返回报名 ID'), {

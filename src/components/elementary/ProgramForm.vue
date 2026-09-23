@@ -105,7 +105,7 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="联系人电话" prop="contact_phone">
-                <el-input v-model="form.contact_phone" placeholder="请输入手机号码" />
+                <el-input v-model="form.contact_phone" placeholder="请输入联系电话（手机号或固定电话）" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -382,6 +382,7 @@ import { fileApi } from '@/api/misc'
 // 【第十二届改造】上传改走阿里云 OSS 直传，不再使用七牛
 import { uploadToOss } from '@/services/ossUpload'
 import { addCache, getCache, clearCache } from '@/utils/auth'
+import { validateName, validatePhone, validateAddress } from '@/config/formFields'
 import { getM, getS } from '@/utils/date'
 import { useTabs } from '@/composables/useTabs'
 
@@ -534,7 +535,14 @@ function buildRules() {
   const base = {
     choir_name: [
       { required: true, message: '请输入合唱团名称名称', trigger: 'blur' },
-      { min: 1, max: 100, message: '长度在 1 到 30 个字符', trigger: 'blur' }
+      /*
+       * 【第十二届·文案对齐规则】与 OrchestraForm 的乐团名称同一处问题：
+       * 原文案写「长度在 1 到 30 个字符」，规则却是 max: 100。
+       * 文案比实际执行的上限严了三倍多，用户按提示删字纯属白费功夫。
+       * 现行《管乐展示活动》红头文件里没有合唱团这一项（它是另一份活动的表），
+       * 故此处的长度**没有文件依据**可照抄，只把文案改成与实际执行的一致。
+       */
+      { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
     ],
     name: [
       { required: true, message: '请输入曲目名称', trigger: 'blur' },
@@ -547,17 +555,26 @@ function buildRules() {
       { required: true, validator: nameValidator, trigger: 'blur' }
     ],
     name2: [{ min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }],
+    /*
+     * 【第十二届·补格式校验】与 OrchestraForm 同一处问题：原先只有 required +
+     * 长度区间，联系人「123」、联系电话「abc」、联系地址「1」都能过。
+     * 规则取自 config/formFields.js（与人员表、与乐团报名表**共用同一份**），
+     * 免得同一个「联系电话」在几个表单里判据各不相同。原长度区间保留不动。
+     */
     contact_name: [
       { required: true, message: '请输入联系人', trigger: 'blur' },
-      { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+      { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' },
+      { validator: validateName, trigger: 'blur' }
     ],
     contact_phone: [
       { required: true, message: '请输入联系人电话', trigger: 'blur' },
-      { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+      { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' },
+      { validator: validatePhone, trigger: 'blur' }
     ],
     contact_way: [
       { required: true, message: '请输入联系地址 ', trigger: 'blur' },
-      { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
+      { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' },
+      { validator: validateAddress, trigger: 'blur' }
     ],
     minute: [
       { required: true, message: '请输入作品总时长 ', trigger: 'blur' },

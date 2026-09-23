@@ -55,8 +55,32 @@ const SCALAR_KEYS = [
   'contact_name', 'contact_phone', 'contact_way'
 ]
 
+/**
+ * 【服务端字段：界面上没有对应控件，只做「读回来 → 原样送回去」的往返】
+ *
+ * 这两个字段是**组委会/系统写的**，用户不填，本文件也不该改它们 ——
+ * 但草稿链路是「整份 payload 覆盖写」的：
+ *
+ *   后端 edit-draft 把正式 Report 整份转成 payload（含 remark）→ 前端恢复 →
+ *   用户改完重新提交 → 后端 update_rejected_report_from_submission **全量 setattr**
+ *
+ * 中间任何一环把字段丢掉，它就变成 null 写回库里。原先这两个键不在 SCALAR_KEYS 里，
+ * 于是「驳回 → 修改 → 重新提交」之后，**组委会写的驳回原因被静默清空**：
+ * 列表页「查看驳回信息」永远空白、导出表备注列也丢，用户根本不知道自己当初为什么被退。
+ *
+ * 旧实现不会丢（编辑页整份回传 report_dict、后端只写请求里出现的键），
+ * 所以这是暂存改造引入的回归，不是历史缺陷。
+ *
+ * 【为什么不干脆不发送这两个键】后端 normalize_draft_payload 对 REPORT_FIELDS 里
+ * **每一个**键都写值、缺失即 None，所以「不发」等于「发 null」，同样会清空。
+ * 唯一的办法就是把读到的值原样带回去。
+ */
+const ECHO_KEYS = ['establishment_name', 'remark']
+
 /** 后端模型里没有 null=True 的 CharField —— 这些**不能**发 null，只能发 "" */
-const NOT_NULLABLE_STRINGS = ['choir_name', 'name', 'establishment', 'contact_name', 'contact_phone']
+const NOT_NULLABLE_STRINGS = [
+  'choir_name', 'name', 'group', 'establishment', 'contact_name', 'contact_phone'
+]
 
 const has = (v) => v !== null && v !== undefined && v !== ''
 const str = (v) => (has(v) ? String(v) : '')
@@ -100,6 +124,16 @@ function personToPayload(row) {
     phone: nullStr(r.phone),
     instrument: nullStr(r.instrument),
     head: nullStr(r.head),
+    /*
+     * 【专业 / 其他 / 备注：同样必须往返，理由与顶层 ECHO_KEYS 一致】
+     * 后端 _person() 保证这三个键**总是存在**（缺失即 None），store_people 又按
+     * Person 字段白名单全量 setattr —— 不发就是把它们写成 NULL。
+     * 乐团报名页（本文件服务的主链路）没有这三个输入框，但"没有控件"不等于
+     * "可以丢"：值可能是从导入/旧数据带过来的，静默抹掉是不可逆的。
+     */
+    major: nullStr(r.major),
+    other: nullStr(r.other),
+    remark: nullStr(r.remark),
     // 枚举用整数，未选为 null（§十七）。注意 el-option 的 :value 本来就是 0/1/2 数字。
     type: has(r.type) ? Number(r.type) : null,
     position: has(r.position) ? Number(r.position) : null
@@ -121,6 +155,10 @@ function payloadToPerson(row) {
     phone: r.phone ?? '',
     instrument: r.instrument ?? '',
     head: r.head ?? '',
+    // 与 personToPayload 的 major/other/remark 成对：读回来才送得回去
+    major: r.major ?? '',
+    other: r.other ?? '',
+    remark: r.remark ?? '',
     type: has(r.type) ? Number(r.type) : undefined,
     position: has(r.position) ? Number(r.position) : undefined
   }
@@ -142,8 +180,16 @@ export function buildDraftPayload({ form, fileList, fileList1 }) {
   const teachers = Array.isArray(f.teacher) ? f.teacher : []
   const students = Array.isArray(f.person) ? f.person : []
 
-  // 未填写发 0 而不是 null —— 理由见文件头第 3 条（模型无 null=True）
-  const timeLength = Number(f.minute || 0) * 60 + Number(f.second || 0)
+  /*
+   * 未填写发 0 而不是 null —— 理由见文件头第 3 条（模型无 null=True）。
+   * 【必须取整】后端 _integer() 只认真整数，`600.0` 和 `"600"` 都直接 400。
+   * 分钟/秒两个输入框靠模板的 oninput 过滤非数字，那是**界面层的约束**；
+   * 一旦哪天换了控件、或程序化赋值塞进一个小数，整条暂存链路会每次 400，
+   * 而 400 的文案是「time_length 必须是整数」——用户完全看不懂。
+   * 契约不该靠 UI 的输入过滤来保证，故在这里兜住。
+   */
+  const rawTimeLength = Number(f.minute || 0) * 60 + Number(f.second || 0)
+  const timeLength = Number.isFinite(rawTimeLength) ? Math.trunc(rawTimeLength) : 0
 
   const payload = {
     choir_name: str(f.choir_name),
@@ -151,18 +197,29 @@ export function buildDraftPayload({ form, fileList, fileList1 }) {
     name1: nullStr(f.name1),
     school_name: nullStr(f.school_name),
     desc: nullStr(f.desc),
-    // 枚举：未选为 null。**保持中文字符串**，不转整数，理由见文件头第 1 条。
-    group: has(f.group) ? f.group : null,
+    /*
+     * 枚举：**保持中文字符串**，不转整数，理由见文件头第 1 条。
+     * 空值发 "" 而不是 null —— Report.group 与 establishment 都是 NOT NULL 的
+     * CharField（models.py:179-180），两处口径必须一致；发 null 时后端报的是
+     * 「group 必须是字符串」，发 "" 报的才是「group 不能为空」，后者才对用户有意义。
+     */
+    group: str(f.group),
     establishment: str(f.establishment),
     contact_name: str(f.contact_name),
     contact_phone: str(f.contact_phone),
     contact_way: nullStr(f.contact_way),
-    time_length: Number.isFinite(timeLength) ? timeLength : 0,
+    time_length: timeLength,
     spectrum: firstFileId(fileList1),
     file: firstFileId(fileList),
     dinner_reservation: Array.isArray(f.dinner_reservation) ? f.dinner_reservation : [],
     // 教师在前、人员在后 —— 与 OrchestraForm.onSubmit 拼 allPeople 的顺序一致
     person: [...teachers.map(personToPayload), ...students.map(personToPayload)]
+  }
+
+  // 服务端字段原样送回（理由见 ECHO_KEYS）。循环写保证「忘了加进 payload 字面量」
+  // 这类疏漏不会发生 —— 只要在 ECHO_KEYS 里，就一定会被带上去。
+  for (const key of ECHO_KEYS) {
+    payload[key] = nullStr(f[key])
   }
 
   return payload
@@ -182,14 +239,27 @@ export function restoreDraftPayload(payload, baseForm) {
   const p = payload || {}
   const form = { ...(baseForm || {}) }
 
-  // 1) 标量字段：逐项覆盖。循环写法保证「新增字段忘了加」时不会静默丢数据——
-  //    只要 SCALAR_KEYS 里有、payload 里有，就一定被恢复。
-  for (const key of SCALAR_KEYS) {
+  // 1) 标量字段 + 服务端字段：逐项覆盖。循环写法保证「新增字段忘了加」时不会静默
+  //    丢数据 —— 只要在 SCALAR_KEYS / ECHO_KEYS 里有、payload 里有，就一定被恢复。
+  //
+  //    ECHO_KEYS 必须一起恢复：它们是「读回来才送得回去」的字段，只 build 不 restore
+  //    的话，form 里永远是 undefined，下一次 build 仍旧发 null —— 等于没修。
+  for (const key of SCALAR_KEYS.concat(ECHO_KEYS)) {
     if (key in p) form[key] = p[key]
   }
 
   // 2) 时长：payload 存的是秒，表单用的是分/秒两个输入框
   const total = Number(p.time_length || 0)
+  /*
+   * 【判据是 > 60，不是 >= 60 —— 别"顺手修好"】
+   *
+   * 看着像瑕疵：total=60 会恢复成「0 分 60 秒」。但那是**这个表单认的值**：
+   * OrchestraForm.minuteValidator 的末行原文是
+   *     if (second > 60 || second < 0) callback(new Error('秒数只能在0-60之间'))
+   * 即 60 秒合法（这也正是 dist 用 > 的分支留下的口径）。
+   * 且它往返无损：0 分 60 秒 → 0*60+60 = 60，与 1 分 0 秒完全等价。
+   * 改成 >= 只会让恢复出来的值偏离 dist / 偏离界面自己的校验区间，不解决任何问题。
+   */
   if (total > 60) {
     form.minute = getM(total)
     form.second = getS(total)

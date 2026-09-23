@@ -117,6 +117,54 @@ function fallback(d, fmt) {
 }
 
 /**
+ * 后端时间字符串 → Date（按浏览器本地时区取值）
+ *
+ * 后端返回的是 **UTC**，且带偏移量后缀。实测过两种形态：
+ *   "2026-09-23T02:02:00.246712+00:00"   T 分隔（草稿接口）
+ *   "2026-09-22 02:22:34.915124+00:00"   空格分隔（admin/log 接口）
+ * 两种都带 +00:00，`new Date()` 能解析出**绝对时刻**，之后 getHours() 之类
+ * 按浏览器本地时区取数 —— UTC→北京时间这一步就自动完成了。
+ *
+ * 直接把这个字符串显示给用户有两个问题（原样显示过一阵子）：
+ *   1) 看不懂：`2026-09-23T02:02:00.246712+00:00` 对普通用户是天书；
+ *   2) **时间差 8 小时**：上例是 UTC 02:02，北京时间其实是 10:02。
+ *      只把格式改好看、不转时区，等于把一个读不出来的错数变成一个读得出来的错数。
+ *
+ * 两处归一化，都是为了让各引擎都能解析：
+ *   1) 空格换 T —— 部分引擎不认 "yyyy-MM-dd HH:mm:ss" 这种非标准写法；
+ *   2) 小数秒截到 3 位 —— ECMAScript 只规定毫秒精度，6 位的 "246712"
+ *      在 Safari / 旧引擎上可能被判非法（V8 宽容，但不能只测 V8）。
+ *
+ * @returns {Date|null} 解析失败返回 null
+ */
+export function parseServerTime(value) {
+  if (!value) return null
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+  const normalized = String(value).replace(' ', 'T').replace(/\.(\d{3})\d+/, '.$1')
+  const d = new Date(normalized)
+  return isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * 后端时间字符串 → 给人看的样子。
+ *
+ * 解析失败时返回**空串**（而不是原始字符串或 Invalid Date）：
+ * 调用方一律按「没有时间可显示」处理，宁可少显示一段，也不把
+ * `2026-09-23T02:02:00.246712+00:00` 这种东西甩到用户脸上。
+ *
+ * 注：`views/admin/log.vue:113` 有一个等价的本地实现 formatCreatedAt
+ * （带秒、失败时回退原串）。本函数的 fmt 参数正是为兼容它那种带秒的用法而留的，
+ * 但**没有去改它** —— 它是好的、能用的，没必要为了去重去动一个无关页面。
+ *
+ * @param {string|Date} value
+ * @param {string} fmt 见 formatDate，默认精确到分（「最后保存」这类场景秒是噪音）
+ */
+export function formatDateTime(value, fmt = 'yyyy-MM-dd HH:mm') {
+  const d = parseServerTime(value)
+  return d ? formatDate(d, fmt) : ''
+}
+
+/**
  * 秒转 mm:ss
  */
 export function secondsToTime(s) {

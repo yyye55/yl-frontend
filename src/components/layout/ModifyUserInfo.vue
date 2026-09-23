@@ -1,7 +1,7 @@
 <template>
   <div v-if="user">
     <el-dialog v-model="showInfo" title="修改信息" width="40%">
-      <p style="margin:10px;">提示：修改信息后，修改的账号需要重新登录</p>
+      <p style="margin:10px;">提示：首次登录后请及时修改密码。修改信息后，修改的账号需要重新登录。</p>
 
       <el-form
         ref="ruleForm"
@@ -74,8 +74,15 @@
  *       0===e.code ? (this.showInfo=!1, ElMessage.success("修改成功")) : ElMessage.warning(e.msg) })
  *   }
  *
- * 【文案出入说明】leader 的提示语写「长度在 2 到 10 个字符」，但规则其实是 max:20；
- * password 提示语写「长度在 8 到 10 个字符」，规则其实是 max:20。属原版笔误，原样保留。
+ * 【文案出入说明 —— 本次已修正】
+ *  leader 原提示语写「长度在 2 到 10 个字符」，但规则其实是 2-20；
+ *  password 原提示语写「长度在 8 到 10 个字符」，规则其实是 8-20。属原版笔误。
+ *  本次只改文案，让它与实际区间一致（规则数值本身见下一条，password 已并入统一口径）。
+ *
+ * 【本次变更：password 并入统一口径】
+ *  原先这里是 8-20，而「添加账号」是 6-32、登录页是 5-15 —— 管理员按 6 位建的密码，
+ *  用户想自己改成同一个值会被这里拒（min:8）。现在改用 src/config/accountRules.js
+ *  的 6-20，与其余写入入口一致。仍为选填：留空 = 不改密码。
  *
  * 【Vue 3 差异说明】dist 是 `this.form = this.user`（同一个对象引用，靠 $set 补字段）。
  * 这里改为按白名单拷贝，避免直接改写 props 传入的 user 对象。
@@ -131,6 +138,7 @@ import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { userApi } from '@/api'
+import { PASSWORD_MIN, PASSWORD_MAX, MSG_PASSWORD_LENGTH } from '@/config/accountRules'
 import { showApiError } from '@/utils/request'
 import { useUserStore } from '@/store/modules/user'
 import { useTabsStore } from '@/store/modules/tabs'
@@ -192,11 +200,11 @@ const rules = {
   ],
   leader: [
     { required: true, message: '请输入负责人名称', trigger: 'blur' },
-    { min: 2, max: 20, message: '长度在 2 到 10 个字符', trigger: 'blur' }
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
   ],
   password: [
     { required: false },
-    { min: 8, max: 20, message: '长度在 8 到 10 个字符', trigger: 'blur' }
+    { min: PASSWORD_MIN, max: PASSWORD_MAX, message: MSG_PASSWORD_LENGTH, trigger: 'blur' }
   ],
   tel: [{ required: true, message: '电话号码必填', trigger: 'blur' }]
 }

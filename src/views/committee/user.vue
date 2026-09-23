@@ -32,7 +32,8 @@
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
-    - 重置密码的 prompt：`inputValidator`（空串与纯空格都不放行）+ `inputType: 'password'`
+    - 重置密码的 prompt：`inputValidator`（空串 / 纯空格 / 长度越界都不放行，口径见
+      src/config/accountRules.js）+ `inputType: 'password'`
       （dist 无；不加的话空输入会被提示「重置成功」而密码没变，且新密码是明文显示）
 -->
 <template>
@@ -111,6 +112,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
+import { checkPasswordInput } from '@/config/accountRules'
 
 const keyword = ref(null)
 const page = ref(1)
@@ -204,15 +206,17 @@ function getData() {
  *  做法：inputValidator 把空串与纯空格都拦下（红字 + 确定按钮不关弹窗，EP 原生行为，
  *        依据本机 element-plus@2.14.6 message-box 源码 handleAction 第 187 行 / validate 第 200-214 行）；
  *        inputType 设成 'password'（EP 默认 'text'，原本新密码是明文显示）。
- *  不做：不限制长度 —— rules 里的 6-32 是用户自助改密码的规则，管理员重置临时短密码不该被堵。
+ *  长度：改用 src/config/accountRules.js 的 checkPasswordInput，与「添加账号」「自助改密」
+ *        同一组数（6-20）。原先这一处不判长度，管理员能把密码重置成 1 位，
+ *        接口返回成功而用户登不进去，属静默失败。
  *  与 admin/user.vue 的同名函数保持一致（两处一起改，见其文件头）。
  */
 function resetPassword(id) {
   ElMessageBox.prompt('请输入新密码', '重置密码', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    // 空串与纯空格都拦下（后端把 '   ' 当真值，会真的设成新密码）
-    inputValidator: (v) => (v && v.trim() ? true : '请输入新密码'),
+    // 空串 / 纯空格 / 长度越界都拦下，口径见 src/config/accountRules.js
+    inputValidator: checkPasswordInput,
     inputType: 'password'
   }).then(({ value }) => {
     committeeApi.user.update({ id, password: value }).then((res) => {

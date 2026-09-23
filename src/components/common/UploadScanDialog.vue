@@ -217,7 +217,28 @@ function beforeClose() {
  *          ? Message.success("上传成功！") : Message.error("上传失败！"), this.dialogImageVisible=!1 }) }
  * 注意 dist 用逗号运算符，所以无论成功失败都会关闭弹窗——这里保留同样的行为。
  */
+/*
+ * 【第十二届改造·空文件守卫】fileList 为空时一律不发请求。
+ *
+ * 后端 POST /api/scan/cau（apps/api/views.py:349-355）是
+ *   get_or_create(user_id=…, type=…) + for key in ("files","status","remark"):
+ *       if key in data: setattr(obj, key, data[key])
+ * 对 files **不做任何校验**，且是**无条件覆盖**：空数组照收、照样返回 code:0
+ * 「修改成功!」。于是有两个后果：
+ *   ① 什么都没传也能弹「上传成功！」，用户以为审核图已交，实际服务端 files:[]；
+ *   ② files:[] 不是「什么都没做」，而是把该行已有的扫描件**整份清空**——本弹窗的
+ *      open() 会把服务端已存文件预加载进 fileList，用户用删除按钮把它们全删掉
+ *      再点「确认上传」就走到这里，审核图被抹掉，界面还是弹「上传成功！」，
+ *      全程没有任何二次确认。
+ * 后端只有 /scan/list、/scan/cau、/scan/files 三个路由，**没有删除接口**，
+ * 所以也不存在「清空」这个正当语义需要放行。真要支持清空，得后端另开接口。
+ */
 function updateFile() {
+  if (fileList.value.length === 0) {
+    ElMessage.error('请先上传文件')
+    return
+  }
+
   const data = { type: 0 }
   data.files = fileList.value
 

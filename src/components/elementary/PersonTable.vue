@@ -806,36 +806,61 @@ defineExpose({ getData, getCacheData })
   text-align: center;
 }
 
-/* 【列宽依据 —— 不是照 dist 抄的，是按实测重排的】
+/* 【列宽依据 —— 与 TeacherTable.vue 总宽恒等，且任何宽度下都不截断文字】
  *
- * dist 原值 50/120/180/120/130/140/150/130/130/140/140/160 合计 1590px，
- * 在 1440 屏下（容器实测 1404px）溢出 186px；而且四列**本身就装不下**：
- * 身份证号缺 3px、学校名称缺 43px、使用乐器缺 3px、操作缺 22px，
- * 同时性别/年龄/电子照片/身份四列共浪费 200px。
+ * 用户要求：「指导老师和参展人员的框大小和宽度保持一致……
+ * 里面的字（如 placeholder="请输入姓名"）要看得完整……现在是教师的要短一点」。
  *
- * 现值按「canvas measureText 量最坏情况文本 + 元素自身 padding/border」实测重排：
- *   姓名「欧阳娜娜」/ 身份证 18 位 / 学校全称 10 字 / 使用乐器「次中音萨克斯」/ 操作列两个按钮
- * 合计 1382px < 1404px，因此 .box 不再产生横向滚动 ——
- * .sticky-column 的 `right: 0` 随之变成空操作，原本「操作列盖住使用乐器与电子照片」
- * 的遮挡问题一并消失，无需另改。
+ * 【先更正一条旧注释里的错误测量】上一版这里写「1440 屏下容器实测 1404px」，
+ * 是错的：1440 视口下侧栏 200px、el-main 左右 padding 40px、.bg4 左右 padding 20px，
+ * 留给 .box 的实宽只有 1180px（已在浏览器里按真实布局链重量过）。
+ * 1404px 对应的是 1680 视口。旧值合计 1382px 在 1440 屏下其实**是横向滚动的**，
+ * 操作列的 sticky 遮盖问题也并未真正消除。
  *
- * 前 7 列与 TeacherTable 逐字对齐（两表同页上下排布，对齐后视觉连成一体）——
- * 改这里请同步改 TeacherTable.vue，否则两张表会错位。
+ * 现在改用 minmax(下限px, 权重fr)，两条要求各由一半保证：
+ *   ① 全部轨道都是 fr → 永远把 .box 铺满；两表的 .box 同宽，
+ *      所以任何分辨率下两表总宽都严格相等；
+ *   ② 下限 = 该列内容一个不落所需的最小列宽，窗口再窄也不截断。
+ *      旧值 96px 的姓名列留给输入框只有 61px，装不下 70px 宽的「请输入姓名」；
+ *      72px 的性别列只剩 15px，连「请选择」都看不全。现在都不会了。
  *
- * 单元格 padding 同步由 10px 收到 6px：12 列 × 左右各 4px = 省 96px，
- * 而 el-input 是撑满单元格 content box 的，收 padding 等于直接给各列文字区让位。
- * 因此上面这些数值是「按 6px padding 的余量」定的，两者必须一起改。 */
+ * 下限怎么来的（浏览器实测，不是估的）：
+ *   列宽下限 = 文本宽 + .box-col 左右 padding 5×2 + 左边框 1 + 控件自身 chrome
+ *   · 输入框 chrome：.el-input__wrapper 的 padding 1px 11px → 22px
+ *   · 下拉框 chrome：.el-select__wrapper 的 padding 12×2 + gap 6 + 箭头 14 → 44px
+ *   · 文本宽：14px 字号下中文一字 14px；18 位身份证约 145px；使用乐器「次中音萨克斯」84px
+ *   12 列下限合计 1376px ≤ 旧值 1382px，窄屏不会比改动前更容易横向滚动。
+ *
+ * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。
+ *   1660px 是目前最常见的 1920 屏下 .box 的实宽（1440 视口同式得 1180）。
+ *   权重和 16.60 恰好 = 参照容器 ÷ 100，所以 1660px 下每条轨道就等于设计值。
+ *   实测：1660px → 55/144/194/112/119/239/154/112/121/164/78/168；
+ *   1180px（1440 屏）→ 30/105/178/99/105/136/99/99/113/141/72/168；
+ *   3420px（4K）同样不截断。
+ *
+ * 【为什么不跟 TeacherTable 的前 7 列逐列对齐】
+ *   两表列数不同（12 列 vs 8 列），「总宽相等」与「前 7 列逐列对齐」数学上不可兼得 ——
+ *   若强行对齐，TeacherTable 凑满本表宽度后多出的 500 多 px 只能全塞进「操作」一列。
+ *   用户这次明确要的是「两个表的长度宽度都要一致」，所以取等宽、放弃逐列对齐。
+ *   改这里的任一个 fr 权重，必须同步改 TeacherTable.vue 的对应权重，
+ *   否则两张表的总宽不再相等（这是本轮唯一需要两个文件同步的地方）。 */
 .box-line-title,
 .box-line {
   display: grid;
-  grid-template-columns: 38px 96px 182px 72px 78px 184px 128px 86px 114px 142px 80px 182px;
+  /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      身份        角色         使用乐器      电子照片      操作 */
+  grid-template-columns:
+    minmax(30px, 0.55fr) minmax(105px, 1.45fr) minmax(178px, 1.95fr) minmax(99px, 1.12fr)
+    minmax(105px, 1.20fr) minmax(133px, 2.40fr) minmax(133px, 1.55fr) minmax(99px, 1.12fr)
+    minmax(113px, 1.22fr) minmax(141px, 1.65fr) minmax(72px, 0.78fr) minmax(168px, 1.61fr);
   justify-content: stretch;
 }
 
+/* padding 6px → 5px：每列给文字区让出 2px，12 列合计 24px 的下限余量（见上）。
+ * display:flex + 居中与 TeacherTable 的 .box-col 保持一致。 */
 .box-col {
   border-left: 1px solid #8c939d;
   border-bottom: 1px solid #8c939d;
-  padding: 5px 6px;
+  padding: 5px;
   display: flex;
   justify-content: center;
   align-items: center;

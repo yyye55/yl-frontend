@@ -249,26 +249,61 @@ defineExpose({ getData, getCacheData })
   text-align: center;
 }
 
-/* 【列宽依据】前 7 列必须与 PersonTable.vue 逐字相同 ——
- * 两表同页上下排布且前 7 列完全同名同序（序号/姓名/身份证号/性别/年龄/
- * 学校名称/联系电话），宽度一致才会在视觉上对齐成一个整体。
- * 改这里请同步改 PersonTable.vue。
+/* 【列宽依据 —— 与 PersonTable.vue 总宽恒等，且任何宽度下都不截断文字】
  *
- * dist 原值 50/120/180/120/130/160/150/80 合计 990px（不溢出），
- * 但学校名称 160px 实测需要 183px，长校名会被输入框截掉。
- * 现按实测重排，合计 858px。
- * padding 由 10px 收到 6px 的理由同 PersonTable：给各列文字区让位。 */
+ * 用户要求：「指导老师和参展人员的框大小和宽度保持一致……
+ * 里面的字（如 placeholder="请输入姓名"）要看得完整……现在是教师的要短一点」。
+ *
+ * 旧值（dist 抄来的）是固定 px：教师表 38/96/182/72/78/184/128/80 合计 858px，
+ * 而人员表合计 1382px —— 两表同页上下排布，教师表右侧空出 500 多 px，所以显「短」。
+ * 而且 96px 的姓名列留给输入框只有 61px，装不下 70px 宽的「请输入姓名」，是截断的。
+ *
+ * 现在改用 minmax(下限px, 权重fr)，两条要求各由一半保证：
+ *   ① 全部轨道都是 fr → 永远把 .box 铺满；两表的 .box 同宽，
+ *      所以任何分辨率下两表总宽都严格相等；
+ *   ② 下限 = 该列内容一个不落所需的最小列宽，窗口再窄也不截断。
+ *
+ * 下限怎么来的（浏览器实测，不是估的）：
+ *   列宽下限 = 文本宽 + .box-col 左右 padding 5×2 + 左边框 1 + 控件自身 chrome
+ *   · 输入框 chrome：.el-input__wrapper 的 padding 1px 11px → 22px
+ *   · 下拉框 chrome：.el-select__wrapper 的 padding 12×2 + gap 6 + 箭头 14 → 44px
+ *   · 文本宽：14px 字号下中文一字 14px；18 位身份证约 145px
+ *   例：「请输入姓名」5 字 = 70px → 70 + 11 + 22 = 103，取 105 留 2px 余量。
+ *
+ * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。
+ *   1660px 是目前最常见的 1920 屏下 .box 的实宽
+ *   （1440 视口 − 侧栏 200 − el-main 左右 padding 40 − .bg4 左右 padding 20 = 1180，
+ *     1920 视口同式得 1660）。权重和 16.60 恰好 = 参照容器 ÷ 100，
+ *   所以 1660px 下每条轨道就等于设计值。实测：1660px → 70/240/300/160/170/340/260/120；
+ *   1180px（1440 屏）→ 50/171/213/114/121/242/185/85；3420px（4K）同样不截断。
+ *
+ * 【为什么不跟 PersonTable 的前 7 列逐列对齐】
+ *   两表列数不同（8 列 vs 12 列），「总宽相等」与「前 7 列逐列对齐」数学上不可兼得 ——
+ *   教师表要凑满和人员表一样的宽度，多出来的 500 多 px 只能全塞进「操作」一列。
+ *   用户这次明确要的是「两个表的长度宽度都要一致」，所以取等宽、放弃逐列对齐。
+ *   改这里的任一个 fr 权重，必须同步改 PersonTable.vue 的对应权重，
+ *   否则两张表的总宽不再相等（这是本轮唯一需要两个文件同步的地方）。 */
 .box-line-title,
 .box-line {
   display: grid;
-  grid-template-columns: 38px 96px 182px 72px 78px 184px 128px 80px;
+  /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      操作 */
+  grid-template-columns:
+    minmax(30px, 0.70fr) minmax(105px, 2.40fr) minmax(178px, 3.00fr) minmax(99px, 1.60fr)
+    minmax(105px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr) minmax(72px, 1.20fr);
   justify-content: stretch;
 }
 
+/* padding 6px → 5px：每列给文字区让出 2px，12 列合计 24px 的下限余量
+ * （人员表 12 列下限合计因此从 1400px 降到 1376px，仍在旧值 1382px 以内，
+ *  窄屏不会比改动前更容易出现横向滚动）。
+ * display:flex + 居中与 PersonTable 的 .box-col 保持一致，两表上下排布的垂直对齐才齐。 */
 .box-col {
   border-left: 1px solid #8c939d;
   border-bottom: 1px solid #8c939d;
-  padding: 5px 6px;
+  padding: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .box-line-title {

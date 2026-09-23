@@ -12,7 +12,7 @@
         只改 label，prop="nickname" 与取值未动 —— 改的是文案，不是数据。
         起因：本列显示的是账号所属的填报单位（User.nickname），叫「学校名称」不准。
         注：本列**搜索本来就是好的** —— 后端 /api/scan/list 的 keyword 走 nickname__icontains
-        （apps/api/views.py:329-330），而 nickname 就是这个填报单位，故本轮无需任何后端改动。
+        （apps/api/views.py:341-345），而 nickname 就是这个填报单位，故本轮无需任何后端改动。
     - 有 keyword 搜索 UI（el-input + #append 搜索按钮，@change 触发 getData）
     - 无 group select
     - 无 status select

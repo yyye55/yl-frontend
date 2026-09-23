@@ -496,7 +496,7 @@ import { useTabs } from '@/composables/useTabs'
 import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
 import { validateName, validateSchool, validatePhone, validateAddress } from '@/config/formFields'
 
-// 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 / 自动暂存都在里面）
+// 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 都在里面；不含任何定时器）
 import { useDraftSession } from '@/composables/useDraftSession'
 
 import Teacher from './TeacherTable.vue'
@@ -968,13 +968,20 @@ function handleExceed() {
  *     重建草稿（views.py:885，无条件覆盖），所以「存的修改」活不过一次重新进入。
  * 在服务端那条链路修好之前，本地缓存是编辑页**唯一**能挺过「改了没提交就离开」的容器。
  *
+ * 【谁在什么时候调它 —— 只有两处，别再往上加】
+ *   1. flushLocalCache()：beforeunload（关页/刷新）与 onBeforeUnmount（路由切走）
+ *   2. 上传成功（见上面 uploadFile）与表单里的「暂存」按钮，那是用户的明确动作
+ * dist 原来还有第三个调用者：每 60 秒的 setInterval。**已按产品要求删除**，
+ * 所以现在浏览器崩溃/被强杀（拿不到 unload 事件）时，上一次落盘之后敲的内容会丢。
+ * 这是有意的取舍：不点就不写。
+ *
  * 【必须先判 cacheName】两个模式都会给 cacheName 赋值（见 onMounted），
  * 但 onBeforeUnmount 的收尾可能在赋值前被调用；不判的话会以
  * `addCache(null, ...)` 往 localStorage 写一个键名为 "null" 的垃圾条目。
  */
 function tempSave(showTip = false) {
   if (!cacheName.value) return
-  // 子表 ref 在挂载完成前是 null；这里是定时器/卸载钩子调用的，不能假定已就绪
+  // 子表 ref 在挂载完成前是 null；这里是卸载钩子调用的，不能假定已就绪
   if (personRef.value) form.value.person = personRef.value.getCacheData()
   if (teacherRef.value) form.value.teacher = teacherRef.value.getCacheData()
   form.value.fileList = fileList.value
@@ -999,7 +1006,7 @@ const draftScope = cfg.mode === 'create' ? cfg.api.create : cfg.api.update
  * 本组件就被卸载 —— 于是「填着填着切到报名汇总再切回来」会得到一份全新 state，
  * 界面从「已暂存」掉回「未保存」（内容其实一直在服务器上）。
  *
- * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 每 60 秒写一次），
+ * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 在关页/切走时写一次），
  * 再存一份内容只会多一个可能不一致的来源。指针里就一个门牌号，内容回服务器拉。
  * 至于拉到之后要不要覆盖本地 —— 见 onMounted 里传给 resumeDraftSession 的
  * restoreContent，那里是「不弄丢用户刚敲的字」的底线。
@@ -1020,8 +1027,6 @@ const {
   statusLevel: draftStatusLevel,
   save: saveDraft,
   submit: submitDraft,
-  stopAutoSave: stopDraftAutoSave,
-  startAutoSave: startDraftAutoSave,
   listDrafts,
   loadDraft,
   resumeSession: resumeDraftSession,
@@ -1048,11 +1053,11 @@ const {
     if (cfg.mode === 'create') {
       // 与 dist 原成功分支一致：清缓存 → 重置 → 关当前页 → 开报名汇总
       // （草稿指针由 useDraftSession.submit 自己清，见那里的 clearSession 调用）
+      // 原先这里还要 clearInterval(timer) 把 60 秒本地镜像停掉；定时器已删除，
+      // 于是只剩清缓存这一步。注意 clearCache 之后**不能**再让表单落盘：
+      // onSubmitted 紧接着把 form 重置成空表，随后 closeWindow 会触发 onBeforeUnmount，
+      // 那里的 flushLocalCache 靠 draftState.submitted 判断并跳过 —— 别改成无条件落盘。
       clearCache(route.path)
-      if (timer) {
-        clearInterval(timer)
-        timer = null
-      }
       form.value = makeForm()
       fileList.value = []
       fileList1.value = []
@@ -1066,7 +1071,7 @@ const {
     console.info('[draft] 正式提交完成 report_id=', data && data.reportId)
   },
 
-  /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已停止自动暂存，这里只提示 */
+  /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已清掉草稿身份，这里只提示 */
   onFatal: (e) => {
     ElMessage.warning((e && e.msg) || '草稿不存在或已被删除')
   },
@@ -1080,7 +1085,7 @@ const {
  *
  * 【409 的关键约定（§二十一）】只提示 + 提供「重新加载服务器草稿」这一条出路：
  * 绝不自动用本地旧数据覆盖服务器，也绝不自动把 version 改成 server_version 再强存。
- * 恢复动作必须由用户明确点击，否则自动暂存会持续用旧内容压掉别的页面的修改。
+ * 恢复动作必须由用户明确点击；页面任何一处都不许在用户没点的情况下拿本地旧内容去 PUT。
  */
 function notifyDraftError(err) {
   const e = err || {}
@@ -1160,7 +1165,7 @@ async function onTempSave() {
      * 本地镜像一并刷新。
      *
      * 【必须判 cacheName】cacheName 只在**新增页**的 onMounted 里赋值（dist 的
-     * `this.cacheName = this.$route.path`），编辑页从来是 null。暂存按钮现在两个模式
+     * `this.cacheName = this.$route.path`），编辑页从来是 null —— 【勘误】这句已不成立：第十二届给编辑页补本地镜像后，onMounted 开头的 `cacheName.value = route.path` 对两个模式都执行，编辑页不再是 null。下面这个守卫仍要留，但理由是**时序**（赋值发生在挂载后，本函数可能更早被调到），不是模式。暂存按钮现在两个模式
      * 都显示，若不判就会在编辑页以 `addCache(null, ...)` 往 localStorage 里写一个
      * 键名为 "null" 的垃圾条目 —— 既没用，又会一直残留在用户浏览器里。
      */
@@ -1260,7 +1265,9 @@ function getMessage() {
 
 /* ------------------------- 生命周期 ------------------------- */
 const cacheName = ref(null)
-let timer = null
+// 【没有 timer 变量了】原先这里有一个 `let timer`，挂着 dist 那支
+// `setInterval(()=>{this.tempSave()},6e4)`（每 60 秒写一次 localStorage 的本地镜像）。
+// 已按产品要求删除：**不点就不写**。详见 tempSave 与 flushLocalCache 的注释。
 
 // dist 的 openWindow / closeWindow 是 layout 上的方法（走 vuex 的 tabs 模块）。
 // 本项目已有等价实现 @/composables/useTabs，语义逐行对齐，直接复用而不另造一套。
@@ -1341,8 +1348,10 @@ async function enterEdit(localCache) {
      * 本地镜像在服务端那条链路修好之前是唯一的解法。见 tempSave 的注释。
      */
     applyLocalCache(localCache)
-    // 【P1-5】编辑页也要开自动暂存：此前它只有「手点暂存」和「提交」两个落盘点
-    startDraftAutoSave()
+    // 【编辑页的落盘点】服务端自动暂存已整体删除，编辑页现在只剩三条路：
+    // 「手点暂存」、「提交」，以及**不联网**的本地镜像（beforeunload + 路由切走，已无定时器）。
+    // 最后一条见 tempSave 的注释 —— 在后端 edit-draft 覆盖草稿那条链路修好之前，
+    // 它是「改了没提交就离开」唯一的兜底。
   } catch (err) {
     const e = err || {}
     if (e.kind === DRAFT_ERR_CODE.NOT_REJECTED) {
@@ -1367,7 +1376,7 @@ function applyLocalCache(cached) {
   form.value = cached
   fileList.value = Array.isArray(cached.fileList) ? cached.fileList : []
   fileList1.value = Array.isArray(cached.fileList1) ? cached.fileList1 : []
-  // 不调它也不影响自动暂存（autoTick 自己比签名），但会让 draftState.isDirty 说谎
+  // 只影响 draftState.isDirty 的显示（没有任何自动保存会读它，保存是手点触发的）
   markDirty()
 }
 
@@ -1378,8 +1387,13 @@ function applyLocalCache(cached) {
  * 任何 fetch / await 都会在页面卸载时被浏览器直接掐掉。所以这里不调暂存接口，
  * 只把"用户此刻看到的内容"写进本地镜像，下次进来由上面的本地缓存逻辑认回来。
  *
- * 【它补的是哪个窗口】服务端自动暂存 45 秒一次、本地镜像 60 秒一次，两条都是定时。
- * 用户敲完最后几个字立刻关页，谁都不会触发 —— 没有这个钩子，那一刻的输入就彻底没了。
+ * 【它现在是主力，不是补丁】dist 原版还有一支每 60 秒的定时器在背后兜底，这个钩子
+ * 只负责补「最后 60 秒」那一小段。**那支定时器已按产品要求删除**，于是本函数成了
+ * 「用户没点任何按钮就离开」时唯一的落盘机会 —— 关页、刷新、路由切走全靠它。
+ *
+ * 服务端**从来不会有**这类兜底：往服务器写的只有用户点「暂存」和提交两条路，
+ * 页面自己不会替你存。所以别把这里也一并删掉，除非产品明确接受
+ * 「填到一半关掉浏览器 = 全丢」。
  */
 function flushLocalCache() {
   // 已提交：onSubmitted 刚清过缓存并把表单重置成空，别把空表单又写回缓存里
@@ -1393,18 +1407,21 @@ function flushLocalCache() {
 
 onMounted(() => {
   /*
-   * 【两个模式都要有 cacheName 与 60 秒本地镜像】
+   * 【两个模式都要有 cacheName 与本地镜像（只写 localStorage）】
    *
    * dist 只在新增页做（`this.cacheName = this.$route.path`），编辑页什么都没有 ——
    * 于是编辑页改到一半切走 = 全丢，连本地缓存都没有。现在编辑页也有，
    * 理由见 tempSave 的长注释（后端 edit-draft 会覆盖草稿，本地镜像是唯一退路）。
+   *
+   * 【dist 的 60 秒定时器已删除】两个模式现在都不挂任何定时器，所以本函数之外
+   * 只剩 beforeunload / onBeforeUnmount 两个落盘时刻。写缓存的时机见 tempSave。
    *
    * 键用 route.path：编辑页的 path 含具体 id（/school/elementary/edit/5），
    * 所以不同报名各存各的，不会互相覆盖。
    */
   cacheName.value = route.path
   const cached = getCache(cacheName.value)
-  // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
+  // 本地缓存里是**用户最后看到的**那份内容（不再有定时器，它是上次离开页面时落的那份）。
   // 它可能比服务端草稿新（刚敲完就切走）——下面据此决定要不要让服务端内容盖上来。
   const hadLocalCache = !!cached
 
@@ -1423,14 +1440,9 @@ onMounted(() => {
       fileList.value = []
     }
 
-    if (timer) clearInterval(timer)
-    // dist: this.timer=setInterval(()=>{this.tempSave()},6e4) —— 每 60 秒自动暂存
-    timer = setInterval(() => {
-      tempSave()
-    }, 6e4)
-
-    // 【第十二届·暂存】服务端自动暂存（§二十二，45 秒一次，没有变化不发）
-    startDraftAutoSave()
+    // 【dist 的 60 秒本地镜像定时器已删除】原文 this.timer=setInterval(()=>{this.tempSave()},6e4)
+    // 现在两个模式都不挂任何定时器，本地镜像只在两个时刻写：关页/切走（见 flushLocalCache
+    // 与 onBeforeUnmount），以及用户手点。理由见 tempSave 的注释。
 
     /*
      * 先认领上一轮留下的草稿指针（切走再回来、刷新页面都算），认领成功就不弹
@@ -1449,15 +1461,14 @@ onMounted(() => {
   } else {
     /*
      * 编辑页：服务端内容由 enterEdit 负责回填，本地镜像在它**之后**才盖上
-     * （顺序反了会被冲掉）。60 秒定时器也等 enterEdit 落定再起 ——
-     * 否则它可能在表单还是空的时候先把空表写进缓存，把用户的修改覆盖掉。
+     * （顺序反了会被冲掉）。
+     *
+     * 【原先这里有个 .finally 起 60 秒定时器，已删】当时的顾虑是「表单还是空的时候
+     * 先把空表写进缓存」。现在没有任何定时器会自己写缓存，那个顾虑随之消失，所以
+     * .finally 整个拿掉 —— 空表只可能被 flushLocalCache / onBeforeUnmount 写进去，
+     * 而那两个时刻表单一定已经回填过了。
      */
-    enterEdit(hadLocalCache ? cached : null).finally(() => {
-      if (timer) clearInterval(timer)
-      timer = setInterval(() => {
-        tempSave()
-      }, 6e4)
-    })
+    enterEdit(hadLocalCache ? cached : null)
   }
 
   // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
@@ -1465,10 +1476,8 @@ onMounted(() => {
 })
 
 // dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy。
-// 现在两个模式都挂定时器与 beforeunload，收尾动作必须对称。
+// 【第十二届改造】dist 那个 timer 已整体删除，这里只剩 beforeunload 与落盘。
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-  stopDraftAutoSave()
   window.removeEventListener('beforeunload', flushLocalCache)
   /*
    * 走 Vue Router 切换页面**不会**触发 beforeunload，所以这里要再补一次落盘 ——
@@ -1572,7 +1581,7 @@ function onSubmit() {
          * 【§十 正式提交】不再直接调 report.create / report.update，改为：
          *     强制最后一次暂存（拿到最新 version）→ 用该 version 提交草稿
          * 这两个动作都在 composable 的 submit() 里按顺序完成，且**排在同一条串行队列上**，
-         * 所以不会出现「自动暂存还在飞、提交又发一版」的竞态。
+         * 所以不会出现「一次暂存还在飞、提交又发一版」的竞态。
          *
          * 成功分支移动到 onSubmitted（见上面的 useDraftSession 配置），
          * 保证「报名成功 → 清缓存 → 跳报名汇总」这条既有动线一字不变。

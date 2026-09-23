@@ -4,7 +4,8 @@
       <el-button style="color: #1890ff" type="text" @click="add">添加一行</el-button>
       <el-button style="color: #1890ff" type="text" @click="flush">清空</el-button>
     </div>
-    <div class="box">
+    <!-- ref 给 useDragScroll：按住表头行/序号列等空白处可鼠标拖动横滚 -->
+    <div ref="boxRef" class="box">
       <!-- dist 里是编译期提升的静态子树 e._m(0) -->
       <div class="box-line-title">
         <div class="box-col">序号</div>
@@ -139,6 +140,13 @@
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { checkPersonBasics } from '@/config/personFields'
+import { useDragScroll } from '@/composables/useDragScroll'
+
+// 8 列下限合计 855px，本项目常见分辨率下都放得下（1440 实测无横向滚动），
+// 挂上是因为它跟参展人员表上下并排：只让一张表能拖、另一张拖不动会更奇怪，
+// 且窗口被拖得很窄时这张表同样会溢出。
+const boxRef = ref(null)
+useDragScroll(boxRef)
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.teacher），可为 undefined / null */

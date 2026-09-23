@@ -1146,9 +1146,13 @@ function onSubmit() {
   color: red;
 }
 
+/* 【2026-09-23】大屏宽度 70% → 90%。
+ * 理由、实测数据（各百分比分别能清掉哪些分辨率）以及「1366/1440 仍会滚动」这条前提，
+ * 全部写在 OrchestraForm.vue 的同名媒体查询上，这里不重复。
+ * 两处必须同步改：两个表单的 .bg 宽度规则一直保持一致。 */
 @media screen and (min-width: 1500px) {
   .bg {
-    width: 70%;
+    width: 90%;
     padding: 10px 20px;
     margin: auto;
   }

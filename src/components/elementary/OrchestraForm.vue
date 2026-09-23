@@ -140,7 +140,7 @@
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="领队电话" prop="contact_phone">
-                <el-input v-model="form.contact_phone" placeholder="请输入手机号码" />
+                <el-input v-model="form.contact_phone" placeholder="请输入联系电话（手机号或固定电话）" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -261,11 +261,15 @@
              切走再回来、刷新页面都还能认回自己那份草稿，见 resumeDraftSession。
           3) 提交中用 :loading + 按钮禁用双重收口；冲突未解决前禁止再暂存 ——
              这两个约束由 composable 的状态机保证，模板只如实反映。
+          4) 提交成功后按钮**也要禁用**（draftState.submitted）。新增页会重置表单
+             （form.read 变 false）所以本来就灰着，但**编辑页 form.read 一直是 true**
+             —— 按钮重新可点，再点一次会走到 submit() 里 state.submitted 那一支抛错，
+             提示却是「暂存失败，无法提交」，用户完全看不懂。
         -->
         <el-form-item>
           <el-button
             type="primary"
-            :disabled="!form.read || draftState.isSubmitting"
+            :disabled="!form.read || draftState.isSubmitting || draftState.submitted"
             :loading="draftState.isSubmitting"
             @click="onSubmit"
           >
@@ -490,6 +494,7 @@ import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
 import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
+import { validateName, validateSchool, validatePhone, validateAddress } from '@/config/formFields'
 
 // 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 / 自动暂存都在里面）
 import { useDraftSession } from '@/composables/useDraftSession'
@@ -724,7 +729,14 @@ function minuteValidator(rule, value, callback) {
 const rules = reactive({
   choir_name: [
     { required: true, message: '请输入乐团名称', trigger: 'blur' },
-    { min: 1, max: 100, message: '长度在 1 到 50 个字符', trigger: 'blur' }
+    /*
+     * 【第十二届·文案对齐规则】原文案写「长度在 1 到 50 个字符」，规则却是 max: 100 ——
+     * 文案比实际执行的上限严了一倍，用户按提示删到 50 字以内纯属白费功夫。
+     * 红头文件对「乐团名称」的长度**没有任何规定**（全篇只规定了乐团简介 300 字以内、
+     * 照片 100KB、视频 700MB），故这里没有文件依据可改规则，只把文案改成与实际一致。
+     * 若确需收紧到 50，改 max 并同步这行文案即可。
+     */
+    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
   ],
   group: [{ required: true, message: '请选择组别', trigger: 'blur' }],
   establishment: [{ required: true, message: '请选择类型', trigger: 'blur' }],
@@ -738,17 +750,28 @@ const rules = reactive({
     { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' },
     { required: true, validator: name1Validator, trigger: 'blur' }
   ],
+  /*
+   * 【第十二届·补格式校验】下面四条原先只有 required + 长度区间，于是：
+   *   领队姓名「123」、领队电话「abc」、参展学校名称「12345」、联系地址「1」
+   * 都能通过校验并报到后端。长度管得住「太长」，管不住「填错了」。
+   * 格式规则与人员表**共用同一份**（config/formFields.js → config/personFields.js），
+   * 否则同一个「联系电话」在两张表里判据不同，早晚被当成两个 bug 报上来。
+   * 原长度区间逐条保留不动，新增的 validator 只补格式这一层。
+   */
   contact_name: [
     { required: true, message: '请输入领队姓名', trigger: 'blur' },
-    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' },
+    { validator: validateName, trigger: 'blur' }
   ],
   contact_phone: [
     { required: true, message: '请输入领队电话', trigger: 'blur' },
-    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' },
+    { validator: validatePhone, trigger: 'blur' }
   ],
   contact_way: [
     { required: true, message: '请输入联系地址 ', trigger: 'blur' },
-    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
+    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' },
+    { validator: validateAddress, trigger: 'blur' }
   ],
   minute: [
     { required: true, message: '请输入作品总时长 ', trigger: 'blur' },
@@ -756,7 +779,8 @@ const rules = reactive({
   ],
   school_name: [
     { required: true, message: '请输入学校名称 ', trigger: 'blur' },
-    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
+    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' },
+    { validator: validateSchool, trigger: 'blur' }
   ]
 })
 
@@ -926,7 +950,7 @@ function handleExceed() {
   ElMessage.error('文件数量超过限制！')
 }
 
-/* ------------------------- 草稿缓存（仅新增页） ------------------------- */
+/* ------------------------- 草稿缓存（新增页 + 编辑页） ------------------------- */
 
 /**
  * dist:
@@ -935,11 +959,24 @@ function handleExceed() {
  *     this.form.fileList=this.fileList, this.form.fileList1=this.fileList1,
  *     this.addCache(this.cacheName,this.form), e && Message.success("本地保存成功")
  *   }
- * 编辑页的两个模块里**没有** tempSave 方法（也没有 cacheName / timer）。
+ *
+ * 【第十二届改动：编辑页也用上了】
+ * dist 的编辑页两个模块里**没有** tempSave（也没有 cacheName / timer），后果是：
+ *   · 编辑页没有任何本地镜像；
+ *   · 编辑页只有「手点暂存」和「提交」两个落盘点，改完就切走 = 全丢；
+ *   · 而服务端那条路也救不了它 —— 后端 edit-draft 每次进入都用正式 Report 的内容
+ *     重建草稿（views.py:885，无条件覆盖），所以「存的修改」活不过一次重新进入。
+ * 在服务端那条链路修好之前，本地缓存是编辑页**唯一**能挺过「改了没提交就离开」的容器。
+ *
+ * 【必须先判 cacheName】两个模式都会给 cacheName 赋值（见 onMounted），
+ * 但 onBeforeUnmount 的收尾可能在赋值前被调用；不判的话会以
+ * `addCache(null, ...)` 往 localStorage 写一个键名为 "null" 的垃圾条目。
  */
 function tempSave(showTip = false) {
-  form.value.person = personRef.value.getCacheData()
-  form.value.teacher = teacherRef.value.getCacheData()
+  if (!cacheName.value) return
+  // 子表 ref 在挂载完成前是 null；这里是定时器/卸载钩子调用的，不能假定已就绪
+  if (personRef.value) form.value.person = personRef.value.getCacheData()
+  if (teacherRef.value) form.value.teacher = teacherRef.value.getCacheData()
   form.value.fileList = fileList.value
   form.value.fileList1 = fileList1.value
   addCache(cacheName.value, form.value)
@@ -990,6 +1027,7 @@ const {
   resumeSession: resumeDraftSession,
   enterEditFromRejected,
   reloadFromServer: reloadDraftFromServer,
+  markDirty,
   DRAFT_ERR: DRAFT_ERR_CODE
 } = useDraftSession({
   scope: draftScope,
@@ -1047,13 +1085,29 @@ const {
 function notifyDraftError(err) {
   const e = err || {}
   if (e.kind === DRAFT_ERR_CODE.CONFLICT) {
-    return ElMessageBox.alert(
-      '该草稿已在其他页面或设备更新。为避免覆盖最新内容，请重新加载草稿。',
+    /*
+     * 【为什么先落一次本地镜像】
+     * 「重新加载服务器草稿」是**不可逆**的：它会用服务端内容整体盖掉用户此刻
+     * 屏幕上的表单，而用户点确认之前没有任何撤销机会。原先这条路上连个备份都没有，
+     * 冲突一旦被误判（或用户没看清就点了），刚敲的内容直接没了。
+     * 加载前先把当前内容写进本地镜像 —— 至少还留在浏览器里，可人工找回。
+     */
+    flushLocalCache()
+    return ElMessageBox.confirm(
+      '该草稿已在其他页面或设备更新。为避免覆盖最新内容，需要重新加载草稿。\n' +
+        '（重新加载会丢弃您当前页面上未保存的修改，已自动备份在本机）',
       '暂存冲突',
-      { confirmButtonText: '重新加载服务器草稿', type: 'warning' }
+      {
+        confirmButtonText: '重新加载服务器草稿',
+        cancelButtonText: '先不加载',
+        type: 'warning'
+      }
     )
       .then(() => onReloadDraft())
-      .catch(() => {})
+      .catch(() => {
+        // 用户选了「先不加载」：保持冲突状态（保存仍被拦着），不做任何覆盖
+        ElMessage.warning('已保留您当前页面上的内容；冲突解决前暂存仍会失败')
+      })
   }
   if (e.kind === DRAFT_ERR_CODE.NETWORK) {
     return ElMessage.error('网络中断，暂存失败，已保存内容不会丢失，请稍后重试')
@@ -1127,7 +1181,9 @@ async function onReloadDraft() {
  */
 function getMessage() {
   const mod = MODULES[cfg.api.getById]
-  mod.report.getById(route.params.id).then((res) => {
+  // 返回 Promise 供 enterEdit 的降级分支 await：它后面的 applyLocalCache 必须
+  // 等这份服务端内容填完再盖，否则本地镜像会被它冲掉。
+  return mod.report.getById(route.params.id).then((res) => {
     if (res.data.code === 0) {
       const persons = []
       const teachers = []
@@ -1188,8 +1244,15 @@ const { openWindow, closeWindow } = useTabs()
  *
  * 后端草稿接口未部署时 listDrafts() 会走网络异常分支，这里整体吞掉：
  * 检测不到就按全新表单走，不打扰用户、也不弹错。
+ *
+ * @param {{preserveLocal?: boolean}} [opt]
+ *        preserveLocal=true：本地缓存里握着用户最后看到的内容，**不要**让服务端
+ *        草稿盖上来（只借身份与 version）。这与 onMounted 传给 resumeDraftSession
+ *        的 restoreContent 是同一条底线 —— 两条路径的判据必须一致，
+ *        否则「指针丢了但本地有缓存」这种情况下，用户点一次「继续填写」
+ *        就会被一份可能更旧的草稿冲掉刚敲的字。
  */
-async function detectExistingDraft() {
+async function detectExistingDraft({ preserveLocal = false } = {}) {
   try {
     const drafts = await listDrafts()
     if (!Array.isArray(drafts) || drafts.length === 0) return
@@ -1205,8 +1268,8 @@ async function detectExistingDraft() {
       '发现草稿',
       { confirmButtonText: '继续填写', cancelButtonText: '重新开始', type: 'info' }
     )
-    await loadDraft(latest.draft_id)
-    ElMessage.success('已恢复草稿内容')
+    await loadDraft(latest.draft_id, { restoreContent: !preserveLocal })
+    ElMessage.success(preserveLocal ? '已接上草稿，页面内容保持为您本机这份' : '已恢复草稿内容')
   } catch (err) {
     // 用户选「重新开始」→ ElMessageBox 以 'cancel' reject，保持空白表单即可，其余静默
     if (err === 'cancel' || err === 'close') return
@@ -1220,9 +1283,21 @@ async function detectExistingDraft() {
  * 而不是直接 PUT 正式 Report —— 否则「驳回 → 修改 → 再提交」这条链路里，
  * 用户改到一半的内容会直接写进正式数据。
  */
-async function enterEdit() {
+async function enterEdit(localCache) {
   try {
     await enterEditFromRejected(route.params.id)
+    /*
+     * 【服务端回填完了，再把本地镜像盖回去】
+     * 顺序不能反：enterEditFromRejected 内部会 applyRestored，先盖就会被冲掉。
+     *
+     * 为什么需要这一步 —— edit-draft 拿回来的是**正式 Report 的内容**，
+     * 它不含用户上次在修改页改了却没提交的部分（后端 views.py:885 每次进入都用
+     * Report 重建草稿并覆盖）。所以"切走再回来发现改的全没了"是必然的，
+     * 本地镜像在服务端那条链路修好之前是唯一的解法。见 tempSave 的注释。
+     */
+    applyLocalCache(localCache)
+    // 【P1-5】编辑页也要开自动暂存：此前它只有「手点暂存」和「提交」两个落盘点
+    startDraftAutoSave()
   } catch (err) {
     const e = err || {}
     if (e.kind === DRAFT_ERR_CODE.NOT_REJECTED) {
@@ -1235,21 +1310,65 @@ async function enterEdit() {
     // 保证「查看/核对已提交内容」不受影响；此时暂存与提交会失败并明确提示，
     // 绝不会静默写坏正式数据。
     ElMessage.warning('草稿服务暂时不可用，当前仅回填显示，暂存与提交会失败')
-    getMessage()
+    // getMessage 是异步的：等它填完再盖本地镜像，否则本地内容会被它冲掉
+    await getMessage()
+    applyLocalCache(localCache)
+  }
+}
+
+/** 把本地镜像盖回表单（若有），并让脏标记如实反映"内容已变" */
+function applyLocalCache(cached) {
+  if (!cached) return
+  form.value = cached
+  fileList.value = Array.isArray(cached.fileList) ? cached.fileList : []
+  fileList1.value = Array.isArray(cached.fileList1) ? cached.fileList1 : []
+  // 不调它也不影响自动暂存（autoTick 自己比签名），但会让 draftState.isDirty 说谎
+  markDirty()
+}
+
+/**
+ * 关页 / 刷新 / 组件卸载前的最后一道本地落盘。
+ *
+ * 【为什么只能写 localStorage】beforeunload 里发不出异步请求 ——
+ * 任何 fetch / await 都会在页面卸载时被浏览器直接掐掉。所以这里不调暂存接口，
+ * 只把"用户此刻看到的内容"写进本地镜像，下次进来由上面的本地缓存逻辑认回来。
+ *
+ * 【它补的是哪个窗口】服务端自动暂存 45 秒一次、本地镜像 60 秒一次，两条都是定时。
+ * 用户敲完最后几个字立刻关页，谁都不会触发 —— 没有这个钩子，那一刻的输入就彻底没了。
+ */
+function flushLocalCache() {
+  // 已提交：onSubmitted 刚清过缓存并把表单重置成空，别把空表单又写回缓存里
+  if (draftState.submitted) return
+  try {
+    tempSave()
+  } catch (_) {
+    // 隐私模式 / 配额满：落盘失败不该在卸载路径上抛异常
   }
 }
 
 onMounted(() => {
+  /*
+   * 【两个模式都要有 cacheName 与 60 秒本地镜像】
+   *
+   * dist 只在新增页做（`this.cacheName = this.$route.path`），编辑页什么都没有 ——
+   * 于是编辑页改到一半切走 = 全丢，连本地缓存都没有。现在编辑页也有，
+   * 理由见 tempSave 的长注释（后端 edit-draft 会覆盖草稿，本地镜像是唯一退路）。
+   *
+   * 键用 route.path：编辑页的 path 含具体 id（/school/elementary/edit/5），
+   * 所以不同报名各存各的，不会互相覆盖。
+   */
+  cacheName.value = route.path
+  const cached = getCache(cacheName.value)
+  // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
+  // 它可能比服务端草稿新（刚敲完就切走）——下面据此决定要不要让服务端内容盖上来。
+  const hadLocalCache = !!cached
+
+  // 关页 / 刷新前的最后一道本地落盘（见 flushLocalCache 的注释）
+  window.addEventListener('beforeunload', flushLocalCache)
+
   if (cfg.mode === 'create') {
-    // dist: this.cacheName=this.$route.path; this.form=this.getCache(this.cacheName);
+    // dist: this.form=this.getCache(this.cacheName);
     //       this.form ? (取回 fileList/fileList1) : (重置 form 与 fileList)
-    // 注意 dist 传的是 $route.path（不含 :id），编辑页无此逻辑
-    cacheName.value = route.path
-    const cached = getCache(cacheName.value)
-    // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
-    // 它可能比服务端草稿新（刚敲完就切走）——下面 resumeDraftSession 据此决定要不要让
-    // 服务端内容盖上来，见那里的 restoreContent。
-    const hadLocalCache = !!cached
     if (cached) {
       form.value = cached
       fileList.value = cached.fileList ? cached.fileList : []
@@ -1273,23 +1392,45 @@ onMounted(() => {
      * 「检测到您有一份未提交的草稿」—— 那份本来就是用户自己正在填的，弹窗只会打断。
      * 认领失败（从没存过 / 指针已失效 / 这次没拉到）才退回原来的「检测已有草稿」。
      *
+     * preserveLocal 与 restoreContent 用的是**同一个判据**：本地有缓存时，
+     * 两条路都不能让服务端内容盖掉它，否则「指针丢了但本地有缓存」这种情况下，
+     * 用户点一次「继续填写」就会丢掉刚敲的字。
+     *
      * 认领是网络请求，所以不 await：它内部已把失败全部吃掉，不会抛到 onMounted 外面。
      */
     resumeDraftSession({ restoreContent: !hadLocalCache }).then((resumed) => {
-      if (!resumed) detectExistingDraft()
+      if (!resumed) detectExistingDraft({ preserveLocal: hadLocalCache })
     })
   } else {
-    enterEdit()
+    /*
+     * 编辑页：服务端内容由 enterEdit 负责回填，本地镜像在它**之后**才盖上
+     * （顺序反了会被冲掉）。60 秒定时器也等 enterEdit 落定再起 ——
+     * 否则它可能在表单还是空的时候先把空表写进缓存，把用户的修改覆盖掉。
+     */
+    enterEdit(hadLocalCache ? cached : null).finally(() => {
+      if (timer) clearInterval(timer)
+      timer = setInterval(() => {
+        tempSave()
+      }, 6e4)
+    })
   }
 
   // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
   // OSS 的 STS 凭证必须按次签发，没有可预取的东西，故删除。
 })
 
-// dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy
+// dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy。
+// 现在两个模式都挂定时器与 beforeunload，收尾动作必须对称。
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
   stopDraftAutoSave()
+  window.removeEventListener('beforeunload', flushLocalCache)
+  /*
+   * 走 Vue Router 切换页面**不会**触发 beforeunload，所以这里要再补一次落盘 ——
+   * 「填着填着切到报名汇总看一眼」走的正是这条路径，不补就等于关了页面才保得住。
+   * 放在最末尾：前面的清理都已经做完，此刻落盘拿到的仍是卸载前的内容。
+   */
+  flushLocalCache()
 })
 
 /* ------------------------- 提交 ------------------------- */

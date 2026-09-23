@@ -253,8 +253,22 @@ export function useDraftSession({
         state.hasVersionConflict = true
         stopAutoSave()
       } else if (e.kind === DRAFT_ERR.NOT_FOUND) {
-        // §二十六 DRAFT_NOT_FOUND：停止自动暂存，提示用户重新进入
+        /*
+         * §二十六 DRAFT_NOT_FOUND：停止自动暂存，提示用户重新进入。
+         *
+         * 【必须把身份一起清掉】原先只停表、不清 draftId，于是这个页面会话里：
+         *   · 「暂存」按钮照常可点，点一次 404 一次；
+         *   · localStorage 里的指针也原封不动，下次进来还会再去拉一次不存在的草稿。
+         * resumeSession 的同类分支就会清，这里是一处遗漏。
+         *
+         * 清掉之后 saveOnce 会走 POST 重新建草稿 —— 这正是"草稿没了但用户还在填"
+         * 时该做的事，比拿着一个死 ID 反复撞 404 好。
+         */
         stopAutoSave()
+        state.draftId = null
+        state.reportId = null
+        state.draftVersion = null
+        clearSession()
         if (onFatal) onFatal(e)
       }
       throw e
@@ -279,7 +293,11 @@ export function useDraftSession({
       if (!isMeaningfulPayload(currentPayload())) return
     }
     const payload = currentPayload()
-    if (payloadSignature(payload) === lastSignature) return // 没有变化不发
+    // 【null 要当成"有变化"】payloadSignature 在无法判定时返回 null（见那里的说明）。
+    // 直接写 `=== lastSignature` 的话 `null === null` 成立，会被判成"没变化"而**永不保存** ——
+    // 与它自己声明的"调用方按有变化处理"正好相反。
+    const signature = payloadSignature(payload)
+    if (signature !== null && signature === lastSignature) return // 没有变化不发
 
     // 自动暂存的失败已经在 saveOnce 里记进 state.saveError，这里吞掉即可
     save().catch(() => {})
@@ -327,6 +345,20 @@ export function useDraftSession({
     const d = body.data || {}
     adoptDraftMeta(d)
 
+    /*
+     * 【已提交的草稿绝不回填内容】
+     *
+     * state=1 表示这份草稿已经转成正式报名了，它已经不是"填写中的草稿"。
+     * 原先先恢复内容、再由 resumeSession 判断 state，于是用户会看到：
+     * 表单被填上一份他已经提交过的内容、状态却显示「未保存」；
+     * 一保存就撞 409（后端不许改已提交草稿），点「重新加载」又回到这里，
+     * 内容再填一遍、冲突解除、状态显示「已暂存」——**而服务器上什么都没存**。
+     *
+     * 放在这里拦是因为 loadDraft 是"把内容写进表单"的唯一入口：
+     * reloadFromServer 也走它，只堵 resumeSession 是堵不住的。
+     */
+    if (state.draftState === 1) return d
+
     if (restoreContent) {
       const restored = restoreDraftPayload(d.payload, getForm())
       applyRestored(restored)
@@ -352,7 +384,19 @@ export function useDraftSession({
       state.isDirty = true
     }
 
-    state.lastSavedAt = d.updated_at ? clock(new Date(d.updated_at)) : null
+    /*
+     * 【restoreContent=false 时不能写 lastSavedAt】
+     *
+     * lastSavedAt 是 statusText 判「已暂存」的唯一依据。而 restoreContent=false 走的
+     * 正是"内容留在本地、还没上服务端"这一支 —— 此时把服务端的 updated_at 写进去，
+     * 界面立刻显示「已暂存」，用户以为存住了，实际上要等最长 45 秒的自动暂存才真上去。
+     * 这中间关掉页面，内容就只剩 localStorage 一份。
+     *
+     * 等下一次真正保存成功时由 adoptSaveResult 写，那才是"已暂存"成立的那一刻。
+     */
+    if (restoreContent) {
+      state.lastSavedAt = d.updated_at ? clock(new Date(d.updated_at)) : null
+    }
     return d
   }
 
@@ -386,10 +430,20 @@ export function useDraftSession({
     try {
       const d = await loadDraft(draftId, { restoreContent })
 
-      // 已提交的草稿不能再当"填写中的草稿"用：它已经转成正式报名了。
-      // 留着指针会让下次进来又去拉一份改不动的草稿，且一保存就撞 409。
+      /*
+       * 已提交的草稿不能再当"填写中的草稿"用：它已经转成正式报名了。
+       * 留着指针会让下次进来又去拉一份改不动的草稿，且一保存就撞 409。
+       *
+       * 【内存里的身份也要清】原先只 clearSession() 清 localStorage，state.draftId /
+       * draftVersion 仍指着那份已提交的草稿 —— 返回 false 之后页面继续按"没有草稿"
+       * 走，可只要用户点一次「暂存」，saveOnce 就会拿这个 ID 去 PUT，撞 409。
+       * （内容回填那半边已经在 loadDraft 里堵住，这里补齐身份这半边。）
+       */
       if (state.draftState === 1) {
         clearSession()
+        state.draftId = null
+        state.reportId = null
+        state.draftVersion = null
         return false
       }
       return true
@@ -414,12 +468,29 @@ export function useDraftSession({
     }
   }
 
-  /** 编辑中的草稿摘要列表（§九） */
+  /**
+   * 编辑中的草稿摘要列表（§九）
+   *
+   * 【两种信封都要认 —— 这里曾经恒返回 []】
+   * 后端 apps/api/views.py 的 _draft_list 返回的是
+   *     success("获取成功", { "data": [...], "count": N })
+   * 而 success() 自己还会再套一层 {"code":0,"msg":...,"data":<上面那个>}，
+   * 于是真正的数组在 `body.data.data`，**套了两层**。
+   * 原先只认 `Array.isArray(body.data)`，恒为 false ⇒ 这个函数永远返回空数组
+   * ⇒ OrchestraForm.detectExistingDraft 里 `drafts.length === 0` 恒成立
+   * ⇒ 「检测到您有一份未提交的草稿，是否继续填写？」**永远不会弹**。
+   * 那不只是少了个提示：它正好拆掉了「草稿被新增页劫持」那条路上唯一的提醒。
+   *
+   * 平铺（规范 §九 的写法）和套两层（后端现状）都接受，后端将来改哪一边都不会再断。
+   */
   async function listDrafts() {
     const res = await reportDraftApi.getList(scope)
     const body = res.data || {}
     if (body.code !== 0) return []
-    return Array.isArray(body.data) ? body.data : []
+    const d = body.data
+    if (Array.isArray(d)) return d
+    if (d && Array.isArray(d.data)) return d.data
+    return []
   }
 
   /**
@@ -457,7 +528,23 @@ export function useDraftSession({
    *   9-12 停表、清队列、回调跳转
    */
   async function submit() {
-    if (state.isSubmitting || state.isSaving) return null
+    /*
+     * 【为什么不再拦 isSaving —— 那是一个静默的失败】
+     *
+     * 原先这里是 `if (state.isSubmitting || state.isSaving) return null`。
+     * isSaving 是"某次保存正在飞"的标记，而提交按钮只按 isSubmitting 禁用
+     * （模板 :disabled 里没有 isSaving）。于是用户在一次自动暂存 PUT 正在飞时点
+     * 「立即报名」→ 校验通过 → 确认框确认 → submitDraft() 返回 null →
+     * 调用方 OrchestraForm 只处理 thrown error ⇒ **页面毫无反应**：不报错、不成功、不跳转。
+     *
+     * 而这道拦截本来就是多余的：上面那条串行链保证提交前的 save({force:true})
+     * 会**排在**在飞的那次保存之后执行，且 saveOnce 是在任务真正执行时才读
+     * state.draftVersion，所以拿到的仍是最新 version。让提交照常入队才是对的。
+     *
+     * isSubmitting 保留：它是真正的重复提交防护，且此时 UI 已在显示「正在提交……」，
+     * 双击时静默是合理的。
+     */
+    if (state.isSubmitting) return null
     if (state.hasVersionConflict) {
       // 冲突未解决不允许提交，否则会把旧内容固化进正式报名
       throw Object.assign(new Error(TEXT.conflict), { kind: DRAFT_ERR.CONFLICT })
@@ -509,6 +596,28 @@ export function useDraftSession({
   async function reloadFromServer() {
     if (!state.draftId) return null
     const d = await loadDraft(state.draftId)
+
+    /*
+     * 【服务器上那份已经提交了 —— 这不是"别处改的更新版本"】
+     *
+     * 409 的唯一出路是"重新加载服务器草稿"，但如果服务器上那份草稿已经是 state=1
+     * （用户开着的另一个标签页已经提交过），重新加载拿回来的是一份**改不动**的草稿。
+     * 此时若照常解除冲突、重启自动暂存，界面会显示「已暂存」，而服务器上什么都没存；
+     * 下一次保存必然再撞 409 —— 用户就卡在这个循环里出不来。
+     *
+     * 正确收口是把它当"已提交"处理：置 submitted（状态文案随之变成「已正式提交」）、
+     * 不再重启自动暂存、清掉指针，并明确告诉用户为什么。
+     */
+    if (state.draftState === 1) {
+      state.submitted = true
+      state.hasVersionConflict = false
+      stopAutoSave()
+      clearSession()
+      throw Object.assign(new Error('该草稿已在其他页面提交，不能再修改'), {
+        kind: DRAFT_ERR.ALREADY_SUBMITTED
+      })
+    }
+
     state.hasVersionConflict = false
     startAutoSave()
     return d

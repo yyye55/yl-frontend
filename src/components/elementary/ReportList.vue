@@ -339,6 +339,21 @@ function handleCurrentChange(current) {
 }
 
 /**
+ * 【响应乱序保护：只认最后一次请求的结果】
+ *
+ * 翻页 / 改每页条数 / 点刷新都会发新请求，而它们**互不等待** —— 用户在
+ * 「第 2 页」还没回来时点了「第 3 页」，就是两个请求同时在飞。谁先到不取决于
+ * 谁先发：第 2 页那次若因网络抖动慢了一拍，它会在第 3 页的结果**之后**落地，
+ * 于是 `data.value` 被覆盖成第 2 页的行，而分页控件高亮的是第 3 页。
+ * 用户看到的是「页码和内容对不上」，且刷新一次就好 —— 最难查的那类。
+ *
+ * 做法：每次请求领一个递增序号，回来时不是最新那号就整个丢弃。
+ * 注意**丢弃时不弹任何提示** —— 那份结果本身没错，只是过期了，
+ * 弹窗只会让用户以为自己操作失败。
+ */
+let reqSeq = 0
+
+/**
  * dist:
  *   getData(){
  *     const e={page,limit,keyword,status}            // 4b6a/67bc 还带 group
@@ -355,7 +370,10 @@ function getData() {
   // 1c73 / cd09: 不发该参数
   if (cfg.group !== undefined) params.group = cfg.group
 
+  reqSeq += 1
+  const seq = reqSeq
   MODULES[cfg.api].report.getList(params).then(({ data: res }) => {
+    if (seq !== reqSeq) return
     if (res.code === 0) {
       total.value = res.count
       data.value = res.data

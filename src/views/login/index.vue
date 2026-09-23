@@ -81,8 +81,47 @@ const ROLE_HOME = {
   0: "/school"
 }
 
+/**
+ * 登录页清缓存。
+ *
+ * 【原来是 `localStorage.clear()` —— 一刀切，把草稿指针也清了】
+ *
+ * 登录页会被**整页跳转**过来：request.js 的 401/403 分支走 gotoLogin()，
+ * 用的是 `window.location.href`。也就是说「登录态过期」这一个很常见的场景，
+ * 会让用户正在填的报名表发生：
+ *
+ *   跳到 /login → localStorage 被清空 → draft_session:* 指针没了
+ *   → 重新登录后回到报名页，手里没有任何线索 → 从零开始填
+ *
+ * 而草稿其实**一直在服务器上**（每 45 秒存一次）。用户丢的不是数据，是门牌号。
+ * 更糟的是原本还有一层兜底 —— OrchestraForm.detectExistingDraft() 会去列草稿 ——
+ * 但那个函数因为信封解析错误恒返回空数组（已单独修掉）。两处叠加，
+ * 「重新登录后草稿找不回」就成了必然。
+ *
+ * 【现在的做法】只清**登录态**与**表单内容缓存**，保留 `draft_session:` 指针。
+ *
+ * 为什么分开对待：
+ *   · token / user  —— 登录页的职责，必须清，否则带着旧登录态进不去；
+ *   · 表单内容缓存（键名是路由 path）—— 可能残留上一位使用者的填报内容，
+ *     共用电脑时有隐私问题，**继续清**；
+ *   · draft_session:* —— 只有一个门牌号，不含任何填报内容；留着它，
+ *     重新登录后 resumeDraftSession 就能把服务端那份草稿认回来。
+ *
+ * 注意：这样处理只保住了「服务端已存下的」内容。用户关页前最后 ≤60 秒
+ * 敲在本地缓存里、还没被自动暂存推上去的那几个字，仍然会随缓存一起没。
+ * 这是「本地缓存清不清」的固有取舍，不是这次改动引入的。
+ */
 onMounted(() => {
-  try { window.localStorage.clear() } catch (_) {}
+  try {
+    const ls = window.localStorage
+    // 先收集再删除：边遍历边删会让索引错位
+    const keys = []
+    for (let i = 0; i < ls.length; i += 1) {
+      const k = ls.key(i)
+      if (k && !k.startsWith('draft_session:')) keys.push(k)
+    }
+    keys.forEach((k) => ls.removeItem(k))
+  } catch (_) {}
 })
 
 function resetLoginForm() {

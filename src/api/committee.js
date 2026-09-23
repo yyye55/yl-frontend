@@ -3,8 +3,19 @@
  *
  * 【可信度：A】直接照搬 dist 中 const q = {...}
  *
- * 【与 dist 的差异】deletedUser 的 URL 已修正（原版 '/committee/api/user' 缺前缀与尾斜杠），
- * 另 update/create 补齐了尾斜杠；两者都是路径笔误修正，详见各方法上方的注释。
+ * 【与 dist 的差异】
+ *   1) update 的 URL 补齐了尾斜杠（原为 '/api/committee/user'），属路径笔误修正，
+ *      详见方法上方的注释。
+ *   2) 删除了 dist 里有、但本项目组委会侧不使用的三个方法：
+ *        create       POST   /api/committee/user/
+ *        deletedUser  DELETE /api/committee/user/       （dist 原文写作 "/committee/api/user"，缺前缀与尾斜杠）
+ *        restoreUser  PUT    /api/committee/user/restore
+ *      依据：组委会页面 /committee/user 上能点的只有 搜索/刷新/分页(list)、
+ *      操作列「重置密码」(update)、「导出所有账号」(download)，模板里没有任何
+ *      「新增账号 / 删除账号 / 恢复账号」按钮；全仓 grep 这三个方法名 0 个调用方
+ *      （也无 api.user[...] 这类动态取用）。
+ *      后端这三条路由仍在（apps/api/views.py register_user_routes("/committee", 2)，
+ *      见 openapi.json），删除的只是前端未使用的定义；将来若要做这三个功能需一并还原。
  */
 
 import request, { HOST } from '@/utils/request'
@@ -24,20 +35,7 @@ export const committeeApi = {
     list:     (params) => request.get(HOST + '/api/committee/user/list', { params }),
     // 【修复·尾部斜杠】同 admin.js，后端注册的是 '/api/committee/user/'（带尾斜杠）
     update:   (data)   => request.put(HOST + '/api/committee/user/', data),
-    create:   (data)   => request.post(HOST + '/api/committee/user/', data),
-    download: ()       => request.get(HOST + '/api/committee/user/export', { responseType: 'blob' }),
-    // 【修复·路径笔误】dist 原文为 w.host+"/committee/api/user" —— 少了两样东西：
-    //   1) 开头的 /api 前缀  2) 结尾的斜杠
-    // 证据（dist/app.js 原文）：
-    //   deletedUser(e){return O.delete(w.host+"/committee/api/user",{data:e})}
-    // 后端实际注册的是 DELETE /api/committee/user/（见 openapi.json，
-    // 与 apps/api/views.py 中 register_user_routes("committee", ...) 的 {prefix}/user/）。
-    // 按 dist 原样请求会打到 /ylbxt/committee/api/user，无论后端如何实现都必然 404。
-    // 因此这里判定为【原版笔误】而非【业务逻辑】，予以修正 —— 方法、参数、语义完全不变。
-    // 说明：该接口在本项目当前代码中没有任何调用方（委员会用户页 /committee/user 仍是占位页），
-    // 修正它是为了后续还原该页面时不至于踩到同一个坑。
-    deletedUser: (data) => request.delete(HOST + '/api/committee/user/', { data }),
-    restoreUser: (data) => request.put(HOST + '/api/committee/user/restore', data)
+    download: ()       => request.get(HOST + '/api/committee/user/export', { responseType: 'blob' })
   },
   index: {
     getIndexTotal: () => request.get(HOST + '/api/committee/index/total')

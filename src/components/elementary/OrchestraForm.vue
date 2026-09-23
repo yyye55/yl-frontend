@@ -489,7 +489,7 @@ import { fileApi } from '@/api/misc'
 // 【第十二届改造】上传改走阿里云 OSS 直传，不再使用七牛
 import { uploadToOss } from '@/services/ossUpload'
 import { addCache, getCache, clearCache } from '@/utils/auth'
-import { getM, getS } from '@/utils/date'
+import { getM, getS, formatDateTime } from '@/utils/date'
 import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
@@ -1262,7 +1262,21 @@ async function detectExistingDraft({ preserveLocal = false } = {}) {
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]
     if (!latest || latest.draft_id == null) return
 
-    const when = latest.updated_at ? `（最后保存：${latest.updated_at}）` : ''
+    /*
+     * 【时间为什么要过 formatDateTime，而不是直接插 updated_at】
+     *
+     * 后端给的是 UTC 带微秒的字符串，原样插进弹窗是这样的：
+     *     检测到您有一份未提交的草稿（最后保存：2026-09-23T02:02:00.246712+00:00）
+     * 两个毛病：
+     *   · 普通人看不懂（T、六位小数、+00:00 都是给机器看的）；
+     *   · **时间还差 8 小时** —— 上面这个时刻的北京时间是 10:02，不是 02:02。
+     * 只把格式改好看、不转时区，等于把一个读不出来的错数变成读得出来的错数。
+     *
+     * formatDateTime 解析出绝对时刻后按**浏览器本地时区**取数，
+     * 两件事一起解决；解析不出来时返回空串，退化成不带时间的问句，不会甩一行乱码。
+     */
+    const savedAt = formatDateTime(latest.updated_at, 'yyyy年M月d日 HH:mm')
+    const when = savedAt ? `（最后保存：${savedAt}）` : ''
     await ElMessageBox.confirm(
       `检测到您有一份未提交的草稿${when}，是否继续填写？`,
       '发现草稿',

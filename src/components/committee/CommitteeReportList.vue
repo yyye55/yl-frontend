@@ -131,7 +131,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" :width="360" header-align="center" align="center">
+          <el-table-column label="操作" width="350" header-align="center" align="center">
             <template #default="{ row }">
               <ShowContent :data="row" />
               <template v-if="row.status < 1">

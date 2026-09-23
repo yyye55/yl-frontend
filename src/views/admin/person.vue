@@ -8,6 +8,12 @@
   业务说明（基于 dist 模块 1727）：
     - 标题：人员管理
     - 表格 5 列：序号 / 姓名 / 身份证号码 / 学校名称 / 操作（修改按钮）
+      ↑ 【2026-09-23 起本条不再逐字等于 dist】第 4 列列头「学校名称」已改为「填报单位」。
+        只改 label，prop="school" 与取值一律未动 —— 改的是文案，不是数据。
+        起因：该列的值是各校在人员表里手填的单位名（Person.school），大学组等场景下未必是学校。
+        ✅ 本列**现在搜得到、也筛得了**（2026-09-23 起）：搜索框走 keyword、新增的筛选框走 school 参数，
+           后端两条路都匹配到 Person.school。契约与实测见
+           docs/后端协助问题清单-人员管理按填报单位搜索与筛选.md。
     - 修改 dialog：el-form（name + card），含验证规则
     - 无新增、无删除、无导出
     - 分页 page-sizes=[10,20,50,100]（limit 默认 10）
@@ -27,6 +33,22 @@
 
   【无 Tabs】dist 不使用 tabsStore
 
+    【本仓库新增功能，dist 无】填报单位筛选（2026-09-23）
+    - .options 里 keyword 右侧新增一个 el-input，值以 `?school=` 发给
+      /api/admin/person/list，后端做 icontains 模糊匹配，可与 keyword 叠加（取交集）。
+    - 后端契约与遗留缺口见 docs/后端协助问题清单-人员管理按填报单位搜索与筛选.md。
+      ✅ 参数确已就位（2026-09-23 核实）：后端提交 00afaa4 已并入 jy（合并提交 2168e6f），
+         jy / origin/jy / master / origin/master 四个 ref 上都有该行（views.py:601），
+         且 jy 与 master 分叉计数为 0:0 —— 即 `school` 在 jy 上是齐的，不是只在 master。
+         **仍未核实的是服务器部署版本**：若线上没重新部署，表现是「输入单位名后结果毫无变化」
+         （接口会静默忽略未知参数，不报错）。
+      ✅ 需求 A 也已补上（2026-09-23，用户授权后由前端代改后端）：
+         views.py:600 的 Q 加上了 `| Q(school__icontains=k)`，
+         所以左边那个搜索框现在**也能按单位搜**，两个框都能用了。
+         ⚠️ 该后端改动**目前只在后端的工作区，未提交、未推送**。
+            若线上仍搜不到单位，先确认后端有没有发这一版 —— 接口会静默忽略未知参数，不报错。
+    - 两个框的 change 都改成「先归页码再取数」，理由见 handleFilterChange 的注释。
+
     【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
@@ -38,12 +60,23 @@
         v-model="keyword"
         class="input-with-select"
         placeholder="请输入内容"
-        @change="getData"
+        @change="handleFilterChange"
       >
         <template #append>
           <el-button :icon="Search" />
         </template>
       </el-input>
+
+      <!-- 填报单位筛选 → 后端 /api/admin/person/list 的 school 参数（icontains 模糊匹配）。
+           与左边搜索框的分工：搜索框是「一个词打 姓名/身份证」，
+           本框只限定填报单位；两者同时有值时后端取交集。
+           clearable 便于一键清空（清空也会触发 change）。 -->
+      <el-input
+        v-model="school"
+        placeholder="按填报单位筛选"
+        clearable
+        @change="handleFilterChange"
+      />
 
       <el-button type="primary" @click="reflush">
         刷新
@@ -58,7 +91,8 @@
           <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="name" label="姓名" align="center" />
           <el-table-column prop="card" label="身份证号码" align="center" />
-          <el-table-column prop="school" label="学校名称" align="center" />
+          <!-- label 2026-09-23 由「学校名称」改「填报单位」；prop 不动，见文件头注释 -->
+          <el-table-column prop="school" label="填报单位" align="center" />
           <el-table-column label="操作" align="center">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="modify(row)">修改</el-button>
@@ -112,6 +146,8 @@ import { Search } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
 
 const keyword = ref(null)
+/** 填报单位筛选值 → 以 ?school= 发给后端，后端做 icontains 模糊匹配 */
+const school = ref(null)
 const showInfo = ref(false)
 const showEditInfo = ref(false)
 const status = ref(0)
@@ -136,12 +172,31 @@ const editRules = {
 }
 
 function handleSizeChange(size) { page.value = 1; limit.value = size; getData() }
-// dist: reflush(){this.getData()} —— 不重置页码
+// dist: reflush(){this.getData()} —— 不重置页码（刷新不是筛选，维持 dist 原样）
 function reflush() { getData() }
+
+/**
+ * 【本仓库修复，dist 无】搜索/筛选值变化时**先把页码归 1** 再取数。
+ *
+ * dist 原文是 keyword 的 @change 直接绑 getData，不重置页码。当时没暴露出来，
+ * 是因为只有一个搜索框；加了填报单位筛选后，两个框叠加，踩中的概率显著变高。
+ *
+ * 为什么必须归位：后端的 list_page 对**越界页码返回空数组**而不是夹到最后一页
+ * （apps/core/services.py:73-76 有注释：为对齐 Laravel 的 skip+take 契约刻意如此）。
+ * 于是在第 5 页输入筛选词、而结果只剩 3 条时，用户看到的是 total=3、表格全空 ——
+ * 看起来像"没搜到"，其实是页码越界。两边都走这个函数，行为才一致。
+ */
+function handleFilterChange() {
+  page.value = 1
+  getData()
+}
 function handleCurrentChange(current) { page.value = current; getData() }
 
 function getData() {
-  adminApi.person.list({ page: page.value, limit: limit.value, keyword: keyword.value }).then((res) => {
+  // school 为 null 时 axios 会整个略掉该参数（与 keyword 一样），
+  // 清空后若变成空串，后端 `if request.GET.get("school")` 也当没传 —— 两条路都安全。
+  const params = { page: page.value, limit: limit.value, keyword: keyword.value, school: school.value }
+  adminApi.person.list(params).then((res) => {
     const body = res?.data
     if (!body) { ElMessage.error('响应为空'); return }
     if (body.code === 0) { total.value = body.count; data.value = body.data }

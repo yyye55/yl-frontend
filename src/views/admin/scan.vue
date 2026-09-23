@@ -20,7 +20,8 @@
         <el-table :data="data" border style="width:100%">
           <!-- dist 原文为 prop="date" + type="index"；type=index 时 prop 不生效，保留原样 -->
           <el-table-column prop="date" type="index" label="序号" width="60" />
-          <el-table-column prop="nickname" label="学校名称" />
+          <!-- label 2026-09-23 由「学校名称」改「填报单位」；prop 不动，见文件头注释 -->
+          <el-table-column prop="nickname" label="填报单位" />
           <el-table-column label="操作">
             <template #default="{ row }">
               <ShowScFile v-if="row.scanfile.length > 0" :data="row.scanfile" :is-show="true" />
@@ -105,6 +106,14 @@
  *                this.$api.image.getList(e).then(({data:e})=>{
  *                  0===e.code ? (this.total=e.count, this.data=e.data) : ElMessage.error(e.msg) }) }
  *   }
+ *
+ * 【2026-09-23 起本条不再逐字等于 dist】上面 dist 引用块里的
+ *   <el-table-column prop="nickname" label="学校名称" />
+ *   列头已改为「填报单位」。引用块本身按惯例保持逐字不变，偏离记在这里。
+ *   只改 label，prop="nickname" 与取值未动 —— 改的是文案，不是数据。
+ *   起因：本列显示的是账号所属的填报单位（User.nickname），叫「学校名称」不准。
+ *   注：本列**搜索本来就是好的** —— 后端 /api/scan/list 的 keyword 走 nickname__icontains
+ *   （apps/api/views.py:341-345），而 nickname 就是这个填报单位，故本轮无需任何后端改动。
  *
  * 【本页旧实现的问题（已整体重写）】
  * 旧版把 /admin/scan 做成了「摄像头 + face-api 人脸识别 + 签到列表」，页面标题写作「扫码签到」。

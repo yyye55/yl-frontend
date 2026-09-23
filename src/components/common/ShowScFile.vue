@@ -23,14 +23,16 @@
             <el-table-column label="文件">
               <template #default="{ row }">
                 <!-- 【第十二届修复】原写法 :href="f.url" :download="row.filename" target="_blank"
-                     两处都不对，且都不足以让文件名正确，详见 script 里 downloadRowFile 的说明。
-                     改为点击后走 blob 下载，href 用 javascript:; 保持 <a> 的链接外观与手型光标。 -->
+                     两处都不对，且都不足以让文件名正确，详见 script 里 download() 的说明。
+                     保留 href/target 是为了中键、右键「复制链接 / 另存为」仍能直接打开 OSS 原文件，
+                     左键点击由 @click.prevent 拦下走 blob 下载。 -->
                 <a
                   v-for="f in row.files"
                   :key="f.id"
-                  href="javascript:;"
+                  :href="f.url"
+                  target="_blank"
                   style="text-decoration:none;color:#1890FF;margin:5px"
-                  @click="downloadRowFile(f)"
+                  @click.prevent="download(f)"
                 >{{ f.name }}</a>
               </template>
             </el-table-column>
@@ -70,6 +72,8 @@
  *
  * 【未迁移项 —— 均为 dist 中的死代码，理由同 MainLayout 未移植 openNew/handleClick】
  *  1. showMoive / showImg / download 三个方法在原文模板中从未被调用；
+ *     （注意：见下方 download(f) 的【第十二届修复】说明 —— 该处新加的 download
+ *      与 dist 这笔死方法同名，但不是同一段代码，原文那笔仍未被移植。）
  *  2. 原文末尾的 <div id="wrapper" v-show="show"> 只有一个「关闭」按钮，而
  *     show 仅由死方法 showMoive 置为 true，即该节点在 dist 中恒不可见，故未移植。
  *
@@ -82,7 +86,6 @@
  */
 
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api'
 import { downloadRemoteFile } from '@/utils/download'
 
@@ -110,31 +113,32 @@ function showFile() {
 }
 
 /**
- * 下载单个扫描件
+ * 【第十二届修复】扫描件下载：改用原始文件名存盘
  *
- * 【第十二届修复：文件名】模板原写作
- *     :href="f.url" :download="row.filename" target="_blank"
- * 两个属性都不对：
- *   1) `download` 绑的是 **row** 上的 filename，但 row 是一条 ScanFiles 记录
- *      （id / user_id / type / files / status / remark / created_at / updated_at），
- *      **根本没有 filename 字段** —— 绑定结果恒为 undefined。而 download 是
- *      DOMString 反射属性，赋 undefined 会被 String() 化成字面量 "undefined"，
- *      存盘名于是变成 "undefined.pdf"。
- *   2) 真正的原始文件名在 `f.name` 上，不在 row 上。
+ * 原文模板（dist chunk-112ce133 模块 f993）是
+ *     <a :href="f.url" :download="row.filename">
+ * 两个问题叠加，导致存盘名变成 OSS 的 ObjectKey（一串 UUID）：
  *
- * ScanFiles.files 是上传时写进去的 JSON 数组，元素形如 { uid, url, name, size, type }
- * （见 UploadScanDialog.vue 的 uploadFile()；views/committee/online.vue、
- * views/online/list.vue 两处上传点写的键名一致），其中：
- *   · f.url  → OSS 的随机 UUID 地址
- *   · f.name → 原始文件名（「单位扫描件.pdf」）
+ *   1) **字段取错**：这里的 row 是 scan_files 记录
+ *      {id,user_id,type,files,status,remark,created_at,updated_at}，**根本没有
+ *      filename 字段**，row.filename 恒为 undefined；而 Vue 3 对 undefined 的
+ *      动态属性绑定会把这个属性整个**移除**（不是写成 "undefined"）。真正的原始
+ *      文件名在 row.files[i].name —— 见本组件头部说明与 UploadScanDialog.vue 里
+ *      push 的 {uid,url,name,size,type}。
+ *   2) **跨域下 download 属性本就无效**：f.url 是 OSS 绝对地址，与本站不同源，
+ *      HTML 规范规定这种情况下浏览器忽略 download，退回用 URL 最后一段命名。
  *
- * 但只把 1) 改成 `:download="f.name"` 仍然不够：OSS 与前端跨源，download 属性会被
- * 浏览器忽略，存下来还是 UUID。故必须改走 blob，理由与 CORS 前提见 utils/download.js。
+ * 只修 1) 没用，所以改为自己取 Blob 再用同源的 blob: URL 触发下载，
+ * 具体见 @/utils/download.js 的说明。
+ *
+ * 取名字段是 `f.name || f.filename`：scan_files.files[] 的元素由 UploadScanDialog.vue
+ * 写入，键名是 name（`name: file.name`），所以 f.name 是正解；留 f.filename 只是
+ * 兼容历史数据里可能存成 filename 的行。
+ * （isShow=false 那条分支返回的是 Files 记录，字段名才是 filename —— 但模板读的是
+ * row.files，Files 上没有这个字段，那条分支本来就不渲染任何行，且当前无调用方使用。）
  */
-function downloadRowFile(f) {
-  downloadRemoteFile(f.url, f.name).catch((err) => {
-    ElMessage.error(err.message || '下载失败')
-  })
+function download(f) {
+  downloadRemoteFile(f.url, f.name || f.filename)
 }
 </script>
 

@@ -5,17 +5,34 @@
  *   · 首次创建 / 后续更新（§六、§七）
  *   · version 乐观锁：每次成功后立刻用返回值覆盖本地（§二十）
  *   · **保存请求串行**：同一个 draft_id 同时只允许一个请求在飞（§十九）
- *   · 409 版本冲突：停止自动暂存、不覆盖服务器、等用户重新加载（§二十一）
- *   · 自动暂存：没有变化不发；失败不算"已暂存"（§二十二）
- *   · 正式提交：强制最后一次暂存 → 用最新 version 提交 → 停表 → 清队列（§十）
+ *   · 409 版本冲突：不覆盖服务器、等用户重新加载（§二十一）
+ *   · **没有变化不发**：手动暂存重复点不会白发请求（§二十二）
+ *   · 正式提交：强制最后一次暂存 → 用最新 version 提交 → 清队列（§十）
  *   · 驳回后进入修改：edit-draft 换出草稿（§十三）
+ *
+ * ===========================================================================
+ * 【本模块没有定时器 —— 暂存只由用户点击（或提交）触发】
+ * ===========================================================================
+ * 原先这里挂过一个 45 秒的 setInterval 做「自动暂存」。**已按产品要求整体删除**：
+ * 用户没有点「暂存」，就不该有任何内容离开浏览器。
+ *
+ * 删除的连带影响，改动时别重新引入：
+ *   · 唯一会**自动**发保存请求的入口没有了。现在只有两条路会走到 saveOnce：
+ *     用户点「暂存」（页面 → save()），和提交前的 `save({force:true})`（§十）。
+ *   · 因此也删掉了配套的 `isMeaningfulPayload` 空表单守卫 —— 它本来只在
+ *     「定时器到点、但用户什么都没填」这一种情况下有用。手动点击是用户的明确
+ *     意图，本来就不受它约束。
+ *   · 页面的「本地镜像」（写 localStorage）**不在本模块**：它从不联网，所以不属于
+ *     「自动暂存」这件事，本模块管不着。但它同样已经**没有定时器了** ——
+ *     OrchestraForm / ProgramForm 里那支 dist 的 60 秒 setInterval 一并删除，
+ *     现在只剩关页/切走时落盘（只有 OrchestraForm 有，见其 flushLocalCache）。
  *
  * ===========================================================================
  * 【串行是怎么保证的：一条 Promise 链，而不是一个布尔锁】
  * ===========================================================================
  * 用 `if (isSaving) return` 这种布尔锁只能**丢弃**并发请求，被丢的那次修改就永远
- * 没被保存（自动暂存 45 秒后才补，用户此时可能已经点了提交）。规范 §十九 要的是
- * 「排队」不是「丢弃」，所以这里用一条链把所有保存串起来：
+ * 没被保存（用户此时可能已经点了提交）。规范 §十九 要的是「排队」不是「丢弃」，
+ * 所以这里用一条链把所有保存串起来：
  *
  *     调用方 ──enqueue(task)──→ chain = chain.then(task)
  *
@@ -23,8 +40,7 @@
  * · 链本身被吞掉异常（chain 永不 reject），单个任务失败不会卡死后续任务；
  * · 每次 enqueue 返回**该任务自己的** promise，调用方仍能 await 到结果或错误。
  *
- * 自动暂存 / 手动暂存 / 提交前最后一次暂存**全部**走 enqueue，所以三者之间
- * 也不可能并发。
+ * 手动暂存 / 提交前最后一次暂存**全部**走 enqueue，所以两者之间也不可能并发。
  */
 
 import { reactive, computed, nextTick } from 'vue'
@@ -36,9 +52,6 @@ import {
   DRAFT_ERR
 } from '@/api/reportDraft'
 import { buildDraftPayload, restoreDraftPayload, payloadSignature } from '@/services/draftPayload'
-
-/** 自动暂存间隔。规范 §二十二 建议 30～60 秒 */
-const AUTO_SAVE_INTERVAL_MS = 45000
 
 /** 状态文案（规范 §二十二 建议的集合，逐条对应） */
 const TEXT = {
@@ -57,32 +70,12 @@ function clock(date = new Date()) {
 }
 
 /**
- * 这份 payload 有没有"用户在意的内容"。
- *
- * 【为什么需要它】自动暂存是定时器触发的。若不加判断，用户只是**打开**了报名页、
- * 什么都没填，定时器就会创建一条空草稿；之后每次进页面都会弹「你有未完成的草稿」。
- * 所以自动暂存只在有实质内容时才触发。
- *
- * 注意：group / establishment 有默认值（如学校端新增页预置「大学组/管乐团」），
- * 它们**不算**实质内容——否则光打开页面就能建草稿。手动点「暂存」不受此限制
- * （那是用户的明确意图）。
- */
-export function isMeaningfulPayload(p) {
-  if (!p) return false
-  if (p.choir_name || p.name || p.contact_name || p.contact_phone) return true
-  if (p.file || p.spectrum) return true
-  if (Array.isArray(p.person) && p.person.some((x) => x && (x.name || x.card))) return true
-  return false
-}
-
-/**
  * @param {object} opts
  * @param {'school'|'city'} opts.scope        —— 只决定 URL 前缀（§二十八），不放请求体
  * @param {() => object} opts.getForm         —— 取当前表单（用于 buildDraftPayload）
  * @param {() => {fileList:Array, fileList1:Array}} opts.getFiles
  * @param {(restored) => void} opts.applyRestored —— 把 {form,fileList,fileList1} 写回页面
  * @param {(data) => void} opts.onSubmitted   —— 提交成功回调（跳转等）
- * @param {boolean} [opts.autoSave]           —— 是否启用自动暂存
  * @param {{load:Function,save:Function,clear:Function}} [opts.sessionStore]
  *        —— 草稿指针的落脚点，见下方长注释；不传则退化为「窗口期内存活」
  */
@@ -120,7 +113,6 @@ export function useDraftSession({
   applyRestored,
   onSubmitted,
   onFatal,
-  autoSave = true,
   sessionStore = null
 }) {
   const state = reactive({
@@ -139,10 +131,8 @@ export function useDraftSession({
     submitted: false
   })
 
-  /** 上一次成功保存时的 payload 签名 —— 自动暂存「没有变化就不发」的判据 */
+  /** 上一次成功保存时的 payload 签名 —— 「没有变化就不发」的判据 */
   let lastSignature = null
-  /** 自动暂存定时器 */
-  let timer = null
   /** 串行链（见文件头）。永不 reject。 */
   let chain = Promise.resolve()
 
@@ -249,14 +239,13 @@ export function useDraftSession({
       state.saveError = e.msg
 
       if (e.kind === DRAFT_ERR.CONFLICT) {
-        // §二十一：停止自动暂存、禁止继续覆盖、等用户处理
+        // §二十一：禁止继续覆盖，等用户处理
         state.hasVersionConflict = true
-        stopAutoSave()
       } else if (e.kind === DRAFT_ERR.NOT_FOUND) {
         /*
-         * §二十六 DRAFT_NOT_FOUND：停止自动暂存，提示用户重新进入。
+         * §二十六 DRAFT_NOT_FOUND：提示用户重新进入。
          *
-         * 【必须把身份一起清掉】原先只停表、不清 draftId，于是这个页面会话里：
+         * 【必须把身份一起清掉】原先只清 draftId，指针没清，于是这个页面会话里：
          *   · 「暂存」按钮照常可点，点一次 404 一次；
          *   · localStorage 里的指针也原封不动，下次进来还会再去拉一次不存在的草稿。
          * resumeSession 的同类分支就会清，这里是一处遗漏。
@@ -264,7 +253,6 @@ export function useDraftSession({
          * 清掉之后 saveOnce 会走 POST 重新建草稿 —— 这正是"草稿没了但用户还在填"
          * 时该做的事，比拿着一个死 ID 反复撞 404 好。
          */
-        stopAutoSave()
         state.draftId = null
         state.reportId = null
         state.draftVersion = null
@@ -278,45 +266,13 @@ export function useDraftSession({
   }
 
   /**
-   * 排队保存。手动暂存 / 自动暂存 / 提交前最后一次暂存全部走这里，保证串行。
+   * 排队保存。手动暂存 / 提交前最后一次暂存全部走这里，保证串行。
    */
   function save(opt = {}) {
     return enqueue(() => saveOnce(opt))
   }
 
-  /* ------------------------- 自动暂存 ------------------------- */
-
-  function autoTick() {
-    if (state.hasVersionConflict || state.submitted || state.isSubmitting) return
-    if (!state.draftId) {
-      // 还没建草稿：只有出现实质内容才建，避免"打开页面就产生空草稿"
-      if (!isMeaningfulPayload(currentPayload())) return
-    }
-    const payload = currentPayload()
-    // 【null 要当成"有变化"】payloadSignature 在无法判定时返回 null（见那里的说明）。
-    // 直接写 `=== lastSignature` 的话 `null === null` 成立，会被判成"没变化"而**永不保存** ——
-    // 与它自己声明的"调用方按有变化处理"正好相反。
-    const signature = payloadSignature(payload)
-    if (signature !== null && signature === lastSignature) return // 没有变化不发
-
-    // 自动暂存的失败已经在 saveOnce 里记进 state.saveError，这里吞掉即可
-    save().catch(() => {})
-  }
-
-  function startAutoSave() {
-    stopAutoSave()
-    if (!autoSave) return
-    timer = setInterval(autoTick, AUTO_SAVE_INTERVAL_MS)
-  }
-
-  function stopAutoSave() {
-    if (timer) {
-      clearInterval(timer)
-      timer = null
-    }
-  }
-
-  /** 提交成功/致命错误后：清空待发送队列（§十 步骤 11） */
+  /** 提交成功后：清空待发送队列（§十 步骤 11） */
   function clearPendingQueue() {
     chain = Promise.resolve()
   }
@@ -365,20 +321,25 @@ export function useDraftSession({
       await nextTick()
 
       // 恢复完立刻对齐签名：让"用户没再改动"就等于"与草稿一致"，
-      // 否则下一次自动暂存会立刻多发一次内容完全相同的请求。
+      // 否则用户点一次「暂存」会被判成"没有变化"而不发请求。
       lastSignature = payloadSignature(currentPayload())
       state.isDirty = false
     } else {
       /*
        * 【内容留在本地 —— 这个分支是为了不丢用户刚敲的字】
        *
-       * 页面每 60 秒把当前表单写进 localStorage，服务端每 45 秒暂存一次。
-       * 两者是**同一份表单在不同时刻的快照**：用户敲完最后几个字就切走的话，
+       * 页面每 60 秒把当前表单写进 localStorage（本模块**不联网**，只是本地镜像）。
+       * 它与服务端草稿是**同一份表单在不同时刻的快照**：用户敲完最后几个字就切走的话，
        * 本地那份可能比服务端新，而服务端那份可能比本地新。谁新谁旧这里判不出来。
        *
        * 那就按「不丢字」优先：内容用本地（== 用户最后看到的），只借服务端的
-       * 身份与 version。把签名置空，下一次自动暂存就会主动把本地这份推上去，
-       * 拿的还是正确的 version，不会平白撞 409。
+       * 身份与 version —— version 是真要借的，否则用户点「暂存」时会带着
+       * version=null 去 PUT 而被后端判成冲突。
+       *
+       * 【签名置空 ≠ 会自动推上去】删掉自动暂存之前，`lastSignature = null` 会让
+       * 下一个定时器周期把本地这份主动推上服务端。**现在没有定时器了**：本地内容
+       * 要落到服务端，只能等用户点「暂存」或提交时的强制暂存。`lastSignature = null`
+       * 在这里只剩一个作用：保证用户点「暂存」时不会因为"签名没变"被跳过。
        */
       lastSignature = null
       state.isDirty = true
@@ -389,8 +350,8 @@ export function useDraftSession({
      *
      * lastSavedAt 是 statusText 判「已暂存」的唯一依据。而 restoreContent=false 走的
      * 正是"内容留在本地、还没上服务端"这一支 —— 此时把服务端的 updated_at 写进去，
-     * 界面立刻显示「已暂存」，用户以为存住了，实际上要等最长 45 秒的自动暂存才真上去。
-     * 这中间关掉页面，内容就只剩 localStorage 一份。
+     * 界面立刻显示「已暂存」，用户以为存住了，实际服务端根本没有这份内容，
+     * 得等他自己点「暂存」才上去。这中间关掉页面，内容就只剩 localStorage 一份。
      *
      * 等下一次真正保存成功时由 adoptSaveResult 写，那才是"已暂存"成立的那一刻。
      */
@@ -405,7 +366,7 @@ export function useDraftSession({
    *
    * 【要解决的是这个症状】填着填着切到报名汇总再切回来，刚才还显示「已暂存」，
    * 回来变成「未保存」—— 内容一直在服务器上，只是新实例不记得门牌号。
-   * 顺带修掉一个更隐蔽的后果：draftId 丢了之后下一次自动暂存会走 **POST 创建**，
+   * 顺带修掉一个更隐蔽的后果：draftId 丢了之后用户点「暂存」会走 **POST 创建**，
    * 靠后端 create_or_get_draft 的幂等兜底才没有产生第二条草稿。
    *
    * @param {{restoreContent?: boolean}} [opt]
@@ -525,7 +486,7 @@ export function useDraftSession({
    *   4   取当前完整表单 payload（saveOnce 内部做）
    *   5-7 强制最后一次暂存，拿到最新 version
    *   8   用最新 version 提交
-   *   9-12 停表、清队列、回调跳转
+   *   9-12 清队列、回调跳转
    */
   async function submit() {
     /*
@@ -533,7 +494,7 @@ export function useDraftSession({
      *
      * 原先这里是 `if (state.isSubmitting || state.isSaving) return null`。
      * isSaving 是"某次保存正在飞"的标记，而提交按钮只按 isSubmitting 禁用
-     * （模板 :disabled 里没有 isSaving）。于是用户在一次自动暂存 PUT 正在飞时点
+     * （模板 :disabled 里没有 isSaving）。于是用户在一次「暂存」PUT 正在飞时点
      * 「立即报名」→ 校验通过 → 确认框确认 → submitDraft() 返回 null →
      * 调用方 OrchestraForm 只处理 thrown error ⇒ **页面毫无反应**：不报错、不成功、不跳转。
      *
@@ -551,7 +512,6 @@ export function useDraftSession({
     }
 
     state.isSubmitting = true
-    stopAutoSave() // 提交期间不再有自动暂存插进来
     try {
       // 最后一次暂存**强制发送**（§十：不能跳过最后一次暂存）。
       // 即使签名没变也发，保证提交所依据的草稿就是用户此刻看到的内容。
@@ -577,10 +537,8 @@ export function useDraftSession({
       if (onSubmitted) onSubmitted(d)
       return d
     } catch (err) {
-      // 提交路径的失败要恢复自动暂存，否则用户改完也没人保存了
-      const e = err && err.kind ? err : normalizeDraftError(err)
-      if (e.kind !== DRAFT_ERR.CONFLICT) startAutoSave()
-      throw e
+      // 提交失败不改任何状态：用户留在页面上，可以继续改、继续点「暂存」或再提交
+      throw err && err.kind ? err : normalizeDraftError(err)
     } finally {
       state.isSubmitting = false
     }
@@ -602,16 +560,15 @@ export function useDraftSession({
      *
      * 409 的唯一出路是"重新加载服务器草稿"，但如果服务器上那份草稿已经是 state=1
      * （用户开着的另一个标签页已经提交过），重新加载拿回来的是一份**改不动**的草稿。
-     * 此时若照常解除冲突、重启自动暂存，界面会显示「已暂存」，而服务器上什么都没存；
+     * 此时若照常解除冲突，界面会显示「已暂存」，而服务器上什么都没存；
      * 下一次保存必然再撞 409 —— 用户就卡在这个循环里出不来。
      *
      * 正确收口是把它当"已提交"处理：置 submitted（状态文案随之变成「已正式提交」）、
-     * 不再重启自动暂存、清掉指针，并明确告诉用户为什么。
+     * 清掉指针，并明确告诉用户为什么。
      */
     if (state.draftState === 1) {
       state.submitted = true
       state.hasVersionConflict = false
-      stopAutoSave()
       clearSession()
       throw Object.assign(new Error('该草稿已在其他页面提交，不能再修改'), {
         kind: DRAFT_ERR.ALREADY_SUBMITTED
@@ -619,7 +576,6 @@ export function useDraftSession({
     }
 
     state.hasVersionConflict = false
-    startAutoSave()
     return d
   }
 
@@ -647,7 +603,7 @@ export function useDraftSession({
     return 'info'
   })
 
-  /** 页面用它把表单改动标记为脏（§二十二：没有变化不发） */
+  /** 页面用它把表单改动标记为脏（仅用于 UI 显示，不触发任何保存） */
   function markDirty() {
     if (state.submitted) return
     state.isDirty = payloadSignature(currentPayload()) !== lastSignature
@@ -657,12 +613,9 @@ export function useDraftSession({
     state,
     statusText,
     statusLevel,
-    isMeaningfulPayload,
     currentPayload,
     save,
     submit,
-    startAutoSave,
-    stopAutoSave,
     loadDraft,
     resumeSession,
     listDrafts,

@@ -788,12 +788,62 @@ function handleExceed() {
  *   }
  */
 function tempSave(showTip = false) {
-  form.value.person = personRef.value.getCacheData()
-  form.value.teacher = teacherRef.value.getCacheData()
+  /*
+   * 【两处守卫是后加的，因为现在多了一个调用者】
+   * 原先 tempSave 只由「上传成功」和手点「暂存」调用，两个时刻子表都已挂载、cacheName
+   * 也已赋值，所以不判也不会出事。现在 onBeforeUnmount 也会调它（关页/切走落盘），
+   * 而卸载那一刻 ref 可能已经没了、cacheName 也可能还没赋值 —— 不判会直接抛异常，
+   * 把落盘这件事整个搞砸（而落盘正是这次要保的东西）。
+   */
+  if (!cacheName.value) return
+  if (personRef.value) form.value.person = personRef.value.getCacheData()
+  if (teacherRef.value) form.value.teacher = teacherRef.value.getCacheData()
   form.value.fileList = fileList.value
   form.value.fileList1 = fileList1.value
   addCache(cacheName.value, form.value)
   if (showTip) ElMessage.success('本地保存成功')
+}
+
+/**
+ * 关页 / 刷新 / 组件卸载前的最后一道**本地**落盘（不联网）。
+ *
+ * 【为什么只能写 localStorage】beforeunload 里发不出异步请求 —— 任何 fetch / await
+ * 都会在页面卸载时被浏览器直接掐掉。所以这里绝不调提交接口，只把"用户此刻看到的
+ * 内容"写进本地缓存，下次进来由 onMounted 认回来。
+ *
+ * 【它现在是本页唯一的自动落盘点】dist 原来有支每 60 秒的 setInterval 兜着，那支已按
+ * 产品要求删除（不点就不写）。本页与 OrchestraForm 不同 —— 从来没有这个钩子，
+ * 所以删定时器之后，这是补上的唯一退路。删它可以，但要先接受
+ * 「填到一半关掉浏览器 = 全丢」。
+ *
+ * 【提交成功后必须跳过】onSubmit 成功分支会 clearCache + 把表单重置成空，
+ * 紧接着 closeWindow 触发 onBeforeUnmount。此时若不跳过，就会把那张**空表单**
+ * 反写回缓存，用户下次进新增页看到的是一份被清空但"存在"的缓存。
+ * OrchestraForm 是靠 composable 的 draftState.submitted 判的，本页没有草稿会话，
+ * 所以自己维护一个 submitted 标志。
+ */
+function flushLocalCache() {
+  if (submitted) return
+  try {
+    tempSave()
+  } catch (_) {
+    // 隐私模式 / 配额满：落盘失败不该在卸载路径上抛异常
+  }
+}
+
+/**
+ * 把本地镜像盖回表单。
+ *
+ * 【为什么两个都判空】cached 为空 = 这次没有本地镜像（第一次来 / 编辑页从没落过盘），
+ * 直接返回，绝不覆盖服务端刚回填好的内容。
+ * fileList / fileList1 单独判数组，是因为老缓存可能是 dist 时代写下的、
+ * 没有这两个字段的形状，直接拿来当数组用会在渲染时炸。
+ */
+function applyLocalCache(cached) {
+  if (!cached) return
+  form.value = cached
+  fileList.value = Array.isArray(cached.fileList) ? cached.fileList : []
+  fileList1.value = Array.isArray(cached.fileList1) ? cached.fileList1 : []
 }
 
 /* ------------------------- 编辑页回填 ------------------------- */
@@ -821,7 +871,9 @@ function tempSave(showTip = false) {
  */
 function getMessage() {
   const mod = MODULES[cfg.api.getById]
-  mod.report.getById(route.params.id).then((res) => {
+  // 【必须 return】调用方（onMounted 的编辑页分支）要等回填落定再盖本地镜像，
+  // 顺序反了本地内容会被这里整体替换掉。dist 原版没有 return，外面无从等待。
+  return mod.report.getById(route.params.id).then((res) => {
     if (res.data.code === 0) {
       const teachers = []
       const persons = []
@@ -861,45 +913,83 @@ function getMessage() {
 
 /* ------------------------- 生命周期 ------------------------- */
 const cacheName = ref(null)
-let timer = null
+// 【没有 timer 变量了】原先这里挂着 dist 那支
+// `setInterval(()=>{this.tempSave()},6e4)`（每 60 秒写一次 localStorage）。
+// 已按产品要求删除：**不点就不写**。见 onMounted 与 tempSave 的注释。
+
+/**
+ * 是否已经正式提交成功。提交成功后缓存已被清掉，卸载时的落盘必须跳过，
+ * 否则会把刚重置的空表单反写回缓存（详见 flushLocalCache 的注释）。
+ * 用普通 let 而不是 ref：它只在事件回调与生命周期钩子里读写，不参与渲染。
+ */
+let submitted = false
 
 // dist 的 openWindow / closeWindow 是 layout 上的方法（走 vuex 的 tabs 模块）。
 // 本项目已有等价实现 @/composables/useTabs，语义逐行对齐，直接复用而不另造一套。
 const { openWindow, closeWindow } = useTabs()
 
 onMounted(() => {
+  /*
+   * 【dist 的 60 秒本地镜像定时器已删除】原文
+   *   this.timer=setInterval(()=>{this.tempSave()},6e4)
+   * 已按产品要求删除，**不恢复**。取而代之的是下面这条不联网的退路：
+   * 关页 / 刷新 / 路由切走时落盘一次（beforeunload + onBeforeUnmount），
+   * 以及进入页面时把上次落的那份读回来。全程没有一个字节发往服务器。
+   *
+   * 【两个模式都做，这是本次补的重点】dist 只在新增页有 cacheName 与缓存回填，
+   * 编辑页什么都没有 —— 于是编辑页改到一半切走 = 全丢。OrchestraForm 早就给编辑页
+   * 补上了，本页一直没有；现在补齐，两个表单的容错才一致。
+   * 键用 route.path：编辑页的 path 含具体 id，不同报名各存各的，不会互相覆盖。
+   */
+  cacheName.value = route.path
+
+  // 关页 / 刷新前的最后一道本地落盘（见 flushLocalCache 的注释）
+  window.addEventListener('beforeunload', flushLocalCache)
+
   if (cfg.mode === 'create') {
-    // dist: this.cacheName=this.$route.path; this.form=this.getCache(this.cacheName);
+    // dist: this.form=this.getCache(this.cacheName);
     //       this.form ? (取回 fileList/fileList1) : (重置 form 与 fileList)
-    cacheName.value = route.path
     const cached = getCache(cacheName.value)
     if (cached) {
-      // 【已知偏差】草稿里保存的是普通对象/数组；dist 直接 this.form=cached。
+      // 【已知偏差】缓存里保存的是普通对象/数组；dist 直接 this.form=cached。
       // 这里同样整体替换，保留 cache 中的 fileList/fileList1 供上传组件回显。
-      form.value = cached
-      fileList.value = cached.fileList ? cached.fileList : []
-      fileList1.value = cached.fileList1 ? cached.fileList1 : []
+      applyLocalCache(cached)
     } else {
       form.value = makeForm()
       fileList.value = []
     }
-
-    if (timer) clearInterval(timer)
-    // dist: this.timer=setInterval(()=>{this.tempSave()},6e4) —— 每 60 秒自动暂存
-    timer = setInterval(() => {
-      tempSave()
-    }, 6e4)
   } else {
-    getMessage()
+    /*
+     * 编辑页：服务端内容由 getMessage 负责回填，本地镜像在它**之后**才盖上。
+     *
+     * 【顺序不能反】getMessage 是异步的（.then 里才 form.value = r 整体替换），
+     * 先盖本地缓存会被它一整个冲掉。所以这里必须等它落定 —— 它现在返回 Promise，
+     * 正是为了这个（原先没 return，外面拿不到）。
+     *
+     * 本地这份可能比服务端新（用户上次改完没提交就切走了），也可能压根没有。
+     * 有则盖上去，没有则保持服务端内容 —— 判空在 applyLocalCache 里。
+     */
+    Promise.resolve(getMessage()).then(() => {
+      applyLocalCache(getCache(cacheName.value))
+    })
   }
 
   // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
   // OSS 的 STS 凭证必须按次签发，没有可预取的东西，故删除。
 })
 
-// dist: beforeDestroy(){ clearInterval(this.timer) }
+// dist: beforeDestroy(){ clearInterval(this.timer) } —— dist 的定时器已删除（不恢复）。
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
+  window.removeEventListener('beforeunload', flushLocalCache)
+  /*
+   * 走 Vue Router 切换页面**不会**触发 beforeunload，所以这里要再补一次落盘 ——
+   * 「填着填着切到报名汇总看一眼」走的正是这条路径，不补就等于只有关了页面才保得住。
+   * 放在最末尾：前面的清理都已经做完，此刻落盘拿到的仍是卸载前的内容。
+   *
+   * 提交成功时 flushLocalCache 会自己跳过（见 submitted 标志）——
+   * 那条路径上表单刚被重置成空，落盘等于把空表反写回缓存。
+   */
+  flushLocalCache()
 })
 
 /* ------------------------- 提交 ------------------------- */
@@ -996,6 +1086,10 @@ function onSubmit() {
             fileList1.value = []
             form.value = {}
             clearCache(route.path)
+            // 【必须先置位再重置表单】下面几行把 form 清成空表，紧接着 closeWindow
+            // 会触发 onBeforeUnmount 里的 flushLocalCache —— 不置位的话它会把这张
+            // 空表反写回缓存，用户下次进新增页会看到一份"存在但空"的缓存。
+            submitted = true
             form.value.person = []
             form.value.teacher = []
             form.value = makeForm()
@@ -1052,9 +1146,13 @@ function onSubmit() {
   color: red;
 }
 
+/* 【2026-09-23】大屏宽度 70% → 90%。
+ * 理由、实测数据（各百分比分别能清掉哪些分辨率）以及「1366/1440 仍会滚动」这条前提，
+ * 全部写在 OrchestraForm.vue 的同名媒体查询上，这里不重复。
+ * 两处必须同步改：两个表单的 .bg 宽度规则一直保持一致。 */
 @media screen and (min-width: 1500px) {
   .bg {
-    width: 70%;
+    width: 90%;
     padding: 10px 20px;
     margin: auto;
   }

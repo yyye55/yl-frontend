@@ -1,53 +1,93 @@
 /**
- * 跨域文件下载：把 OSS 上的对象按**原始文件名**存到本地
+ * 远端附件下载（OSS URL → Blob → 数据库里的原始文件名）
  *
- * 【要解决的问题】
- * 后端落库的 url 是 OSS 的公开地址（apps/api/views.py 的 oss_upload：
- * `"url": f"{oss_public_host()}/{key}"`），而 key 是随机 UUID，例如
- *   https://ylbxt.oss-cn-chengdu.aliyuncs.com/doc/20260923/9f3c…c1.pdf
- * 原始文件名（「单位扫描件.pdf」「乐团集体照片.jpg」「演出视频.mp4」）只存在数据库里：
- *   · 报名详情 → Files.filename
- *   · 扫描件   → ScanFiles.files 这个 JSON 数组里每个元素的 name 字段
+ * 【要解决的问题】扫描件 / 照片 / 视频三类附件都存在阿里云 OSS 上：数据库保存的是
+ * 原始中文名（files.filename / scan_files.files[].name），OSS 的 ObjectKey 却是
+ * `{biz}/{YYYYMMDD}/{uuid}{ext}`（见后端 apps/api/views.py 的 oss_token，
+ * 原名从不进入 key）。前端此前一律用 <a :href="f.url" :download="..."> 直链下载，
+ * 这条路有两个**互相独立**的坑，任一个都会让存盘名变成那串 UUID：
  *
- * 【为什么 <a href download> 修不好】
- * HTML 的 download 属性有一条硬规则：**跨源（cross-origin）时被浏览器忽略**。
- * OSS 域名与前端域名不同源，所以 download 指定的名字不生效，浏览器退回用 URL 最后
- * 一段命名 —— 这正是「下载下来是一串 UUID」的成因。
- * 两个调用点原来的属性值本身也写错了（详见各自组件的说明），但即便改对，
- * 只要还是跨源直链，download 依然会被忽略。所以只能走 blob：
- *   fetch 取字节 → createObjectURL → <a download=真文件名> → 点击 → 释放
+ *   1) `download` 属性对**跨域** href 一律被浏览器忽略（HTML 规范明文规定），
+ *      而 OSS 与本系统不同源 —— 属性值写得再对也没用；
+ *   2) 两处调用点的属性值本身也没写对（ShowScFile 绑了一个不存在的字段，
+ *      ShowContent 漏了冒号写成字面量），各自的说明见对应组件。
  *
- * 【为什么用 fetch，而不是项目的 axios 实例】
- * src/utils/request.js 的全局实例有两个设定会把 OSS 下载搞坏：
- *   1) `timeout: 12000` —— 演出视频单文件上限 700MB（见后端 OSS_BIZ_RULES 的 video 项），
- *      12 秒必然超时，而超时走的是拦截器里弹「网络异常，请检查您的网络连接」那条分支，
- *      把「文件大」说成「断网」，用户会反复重试；
- *   2) 响应拦截器里 404 / 500 会 `window.location.href` 整页跳转 —— OSS 对不存在的
- *      对象回 404、权限不足回 403，用户会被踢出当前页面，已填内容全丢。
- * fetch 是浏览器内置能力，不是新增依赖（未引入任何 HTTP 库），用它正是为了绕开这两条。
+ * 所以唯一可行的做法是：自己把文件取成 Blob，再用 blob: URL 触发下载 ——
+ * blob URL 与页面同源，`download` 属性这才生效。
  *
- * 【CORS 前提（运维侧，非前端可解）】
- * fetch 读 OSS 响应体要求 bucket 对该前端源放行。2026-09-23 实测真实 bucket：
- *   Origin: http://47.108.29.34（生产前后端同源域名）→ 返回 Access-Control-Allow-Origin，OK
+ * 【为什么用 fetch，而不是项目的 request 实例】
+ * utils/request.js 的请求拦截器会**无条件**给每个请求加上
+ * `Authorization: <本站 bearer token>`。拿它去请求 *.aliyuncs.com 有两个后果：
+ *   · 把本系统的登录 token 泄露给第三方域名；
+ *   · OSS 看到 Authorization 会当成「自带签名的请求」去验签，直接 400/403。
+ * 另外带自定义头的跨域请求会先发 CORS 预检（OPTIONS），而裸 fetch 的 GET 属于
+ * 「简单请求」，只要响应带 Access-Control-Allow-Origin 即可 —— 这是对 OSS CORS
+ * 配置要求最低的写法。同理也不走 request 的拦截器，不会误触发 NProgress 与
+ * 401/403/404/500 的整页跳转。
+ *
+ * OSS 侧 CORS 对本站是放开的：上传链路本身就是浏览器直传 OSS
+ * （@/services/ossUpload.js 的 ali-oss multipartUpload），那同样是跨域请求。
+ *
+ * 【CORS 实测（2026-09-23，真实 bucket ylbxt）】
+ *   Origin: http://47.108.29.34（生产前后端同源域名）→ 响应带 Access-Control-Allow-Origin，可用
  *   Origin: http://localhost:8080（本地开发）        → 无该头，浏览器拦截
  * 即本地开发点下载会在控制台报 CORS 错，需在 OSS 控制台把 localhost:8080 加进该 bucket
- * 的跨域规则；属 OSS 配置，不在本次前端改动范围内。
+ * 的跨域规则；属 OSS 配置，不在前端改动范围内。
  */
-export async function downloadRemoteFile(url, fileName) {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）')
-  const blob = await res.blob()
 
-  const objectUrl = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = objectUrl
-  // download 是 DOMString 反射属性，赋 undefined 会被 String() 化成字面量 "undefined"，
-  // 存盘名就成了 "undefined.pdf"。所以这里必须始终给一个真名字（兜底名与 utils/excel.js 一致）。
-  a.download = fileName || '下载文件'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // 不立即 revoke：视频可达数百 MB，部分浏览器在下载尚未读完前 revoke 会中断下载。
-  // 延迟释放既避免内存泄漏，也不影响下载完成。
-  setTimeout(() => window.URL.revokeObjectURL(objectUrl), 10000)
+import { ElMessage } from 'element-plus'
+
+/** 文件名兜底：URL 为空或原始名为空时，至少不要出现 undefined/空名 */
+function fallbackName(url) {
+  try {
+    const seg = decodeURIComponent(new URL(url).pathname.split('/').pop() || '')
+    return seg || '下载文件'
+  } catch (e) {
+    // url 不是合法绝对地址（历史数据里的相对路径 / 已下线的七牛域名等）
+    return '下载文件'
+  }
+}
+
+/**
+ * 下载远端文件，用原始文件名存盘
+ *
+ * @param {string} url      远端文件地址（OSS 绝对 URL）
+ * @param {string} filename 数据库里保存的原始文件名；为空时退回 URL 最后一段
+ * @returns {Promise<boolean>} 是否成功触发下载。失败时已弹提示并 console.error，
+ *                            调用方不需要再写 catch（与 unwrap/showApiError 的分工一致）
+ */
+export async function downloadRemoteFile(url, filename) {
+  if (!url) {
+    ElMessage.error('文件下载失败：文件地址为空')
+    return false
+  }
+  try {
+    const res = await fetch(url)
+    // OSS 对不存在/无权限的对象返回 403/404 + XML，不检查会存下一个 XML 错误页
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+
+    const objectUrl = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    // download 是 DOMString 反射属性：赋 undefined 会被 String() 化成字面量
+    // "undefined"，所以这里必须是「非空字符串」，兜底不能省（同 utils/excel.js）。
+    a.download = filename || fallbackName(url)
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+
+    // 不在点击后立刻 revoke：Chromium 系浏览器在 click() 同步返回时可能还没
+    // 真正开始读取 blob，立即释放会让大文件（视频上限 700MB）下载被中断。
+    // FileSaver.js 出于同一原因也是延迟释放；这里给 10s，之后清掉这个 URL。
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 10000)
+    return true
+  } catch (err) {
+    // 走到这里的常见原因：OSS 未对本站放开 GET 跨域（TypeError: Failed to fetch）、
+    // 对象不存在/无权限、断网。不做静默降级 —— 退回直链只会存下一个 UUID 文件，
+    // 正是本函数要修掉的现象。
+    console.error('[downloadRemoteFile]', url, err)
+    ElMessage.error('文件下载失败，请稍后重试')
+    return false
+  }
 }

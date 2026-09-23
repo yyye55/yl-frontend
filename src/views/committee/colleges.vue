@@ -24,7 +24,9 @@
 
   API：committee.report.getList({page,limit,keyword,group:1,status}) → /api/committee/report/list
         committee.report.check({id,status,remark?}) → /api/committee/report/check
-        exportApi.exportGroupData({group:1}) → /api/export/data?group=1
+        committeeApi.exportData.data({group:1}) → /api/committee/export/data?group=1
+        （dist 时代是 GET /api/export/data?group=1；后端为修跨校泄漏给那条接口加了
+          user_id 过滤，组委会导出会只剩表头，故改走组委会专属接口）
 
     【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
@@ -124,7 +126,6 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { committeeApi } from '@/api/committee'
-import { exportApi } from '@/api/live'
 import { downloadExcelFile } from '@/utils/excel'
 import ShowPerson from '@/components/common/ShowPerson.vue'
 import ShowContent from '@/components/common/ShowContent.vue'
@@ -184,7 +185,7 @@ function exportXlsx() {
   exporting.value = true
   const now = new Date()
   const ts = now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日' + now.getHours() + '时' + now.getMinutes() + '分'
-  exportApi.exportGroupData({ group: 1 }).then((res) => {
+  committeeApi.exportData.data({ group: 1 }).then((res) => {
     const blob = res?.data
     if (!blob) { ElMessage.error('响应为空'); return }
     downloadExcelFile(blob, ts + '报名数据（大学组）')

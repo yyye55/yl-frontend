@@ -252,19 +252,44 @@
 
         <!--
           【第十二届·暂存】按钮区改动说明：
-          1) 「暂存」由 dist 的「仅新增页可见 + 只写 localStorage」改为**两个模式都可见**，
-             并且落服务端草稿（规范 §六、§二十二）。编辑页此前完全没有暂存能力，
-             用户改到一半刷新页面就全丢了。
+          1) 「暂存」落服务端草稿（规范 §六、§二十二）。dist 原版是「仅新增页可见
+             + 只写 localStorage」，现在改成落服务端。
           2) 状态文案取 draftStatusText（未保存 / 正在暂存…… / 已暂存 /
              暂存失败，请重试 / 草稿已在其他页面修改 / 正在提交…… / 已正式提交）。
              「已暂存」**不带时刻** —— 用户要的是"存住了没有"，时分秒没用又占地方。
              切走再回来、刷新页面都还能认回自己那份草稿，见 resumeDraftSession。
+             这段文案也**只在新增页显示**，理由与暂存按钮同源，见下面第 5 点。
           3) 提交中用 :loading + 按钮禁用双重收口；冲突未解决前禁止再暂存 ——
              这两个约束由 composable 的状态机保证，模板只如实反映。
-          4) 提交成功后按钮**也要禁用**（draftState.submitted）。新增页会重置表单
-             （form.read 变 false）所以本来就灰着，但**编辑页 form.read 一直是 true**
-             —— 按钮重新可点，再点一次会走到 submit() 里 state.submitted 那一支抛错，
-             提示却是「暂存失败，无法提交」，用户完全看不懂。
+          4) 提交成功后「暂存」按钮**也要禁用**（draftState.submitted）。新增页会重置
+             表单（form.read 变 false）所以本来就灰着；这一条对编辑页已经没有意义 ——
+             见下面第 5 点的原因，编辑页根本没有这个按钮了。
+
+          【5) 编辑页**不显示**「暂存」按钮，也**不显示**状态文案 —— 2026-09-23 按产品要求改】
+          两处的判据都是 cfg.mode === 'create'（按钮与 ProgramForm 的第 253 行一致）。
+          编辑页上这一整块收干净后，只剩「立即修改」一个按钮。
+
+          【订正 2026-09-23】本段原文写「后端 edit-draft 每次进入都用正式 Report 的内容
+          重建草稿、无条件覆盖」，据此说这个按钮给的是「假保证」——**这个前提已经不成立**，
+          后端同日的 07056da 已修：
+            apps/api/views.py:875-881 —— 查出绑定在该 report 上的草稿后，
+            若 state == STATE_EDITING 就直接返回它，**不覆盖**用户已暂存的修改；
+            只有「没有草稿」和「已提交又被再次驳回」（:882-896）两条路才重新播种。
+          所以当时那条「点暂存 → 以为存住了 → 再进来全变回旧内容」的链路已经走不通。
+
+          **但按钮不因此放回来**：撤掉它现在只剩产品要求这一条依据
+          （「被驳回的文件点编辑进入的『报名修改』页不需要暂存按键」），
+          与后端修没修无关。别看到后端已修就顺手恢复，那不是订正、是回退需求。
+          编辑页的提交路径没受任何影响：提交时仍按 §十 强制暂存一次再提交。
+
+          为什么状态文案也要一起去掉：按钮没了之后它恒停在「未保存」——
+          一个用户既无法消除、也无法照做的抱怨。编辑页本来就不缺反馈，
+          收掉它不会少任何信息：
+            · 提交中/提交成功 —— 按钮自身文案（「正在提交……」）+ toast（「修改成功」）；
+            · 版本冲突 —— notifyDraftError 走的是确认框，本来就不读这段文案。
+          换言之这段文案在编辑页只剩下「未保存」这一句有用，而那一句是错的信号：
+          用户改的内容确实没上服务器，但他此刻也无事可做 —— 编辑页的出路是「立即修改」，
+          不是「暂存」。文案留着只会把人往一个不存在的动作上引。
         -->
         <el-form-item>
           <el-button
@@ -277,14 +302,26 @@
               ? '正在提交……'
               : cfg.mode === 'create' ? '立即报名' : '立即修改' }}
           </el-button>
+          <!-- 编辑页不提供「暂存」：产品要求「报名修改」页只留提交。
+               注：原先此处给的技术理由（后端会覆盖草稿）已随 07056da 失效，
+               但按钮仍按要求不放回，理由见上方注释第 5 点。 -->
           <el-button
+            v-if="cfg.mode === 'create'"
             :disabled="draftState.isSaving || draftState.isSubmitting || draftState.hasVersionConflict"
             :loading="draftState.isSaving"
             @click="onTempSave"
           >
             暂存
           </el-button>
-          <span class="draft-status" :class="`draft-status--${draftStatusLevel}`">
+          <!-- 状态文案同样只在新增页显示：编辑页没有「暂存」，它会恒显示「未保存」，
+               变成一个用户无法消除、也无法照做的抱怨。编辑页该有的反馈一样不少 ——
+               提交中/成功：按钮自身文案（「正在提交……」）+ toast（「修改成功」）；
+               版本冲突：notifyDraftError 弹的是一个确认框，本来就不看这里。 -->
+          <span
+            v-if="cfg.mode === 'create'"
+            class="draft-status"
+            :class="`draft-status--${draftStatusLevel}`"
+          >
             {{ draftStatusText }}
           </span>
           <el-button
@@ -496,7 +533,7 @@ import { useTabs } from '@/composables/useTabs'
 import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
 import { validateName, validateSchool, validatePhone, validateAddress } from '@/config/formFields'
 
-// 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 / 自动暂存都在里面）
+// 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 都在里面；不含任何定时器）
 import { useDraftSession } from '@/composables/useDraftSession'
 
 import Teacher from './TeacherTable.vue'
@@ -964,9 +1001,23 @@ function handleExceed() {
  * dist 的编辑页两个模块里**没有** tempSave（也没有 cacheName / timer），后果是：
  *   · 编辑页没有任何本地镜像；
  *   · 编辑页只有「手点暂存」和「提交」两个落盘点，改完就切走 = 全丢；
- *   · 而服务端那条路也救不了它 —— 后端 edit-draft 每次进入都用正式 Report 的内容
- *     重建草稿（views.py:885，无条件覆盖），所以「存的修改」活不过一次重新进入。
- * 在服务端那条链路修好之前，本地缓存是编辑页**唯一**能挺过「改了没提交就离开」的容器。
+ *     （【2026-09-23】「手点暂存」在编辑页已按产品要求拿掉，见模板里的注释第 5 点，
+ *      所以编辑页现在只剩「提交」。本地镜像比以前更要紧了。）
+ *   · 而服务端那条路也救不了它 —— 编辑页**没有**任何途径把改动写进服务端草稿：
+ *     「暂存」按钮已按产品要求拿掉，剩下的「提交」本身就是终点。编辑页的草稿只由
+ *     正式报名播种（views.py:882-886），用户改了不提交，服务端那份始终是旧的。
+ *     （订正：原文把原因写成「后端 edit-draft 每次进入都覆盖草稿」，该缺陷已随
+ *       07056da 修复 —— views.py:875-881 遇到 STATE_EDITING 草稿会直接返回。
+ *       但上面这条结论不受影响，因为编辑页根本没有写草稿的入口了。）
+ * 所以本地缓存是编辑页**唯一**能挺过「改了没提交就离开」的容器。
+ *
+ * 【谁在什么时候调它 —— 只有两处，别再往上加】
+ *   1. flushLocalCache()：beforeunload（关页/刷新）与 onBeforeUnmount（路由切走）
+ *   2. 上传成功（见上面 uploadFile）与**新增页**的「暂存」按钮，那是用户的明确动作
+ *      （编辑页已无「暂存」按钮，所以编辑页只剩第 1 条这一个调用者）
+ * dist 原来还有第三个调用者：每 60 秒的 setInterval。**已按产品要求删除**，
+ * 所以现在浏览器崩溃/被强杀（拿不到 unload 事件）时，上一次落盘之后敲的内容会丢。
+ * 这是有意的取舍：不点就不写。
  *
  * 【必须先判 cacheName】两个模式都会给 cacheName 赋值（见 onMounted），
  * 但 onBeforeUnmount 的收尾可能在赋值前被调用；不判的话会以
@@ -974,7 +1025,7 @@ function handleExceed() {
  */
 function tempSave(showTip = false) {
   if (!cacheName.value) return
-  // 子表 ref 在挂载完成前是 null；这里是定时器/卸载钩子调用的，不能假定已就绪
+  // 子表 ref 在挂载完成前是 null；这里是卸载钩子调用的，不能假定已就绪
   if (personRef.value) form.value.person = personRef.value.getCacheData()
   if (teacherRef.value) form.value.teacher = teacherRef.value.getCacheData()
   form.value.fileList = fileList.value
@@ -999,7 +1050,7 @@ const draftScope = cfg.mode === 'create' ? cfg.api.create : cfg.api.update
  * 本组件就被卸载 —— 于是「填着填着切到报名汇总再切回来」会得到一份全新 state，
  * 界面从「已暂存」掉回「未保存」（内容其实一直在服务器上）。
  *
- * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 每 60 秒写一次），
+ * 【只存指针，不存内容】页面已经有一份表单缓存了（下面 tempSave 在关页/切走时写一次），
  * 再存一份内容只会多一个可能不一致的来源。指针里就一个门牌号，内容回服务器拉。
  * 至于拉到之后要不要覆盖本地 —— 见 onMounted 里传给 resumeDraftSession 的
  * restoreContent，那里是「不弄丢用户刚敲的字」的底线。
@@ -1020,8 +1071,6 @@ const {
   statusLevel: draftStatusLevel,
   save: saveDraft,
   submit: submitDraft,
-  stopAutoSave: stopDraftAutoSave,
-  startAutoSave: startDraftAutoSave,
   listDrafts,
   loadDraft,
   resumeSession: resumeDraftSession,
@@ -1048,11 +1097,11 @@ const {
     if (cfg.mode === 'create') {
       // 与 dist 原成功分支一致：清缓存 → 重置 → 关当前页 → 开报名汇总
       // （草稿指针由 useDraftSession.submit 自己清，见那里的 clearSession 调用）
+      // 原先这里还要 clearInterval(timer) 把 60 秒本地镜像停掉；定时器已删除，
+      // 于是只剩清缓存这一步。注意 clearCache 之后**不能**再让表单落盘：
+      // onSubmitted 紧接着把 form 重置成空表，随后 closeWindow 会触发 onBeforeUnmount，
+      // 那里的 flushLocalCache 靠 draftState.submitted 判断并跳过 —— 别改成无条件落盘。
       clearCache(route.path)
-      if (timer) {
-        clearInterval(timer)
-        timer = null
-      }
       form.value = makeForm()
       fileList.value = []
       fileList1.value = []
@@ -1066,7 +1115,7 @@ const {
     console.info('[draft] 正式提交完成 report_id=', data && data.reportId)
   },
 
-  /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已停止自动暂存，这里只提示 */
+  /** 草稿不存在（§二十六 DRAFT_NOT_FOUND）：composable 已清掉草稿身份，这里只提示 */
   onFatal: (e) => {
     ElMessage.warning((e && e.msg) || '草稿不存在或已被删除')
   },
@@ -1080,7 +1129,7 @@ const {
  *
  * 【409 的关键约定（§二十一）】只提示 + 提供「重新加载服务器草稿」这一条出路：
  * 绝不自动用本地旧数据覆盖服务器，也绝不自动把 version 改成 server_version 再强存。
- * 恢复动作必须由用户明确点击，否则自动暂存会持续用旧内容压掉别的页面的修改。
+ * 恢复动作必须由用户明确点击；页面任何一处都不许在用户没点的情况下拿本地旧内容去 PUT。
  */
 function notifyDraftError(err) {
   const e = err || {}
@@ -1160,7 +1209,7 @@ async function onTempSave() {
      * 本地镜像一并刷新。
      *
      * 【必须判 cacheName】cacheName 只在**新增页**的 onMounted 里赋值（dist 的
-     * `this.cacheName = this.$route.path`），编辑页从来是 null。暂存按钮现在两个模式
+     * `this.cacheName = this.$route.path`），编辑页从来是 null —— 【勘误】这句已不成立：第十二届给编辑页补本地镜像后，onMounted 开头的 `cacheName.value = route.path` 对两个模式都执行，编辑页不再是 null。下面这个守卫仍要留，但理由是**时序**（赋值发生在挂载后，本函数可能更早被调到），不是模式。暂存按钮现在两个模式
      * 都显示，若不判就会在编辑页以 `addCache(null, ...)` 往 localStorage 里写一个
      * 键名为 "null" 的垃圾条目 —— 既没用，又会一直残留在用户浏览器里。
      */
@@ -1260,7 +1309,9 @@ function getMessage() {
 
 /* ------------------------- 生命周期 ------------------------- */
 const cacheName = ref(null)
-let timer = null
+// 【没有 timer 变量了】原先这里有一个 `let timer`，挂着 dist 那支
+// `setInterval(()=>{this.tempSave()},6e4)`（每 60 秒写一次 localStorage 的本地镜像）。
+// 已按产品要求删除：**不点就不写**。详见 tempSave 与 flushLocalCache 的注释。
 
 // dist 的 openWindow / closeWindow 是 layout 上的方法（走 vuex 的 tabs 模块）。
 // 本项目已有等价实现 @/composables/useTabs，语义逐行对齐，直接复用而不另造一套。
@@ -1336,13 +1387,16 @@ async function enterEdit(localCache) {
      * 顺序不能反：enterEditFromRejected 内部会 applyRestored，先盖就会被冲掉。
      *
      * 为什么需要这一步 —— edit-draft 拿回来的是**正式 Report 的内容**，
-     * 它不含用户上次在修改页改了却没提交的部分（后端 views.py:885 每次进入都用
-     * Report 重建草稿并覆盖）。所以"切走再回来发现改的全没了"是必然的，
-     * 本地镜像在服务端那条链路修好之前是唯一的解法。见 tempSave 的注释。
+     * 它不含用户上次在修改页改了却没提交的部分。编辑页没有「暂存」按钮，
+     * 改动写不进服务端草稿（草稿只由正式报名播种，views.py:882-886），
+     * 所以"切走再回来发现改的全没了"是必然的，本地镜像是唯一的解法。
+     * 见 tempSave 的注释。
      */
     applyLocalCache(localCache)
-    // 【P1-5】编辑页也要开自动暂存：此前它只有「手点暂存」和「提交」两个落盘点
-    startDraftAutoSave()
+    // 【编辑页的落盘点】服务端自动暂存已整体删除，编辑页现在只剩两条路：
+    // 「提交」，以及**不联网**的本地镜像（beforeunload + 路由切走，已无定时器）。
+    // 「暂存」按钮在编辑页已被拿掉（产品要求「报名修改」页只留提交）—— 见模板注释第 5 点。
+    // 它是「改了没提交就离开」唯一的兜底，详见 tempSave 的注释。
   } catch (err) {
     const e = err || {}
     if (e.kind === DRAFT_ERR_CODE.NOT_REJECTED) {
@@ -1367,7 +1421,7 @@ function applyLocalCache(cached) {
   form.value = cached
   fileList.value = Array.isArray(cached.fileList) ? cached.fileList : []
   fileList1.value = Array.isArray(cached.fileList1) ? cached.fileList1 : []
-  // 不调它也不影响自动暂存（autoTick 自己比签名），但会让 draftState.isDirty 说谎
+  // 只影响 draftState.isDirty 的显示（没有任何自动保存会读它，保存是手点触发的）
   markDirty()
 }
 
@@ -1378,8 +1432,13 @@ function applyLocalCache(cached) {
  * 任何 fetch / await 都会在页面卸载时被浏览器直接掐掉。所以这里不调暂存接口，
  * 只把"用户此刻看到的内容"写进本地镜像，下次进来由上面的本地缓存逻辑认回来。
  *
- * 【它补的是哪个窗口】服务端自动暂存 45 秒一次、本地镜像 60 秒一次，两条都是定时。
- * 用户敲完最后几个字立刻关页，谁都不会触发 —— 没有这个钩子，那一刻的输入就彻底没了。
+ * 【它现在是主力，不是补丁】dist 原版还有一支每 60 秒的定时器在背后兜底，这个钩子
+ * 只负责补「最后 60 秒」那一小段。**那支定时器已按产品要求删除**，于是本函数成了
+ * 「用户没点任何按钮就离开」时唯一的落盘机会 —— 关页、刷新、路由切走全靠它。
+ *
+ * 服务端**从来不会有**这类兜底：往服务器写的只有用户点「暂存」和提交两条路，
+ * 页面自己不会替你存。所以别把这里也一并删掉，除非产品明确接受
+ * 「填到一半关掉浏览器 = 全丢」。
  */
 function flushLocalCache() {
   // 已提交：onSubmitted 刚清过缓存并把表单重置成空，别把空表单又写回缓存里
@@ -1393,18 +1452,21 @@ function flushLocalCache() {
 
 onMounted(() => {
   /*
-   * 【两个模式都要有 cacheName 与 60 秒本地镜像】
+   * 【两个模式都要有 cacheName 与本地镜像（只写 localStorage）】
    *
    * dist 只在新增页做（`this.cacheName = this.$route.path`），编辑页什么都没有 ——
    * 于是编辑页改到一半切走 = 全丢，连本地缓存都没有。现在编辑页也有，
    * 理由见 tempSave 的长注释（后端 edit-draft 会覆盖草稿，本地镜像是唯一退路）。
+   *
+   * 【dist 的 60 秒定时器已删除】两个模式现在都不挂任何定时器，所以本函数之外
+   * 只剩 beforeunload / onBeforeUnmount 两个落盘时刻。写缓存的时机见 tempSave。
    *
    * 键用 route.path：编辑页的 path 含具体 id（/school/elementary/edit/5），
    * 所以不同报名各存各的，不会互相覆盖。
    */
   cacheName.value = route.path
   const cached = getCache(cacheName.value)
-  // 本地缓存里是**用户最后看到的**那份内容（tempSave 每 60 秒写一次）。
+  // 本地缓存里是**用户最后看到的**那份内容（不再有定时器，它是上次离开页面时落的那份）。
   // 它可能比服务端草稿新（刚敲完就切走）——下面据此决定要不要让服务端内容盖上来。
   const hadLocalCache = !!cached
 
@@ -1423,14 +1485,9 @@ onMounted(() => {
       fileList.value = []
     }
 
-    if (timer) clearInterval(timer)
-    // dist: this.timer=setInterval(()=>{this.tempSave()},6e4) —— 每 60 秒自动暂存
-    timer = setInterval(() => {
-      tempSave()
-    }, 6e4)
-
-    // 【第十二届·暂存】服务端自动暂存（§二十二，45 秒一次，没有变化不发）
-    startDraftAutoSave()
+    // 【dist 的 60 秒本地镜像定时器已删除】原文 this.timer=setInterval(()=>{this.tempSave()},6e4)
+    // 现在两个模式都不挂任何定时器，本地镜像只在两个时刻写：关页/切走（见 flushLocalCache
+    // 与 onBeforeUnmount），以及用户手点。理由见 tempSave 的注释。
 
     /*
      * 先认领上一轮留下的草稿指针（切走再回来、刷新页面都算），认领成功就不弹
@@ -1449,15 +1506,14 @@ onMounted(() => {
   } else {
     /*
      * 编辑页：服务端内容由 enterEdit 负责回填，本地镜像在它**之后**才盖上
-     * （顺序反了会被冲掉）。60 秒定时器也等 enterEdit 落定再起 ——
-     * 否则它可能在表单还是空的时候先把空表写进缓存，把用户的修改覆盖掉。
+     * （顺序反了会被冲掉）。
+     *
+     * 【原先这里有个 .finally 起 60 秒定时器，已删】当时的顾虑是「表单还是空的时候
+     * 先把空表写进缓存」。现在没有任何定时器会自己写缓存，那个顾虑随之消失，所以
+     * .finally 整个拿掉 —— 空表只可能被 flushLocalCache / onBeforeUnmount 写进去，
+     * 而那两个时刻表单一定已经回填过了。
      */
-    enterEdit(hadLocalCache ? cached : null).finally(() => {
-      if (timer) clearInterval(timer)
-      timer = setInterval(() => {
-        tempSave()
-      }, 6e4)
-    })
+    enterEdit(hadLocalCache ? cached : null)
   }
 
   // 【第十二届改造】原 dist 在这里预取七牛 uptoken（getQiniuToken()）。
@@ -1465,10 +1521,8 @@ onMounted(() => {
 })
 
 // dist: beforeDestroy(){ clearInterval(this.timer) } —— 仅新增页有 beforeDestroy。
-// 现在两个模式都挂定时器与 beforeunload，收尾动作必须对称。
+// 【第十二届改造】dist 那个 timer 已整体删除，这里只剩 beforeunload 与落盘。
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-  stopDraftAutoSave()
   window.removeEventListener('beforeunload', flushLocalCache)
   /*
    * 走 Vue Router 切换页面**不会**触发 beforeunload，所以这里要再补一次落盘 ——
@@ -1572,7 +1626,7 @@ function onSubmit() {
          * 【§十 正式提交】不再直接调 report.create / report.update，改为：
          *     强制最后一次暂存（拿到最新 version）→ 用该 version 提交草稿
          * 这两个动作都在 composable 的 submit() 里按顺序完成，且**排在同一条串行队列上**，
-         * 所以不会出现「自动暂存还在飞、提交又发一版」的竞态。
+         * 所以不会出现「一次暂存还在飞、提交又发一版」的竞态。
          *
          * 成功分支移动到 onSubmitted（见上面的 useDraftSession 配置），
          * 保证「报名成功 → 清缓存 → 跳报名汇总」这条既有动线一字不变。
@@ -1600,9 +1654,39 @@ function onSubmit() {
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
 }
 
+/* 【2026-09-23 起本条不再逐字节等于 dist】大屏宽度 70% → 90%（甲方 2026-09-23 选定）。
+ *
+ * 起因：甲方反馈「整体赛事报名的表拓宽一点，现在显得有点小」。
+ *
+ * 为什么 70% 会让表「小」—— 它在 1500px 处制造了一个**反向台阶**，
+ * 屏幕越大表反而越窄：1600 屏的 .box 实宽只有 881px，比 1440 屏的 1125px 还窄 244px，
+ * 要到 2560 才追回 1440 的水平。
+ *
+ * 判据是「参展人员表 12 列的下限合计 1376px」（出处 PersonTable.vue:851-854）。
+ * 下表是 Playwright 实测的 .box 实宽（已含浏览器竖向滚动条占的 ~15px），
+ * 括注 = 离「不用横向滚动」还差多少 px：
+ *     视口 |     70%     |     80%     |  90%（采用） | 100% + 上限1800
+ *     1366 |  1051 (325) |  1051 (325) |  1051 (325) |  1051 (325)
+ *     1440 |  1125 (251) |  1125 (251) |  1125 (251) |  1125 (251)
+ *     1600 |   881 (495) |  1016 (360) |  1150 (226) |  1285 (91)
+ *     1680 |   937 (439) |  1080 (296) |  1222 (154) |  1365 (11)
+ *     1920 |  1105 (271) |  1272 (104) |  1438  ✅   |  1605  ✅
+ *     2560 |  1553  ✅   |  1784  ✅    |  2014  ✅   |  1740  ✅
+ *   → 90% 比 70% 把 1920 从「滚」变成「不滚」；1600/1680 仍需横向滚动，但余量小多了。
+ *     另一方案 100%+上限1800 能多清一个 1680（只差 11px，就是那一条滚动条的宽度），
+ *     代价是 2560 上比 90% 窄 274px。甲方看过两边后选了 90%，这里按 90% 落。
+ *   ⚠️ 1366 与 1440 在**任何**百分比下都仍会横向滚动 —— 可用宽度本身不到 1376px，
+ *   调宽度救不了，只能靠横向滚动条。
+ *
+ * 1500px 以下不受本条影响（媒体查询不进），走上面 .bg 的 calc(100% - 20px)。
+ *
+ * 改这里**必须同步改 ProgramForm.vue 的同名媒体查询**（两个表单的 .bg 宽度规则
+ * 一直保持一致，只改一个会让两张表宽度对不上）。注意两文件的 .bg 基础规则并不相同
+ * （本文件是 calc(100% - 20px) + padding: 10px，ProgramForm 是 width: 100% +
+ * padding: 10px 0），共有的只有这一条媒体查询。 */
 @media screen and (min-width: 1500px) {
   .bg {
-    width: 70%;
+    width: 90%;
     padding: 10px 20px;
     margin: auto;
   }

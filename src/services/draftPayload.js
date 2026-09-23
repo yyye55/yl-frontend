@@ -317,7 +317,7 @@ function fileSlot(id, label) {
 }
 
 /**
- * payload 的稳定签名，用于自动暂存的「没有变化就不发」判据（规范 §二十二）。
+ * payload 的稳定签名，用于 saveOnce 的「没有变化就不发」判据（规范 §二十二）。
  * 直接 JSON.stringify：键序由对象字面量顺序决定，同一表单状态必然得到同一字符串。
  */
 export function payloadSignature(payload) {

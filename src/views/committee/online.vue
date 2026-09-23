@@ -304,7 +304,15 @@ function beforeClose() {
   dialogImageVisible.value = false
 }
 
+/** 【第十二届改造·空文件守卫】理由同 UploadScanDialog.updateFile —— 后端
+ *  /api/scan/cau 对 files 不校验且无条件覆盖，空数组会把已有审核图清空并
+ *  照样返回「修改成功!」。空列表直接挡在前端，不发请求。 */
 function updateFile() {
+  if (fileList.value.length === 0) {
+    ElMessage.error('请先上传文件')
+    return
+  }
+
   scanApi.uploadImage({ type: 1, files: fileList.value }).then((res) => {
     const body = res?.data
     if (!body) { ElMessage.error('响应为空'); return }

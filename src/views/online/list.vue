@@ -341,7 +341,15 @@ function beforeClose() {
  *   }
  * 注意 dist 失败分支是固定文案 "上传失败！"，不取后端 msg。
  */
+/** 【第十二届改造·空文件守卫】理由同 UploadScanDialog.updateFile —— 后端
+ *  /api/scan/cau 对 files 不校验且无条件覆盖，空数组会把已有审核图清空并
+ *  照样返回「修改成功!」。空列表直接挡在前端，不发请求。 */
 function updateFile() {
+  if (fileList.value.length === 0) {
+    ElMessage.error('请先上传文件')
+    return
+  }
+
   const payload = { type: 1 }
   payload.files = fileList.value
   scanApi.uploadImage(payload).then((res) => {

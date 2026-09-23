@@ -67,7 +67,8 @@
       </el-upload>
     </div>
 
-    <div class="box">
+    <!-- ref 给 useDragScroll：按住表头行/序号列等空白处可鼠标拖动横滚 -->
+    <div ref="boxRef" class="box">
       <!-- dist 里是编译期提升的静态子树 e._m(0) -->
       <div class="box-line-title">
         <div class="box-col">序号</div>
@@ -311,6 +312,12 @@ import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
 import { checkPersonBasics } from '@/config/personFields'
+import { useDragScroll } from '@/composables/useDragScroll'
+
+// 12 列下限合计 1376px，1366/1440 乃至 1600/1680 屏都放不下，只能横向滚。
+// 横向滚动条贴在表格最下方、又只有十几像素高，很难拉 —— 于是支持按住空白处直接拖。
+const boxRef = ref(null)
+useDragScroll(boxRef)
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.person），可为 undefined / null */

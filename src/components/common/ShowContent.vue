@@ -41,11 +41,12 @@
           乐团集体照片文件--------
           <!-- 【第十二届修复】原写法 download="data.spectrum.filename" 只是**静态字符串**
                （没有冒号，不是绑定），存盘名就是字面量 "data.spectrum.filename"。
-               改为点击后走 blob 下载，详见 script 里 downloadFile 的说明。 -->
+               改为点击后走 blob 下载，详见 script 里 download() 的说明。 -->
           <a
-            href="javascript:;"
+            :href="data.spectrum.url"
+            target="_blank"
             style="text-decoration:none;color:#1890FF"
-            @click="downloadFile(data.spectrum)"
+            @click.prevent="download(data.spectrum)"
           >下载</a>
         </div>
         <div
@@ -55,9 +56,10 @@
           视频文件--------
           <!-- 【第十二届修复】同上一处，原 download 是静态字符串，改为 blob 下载。 -->
           <a
-            href="javascript:;"
+            :href="data.file.url"
+            target="_blank"
             style="text-decoration:none;color:#1890FF"
-            @click="downloadFile(data.file)"
+            @click.prevent="download(data.file)"
           >下载</a>
         </div>
         <div class="options" style="font-size:16px;font-weight:bold;text-align:center">
@@ -121,22 +123,23 @@
  *   写在 .options 上会一路继承到最内层文本。Status.vue 是各列表页共用的独立组件，
  *   改它风险更大，故不动。
  *
+ * ---------------------------------------------------------------------------
+ * 【本项目改动 · 其二】两个文件块的下载方式（第十二届修复）
+ * ---------------------------------------------------------------------------
+ * 原文模板里的 `download="data.spectrum.filename"` 漏了冒号，是静态字面量；且 href
+ * 跨域时 download 属性本来就被浏览器忽略 —— 存盘名因此不是数据库里的原始文件名。
+ * 现删掉该属性、改为 @click.prevent 走 downloadRemoteFile()（Blob + 同名 blob: URL）。
+ * 两个 <a> 的 href / target / style / 文案一字未改，预览与「打开原文件」的能力不变。
+ * 详见 script 里 download() 的【第十二届修复】说明。
+ *
  * 影响面：ShowContent 被 5 个可访问页面的详情弹窗共用 ——
  *   /city/elementary/list、/school/elementary/list（ReportList.vue）
  *   /committee/elementary1|2|3（CommitteeReportList.vue）
  * 另有 3 处调用方（admin/report.vue、committee/colleges.vue、TeacherList.vue）
  * 对应路由已在第十二届摘除，无菜单入口。
  * .fall-info 的 3 列 grid、h2 居中、两个文件块的 border 均未改动。
- *
- * ---------------------------------------------------------------------------
- * 【本项目改动 · 其二】两个「下载」链接改走 blob（第十二届修复）
- * ---------------------------------------------------------------------------
- * dist 原文是 `<a :href="…url" download="…filename" target="_blank">下载</a>`。
- * 这里只动了「下载」这两个 <a> 的下载方式，块级容器、文案、border 等一律未改。
- * 具体症状、成因与修法写在下方 downloadFile() 的注释里。
  */
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import Status from './Status.vue'
 import { downloadRemoteFile } from '@/utils/download'
 // dist 里这两个方法挂在 Vue.prototype；Vue3 的 <script setup> 没有 this，故具名导入。
@@ -179,26 +182,31 @@ onMounted(() => {
 })
 
 /**
- * 下载报名详情里的「乐团集体照片 / 视频」（第十二届新增）
+ * 【第十二届修复】照片 / 视频下载：改用原始文件名存盘
  *
- * 入参是后端 report_dict 里 `spectrum` / `file` 两个字段的对象
- * （apps/core/services.py：`model_dict(Files.objects.filter(pk=report.spectrum).first())`），
- * 即一条 Files 记录：{ id, user_id, filename, type, size, url, created_at, updated_at }。
- *   · url      → OSS 的随机 UUID 地址
- *   · filename → 原始文件名（「乐团集体照片.jpg」「演出视频.mp4」）
+ * 原文两处模板（dist chunk-335604d9 模块 84fd）是
+ *     <a :href="data.spectrum.url" download="data.spectrum.filename">
+ *     <a :href="data.file.url"     download="data.file.filename">
+ * 有两个问题：
  *
- * 【第十二届修复：文件名】模板原写作
- *     :href="data.spectrum.url" download="data.spectrum.filename" target="_blank"
- * 注意 download 这里**没有冒号**，是静态 HTML 字符串而非 Vue 绑定 —— 浏览器把它当作
- * 字面量文件名，存盘名直接变成 "data.spectrum.filename"。
- * 而即便补上冒号变成 `:download="data.spectrum.filename"`，只要还是跨源直链，
- * download 属性仍会被浏览器忽略，退回用 UUID 命名。两种写法都必须改成 blob，
- * 理由与 CORS 前提见 utils/download.js。
+ *   1) **漏了冒号**：`download="data.spectrum.filename"` 没有 `:`，Vue 只当它是
+ *      一个**静态字符串字面量**（编译结果是 download:"data.spectrum.filename"），
+ *      并不会去读 data.spectrum.filename 这个字段。存盘名会变成这串字面量本身。
+ *      （这也是本仓库迁移时反复出现的一类写法，见 ShowScFile 的同名问题。）
+ *   2) **跨域下 download 属性本就无效**：两个 href 都是 OSS 绝对地址，与本站不同源，
+ *      HTML 规范规定这种情况下浏览器忽略 download，退回用 URL 最后一段命名。
+ *
+ * data.spectrum / data.file 是后端 report_dict() 展开的 Files 记录
+ * （apps/core/services.py: "Laravel's eager-loaded relation names (`file` and
+ * `spectrum`) take precedence over the raw foreign-key scalar"），字段为
+ * {id,user_id,filename,type,size,url,...} —— 所以原始文件名取 .filename、地址取 .url，
+ * 与 scan_files 的 .name 不同名，两处不能混用。
+ *
+ * 只修 1) 没用，故改为取 Blob 后用同源 blob: URL 触发下载，
+ * 具体见 @/utils/download.js。
  */
-function downloadFile(file) {
-  downloadRemoteFile(file.url, file.filename).catch((err) => {
-    ElMessage.error(err.message || '下载失败')
-  })
+function download(file) {
+  downloadRemoteFile(file.url, file.filename)
 }
 </script>
 

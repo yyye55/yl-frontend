@@ -856,7 +856,7 @@ defineExpose({ getData, getCacheData })
   display: grid;
   /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      身份        角色         使用乐器      电子照片      操作 */
   grid-template-columns:
-    minmax(30px, 0.55fr) minmax(105px, 1.45fr) minmax(178px, 1.95fr) minmax(99px, 1.12fr)
+    minmax(30px, 1.00fr) minmax(105px, 1.45fr) minmax(178px, 1.95fr) minmax(99px, 1.12fr)
     minmax(105px, 1.20fr) minmax(133px, 2.40fr) minmax(133px, 1.55fr) minmax(99px, 1.12fr)
     minmax(113px, 1.22fr) minmax(141px, 1.65fr) minmax(72px, 0.78fr) minmax(168px, 1.61fr);
   justify-content: stretch;

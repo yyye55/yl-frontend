@@ -22,6 +22,10 @@
             </el-table-column>
             <el-table-column label="文件">
               <template #default="{ row }">
+                <!-- 【第十二届修复】原写法 :href="f.url" :download="row.filename" target="_blank"
+                     两处都不对，且都不足以让文件名正确，详见 script 里 download() 的说明。
+                     保留 href/target 是为了中键、右键「复制链接 / 另存为」仍能直接打开 OSS 原文件，
+                     左键点击由 @click.prevent 拦下走 blob 下载。 -->
                 <a
                   v-for="f in row.files"
                   :key="f.id"
@@ -125,8 +129,13 @@ function showFile() {
  *      HTML 规范规定这种情况下浏览器忽略 download，退回用 URL 最后一段命名。
  *
  * 只修 1) 没用，所以改为自己取 Blob 再用同源的 blob: URL 触发下载，
- * 具体见 @/utils/download.js 的说明。`f.name || f.filename` 是为了同时兼容
- * isShow=false 那条分支（走 /api/file/list，返回的是 Files 记录，字段名是 filename）。
+ * 具体见 @/utils/download.js 的说明。
+ *
+ * 取名字段是 `f.name || f.filename`：scan_files.files[] 的元素由 UploadScanDialog.vue
+ * 写入，键名是 name（`name: file.name`），所以 f.name 是正解；留 f.filename 只是
+ * 兼容历史数据里可能存成 filename 的行。
+ * （isShow=false 那条分支返回的是 Files 记录，字段名才是 filename —— 但模板读的是
+ * row.files，Files 上没有这个字段，那条分支本来就不渲染任何行，且当前无调用方使用。）
  */
 function download(f) {
   downloadRemoteFile(f.url, f.name || f.filename)

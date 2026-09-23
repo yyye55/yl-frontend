@@ -9,24 +9,28 @@
       <div class="detail-content">
         <h2>{{ data.name }}</h2>
         <div class="fall-info">
-          <p>填报单位：{{ data.user.nickname }}</p>
-          <p>乐团名称：{{ data.choir_name }}</p>
-          <p>学校名称：{{ data.school_name }}</p>
+          <p><span class="label">填报单位：</span><span class="value">{{ data.user.nickname }}</span></p>
+          <p><span class="label">乐团名称：</span><span class="value">{{ data.choir_name }}</span></p>
         </div>
         <div class="fall-info">
-          <p>类型：{{ data.establishment }}</p>
-          <p>参演组别：{{ data.group }}</p>
-          <p>自选曲目：{{ data.name }}</p>
+          <p><span class="label">参展学校：</span><span class="value">{{ data.school_name }}</span></p>
+          <p><span class="label">乐团类别：</span><span class="value">{{ data.establishment }}</span></p>
         </div>
         <div class="fall-info">
-          <p>指定曲目：{{ data.name1 || '未填写' }}</p>
-          <p>领队姓名：{{ data.contact_name }}</p>
-          <p>领队电话：{{ data.contact_phone }}</p>
+          <p><span class="label">参展组别：</span><span class="value">{{ data.group }}</span></p>
+          <p><span class="label">自选曲目：</span><span class="value">{{ data.name }}</span></p>
         </div>
         <div class="fall-info">
-          <p>联系地址：{{ data.contact_way }}</p>
-          <p>作品总时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
-          <p>乐团简介：{{ data.desc || '未填写' }}</p>
+          <p><span class="label">指定曲目：</span><span class="value">{{ data.name1 || '未填写' }}</span></p>
+          <p><span class="label">领队姓名：</span><span class="value">{{ data.contact_name }}</span></p>
+        </div>
+        <div class="fall-info">
+          <p><span class="label">领队联系电话：</span><span class="value">{{ data.contact_phone }}</span></p>
+          <p><span class="label">联系地址：</span><span class="value">{{ data.contact_way }}</span></p>
+        </div>
+        <div class="fall-info">
+          <p><span class="label">展示时长：</span><span class="value">{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</span></p>
+          <p><span class="label">乐团简介：</span><span class="value">{{ data.desc || '未填写' }}</span></p>
         </div>
         <!-- 【本项目新增】style 末尾的 text-align:center 是本项目的改动，
              dist 原文只有前四个声明，详见 script 中的说明。 -->
@@ -35,6 +39,9 @@
           style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           乐团集体照片文件--------
+          <!-- 【第十二届修复】原写法 download="data.spectrum.filename" 只是**静态字符串**
+               （没有冒号，不是绑定），存盘名就是字面量 "data.spectrum.filename"。
+               改为点击后走 blob 下载，详见 script 里 download() 的说明。 -->
           <a
             :href="data.spectrum.url"
             target="_blank"
@@ -47,6 +54,7 @@
           style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           视频文件--------
+          <!-- 【第十二届修复】同上一处，原 download 是静态字符串，改为 blob 下载。 -->
           <a
             :href="data.file.url"
             target="_blank"
@@ -215,10 +223,31 @@ function download(file) {
 
 .fall-info {
   display: grid;
-  grid-template-columns: 33.3% 33.3% 33.3%;
+  grid-template-columns: 50% 50%;
   grid-template-rows: repeat(auto-fill, 100%);
   padding-top: 10px;
   text-align: center;
   color: #8c939d;
+}
+
+.fall-info p {
+  display: flex;
+  justify-content: flex-start;
+  align-items: baseline;
+  padding: 2px 10px;
+  margin: 0;
+  white-space: normal;
+}
+
+.fall-info .label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fall-info .value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  padding-left: 8px;
 }
 </style>

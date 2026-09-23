@@ -296,7 +296,7 @@ defineExpose({ getData, getCacheData })
   display: grid;
   /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      操作 */
   grid-template-columns:
-    minmax(30px, 0.70fr) minmax(105px, 2.40fr) minmax(178px, 3.00fr) minmax(99px, 1.60fr)
+    minmax(30px, 1.00fr) minmax(105px, 2.40fr) minmax(178px, 3.00fr) minmax(99px, 1.60fr)
     minmax(105px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr) minmax(72px, 1.20fr);
   justify-content: stretch;
 }

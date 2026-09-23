@@ -28,11 +28,11 @@
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="类型" prop="establishment">
+              <el-form-item label="乐团类别" prop="establishment">
                 <el-select
                   v-model="form.establishment"
                   style="width: 100%"
-                  placeholder="请选择"
+                  placeholder="请选择乐团类别"
                   @change="onScopeChange"
                 >
                   <el-option
@@ -50,7 +50,7 @@
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="自选曲目" prop="name">
-                <el-input v-model="form.name" placeholder="自选曲目" />
+                <el-input v-model="form.name" placeholder="请输入自选曲目" />
               </el-form-item>
             </el-col>
             <!--
@@ -62,7 +62,7 @@
                 <el-select
                   v-model="form.name1"
                   style="width: 100%"
-                  placeholder="请选择指定曲目"
+                  placeholder="选择乐团类别和参展组别后可选择指定曲目"
                   :disabled="!form.establishment || !form.group"
                 >
                   <el-option
@@ -79,11 +79,11 @@
           <!-- ============ 第 3 行：参演组别 / 作品总时长 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
-              <el-form-item label="参演组别" prop="group">
+              <el-form-item label="参展组别" prop="group">
                 <el-select
                   v-model="form.group"
                   style="width: 100%"
-                  placeholder="参赛组别选择"
+                  placeholder="请选择参展组别"
                   @change="onScopeChange"
                 >
                   <el-option
@@ -96,7 +96,7 @@
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="作品总时长" prop="minute">
+              <el-form-item label="展示时长" prop="minute">
                 <el-col :span="5" style="padding-left: 0; padding-right: 0">
                   <el-input
                     v-model="form.minute"
@@ -125,13 +125,13 @@
           <!-- ============ 第 4 行：参展学校名称 / 领队姓名 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
-              <el-form-item label="参展学校名称" prop="school_name">
-                <el-input v-model="form.school_name" placeholder="请填写学校全称" />
+              <el-form-item label="参展学校" prop="school_name">
+                <el-input v-model="form.school_name" placeholder="请填写参展学校" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="领队姓名" prop="contact_name">
-                <el-input v-model="form.contact_name" placeholder="填写领队姓名即可" />
+                <el-input v-model="form.contact_name" placeholder="请填写领队姓名" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -139,13 +139,13 @@
           <!-- ============ 第 5 行：领队电话 / 联系地址 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
-              <el-form-item label="领队电话" prop="contact_phone">
-                <el-input v-model="form.contact_phone" placeholder="请输入联系电话（手机号或固定电话）" />
+              <el-form-item label="领队联系电话" prop="contact_phone">
+                <el-input v-model="form.contact_phone" placeholder="请输入领队联系电话" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="联系地址" prop="contact_way">
-                <el-input v-model="form.contact_way" placeholder="请输入详细地址" />
+                <el-input v-model="form.contact_way" placeholder="请输入详细联系地址" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -155,7 +155,7 @@
         <div class="bg2">
           <el-row :gutter="40">
             <el-col :span="12">
-              <el-form-item label="乐团集体电子照">
+              <el-form-item label="乐团集体电子照片">
                 <el-upload
                   class="upload-demo"
                   drag
@@ -179,14 +179,14 @@
                         原 dist 提示有 typo「JEPG」，已订正。
                         600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
                       -->
-                      乐团集体电子照用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
+                      乐团集体电子照片用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
                     </div>
                   </template>
                 </el-upload>
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="上传视频">
+              <el-form-item label="曲目视频">
                 <el-upload
                   class="upload-demo"
                   drag

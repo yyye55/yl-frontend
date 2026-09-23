@@ -89,7 +89,7 @@
             />
             <el-table-column
               prop="name"
-              label="自选曲目名称"
+              label="自选曲目"
               header-align="center"
               align="center"
               show-overflow-tooltip
@@ -118,7 +118,7 @@
 
           <el-table-column
             label="操作"
-            width="360"
+            width="350"
             header-align="center"
             align="center"
             :width="cfg.actionWidth"

@@ -27,7 +27,12 @@
  *
  * OSS 侧 CORS 对本站是放开的：上传链路本身就是浏览器直传 OSS
  * （@/services/ossUpload.js 的 ali-oss multipartUpload），那同样是跨域请求。
- * 但「GET 是否在 AllowedMethod 里」本次未做线上实测，见实施报告第 5 节。
+ *
+ * 【CORS 实测（2026-09-23，真实 bucket ylbxt）】
+ *   Origin: http://47.108.29.34（生产前后端同源域名）→ 响应带 Access-Control-Allow-Origin，可用
+ *   Origin: http://localhost:8080（本地开发）        → 无该头，浏览器拦截
+ * 即本地开发点下载会在控制台报 CORS 错，需在 OSS 控制台把 localhost:8080 加进该 bucket
+ * 的跨域规则；属 OSS 配置，不在前端改动范围内。
  */
 
 import { ElMessage } from 'element-plus'

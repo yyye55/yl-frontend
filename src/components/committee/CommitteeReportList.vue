@@ -29,7 +29,8 @@
     - 表格 + 分页（page-sizes=[20,50,100,200]）
     - methods 一致：getData / check / returnBack / exportXlsx / handleSizeChange / handleCurrentChange / refresh
     - 操作列：ShowContent + Remark + 审核通过 / 驳回
-    - API 一致：committee.report.{getList,check} + communal.export*（→ exportApi.exportGroupData）
+    - API 一致：committee.report.{getList,check} + 导出（dist 借 communal.exportGroupData，
+      本项目改走组委会专属接口 committeeApi.exportData.data）
 
   6 份 dist 模块差异：
     - group 值（用于过滤；注意 elementary 传数字 0，其余传字符串）
@@ -40,7 +41,10 @@
   后端契约（A）：见 yilinbei/apps/api/views.py
     - GET  /api/committee/report/list   → { code, msg, data, count }
     - PUT  /api/committee/report/check  body { id, status, remark? } → 改 Report.status
-    - GET  /api/export/data?group=...   → Blob xlsx
+    - GET  /api/committee/export/data?group=... → Blob xlsx（组委会整组导出，type=2）
+      注：dist 时代这里是 GET /api/export/data。后端为修跨校泄漏给那条接口加了
+      user_id 过滤（只能导本人），组委会名下无报名会导出空表，故另开本接口，
+      查询范围与 Excel 格式仍与原版 ExportController::exportReportData 一致。
 
   【注意】group 类型：elementary / teacher / teacher1 用数字 (0/2/3)；
   elementary1 用字符串 "小学组"。后端 Report.group 是 CharField，请求会被 axios 自动 stringify，
@@ -179,7 +183,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
-import { exportApi } from '@/api/live'
 import { downloadExcelFile } from '@/utils/excel'
 
 import ShowPerson from '@/components/common/ShowPerson.vue'
@@ -295,7 +298,7 @@ function exportXlsx() {
     now.getDate() + '日' +
     now.getHours() + '时' +
     now.getMinutes() + '分'
-  exportApi.exportGroupData({ group: props.group }).then((res) => {
+  committeeApi.exportData.data({ group: props.group }).then((res) => {
     const blob = res && res.data
     if (!blob) {
       ElMessage.error('响应为空')

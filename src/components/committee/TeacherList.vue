@@ -15,7 +15,10 @@
   后端契约（A）：见 yilinbei/apps/api/views.py committee_report_list / committee_report_check
   - GET  /api/committee/report/list   → { code, msg, data, count }
   - PUT  /api/committee/report/check  body { id, status, remark? } → 改 Report.status
-  - GET  /api/export/data?group=2|3   → Blob xlsx (committee 任意登录均可)
+  - GET  /api/committee/export/data?group=2|3 → Blob xlsx（组委会整组导出，type=2）
+    注：dist 时代这里是 GET /api/export/data。后端为修跨校泄漏给那条接口加了
+    user_id 过滤（只能导本人），组委会名下无报名会导出空表，故另开本接口，
+    查询范围与 Excel 格式仍与原版 ExportController::exportReportData 一致。
 
     【本仓库增强，dist 无】（逐项列明，便于回溯与取舍）
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
@@ -140,7 +143,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
-import { exportApi } from '@/api/live'
 import { downloadExcelFile } from '@/utils/excel'
 
 import ShowPerson from '@/components/common/ShowPerson.vue'
@@ -285,8 +287,8 @@ function returnBack(id) {
  *     })
  *   }
  *
- * 后端契约：A → GET /api/export/data?group=2|3 (Blob xlsx)
- * 见 yilinbei/apps/api/views.py export_data
+ * 后端契约：A → GET /api/committee/export/data?group=2|3 (Blob xlsx)
+ * 见 yilinbei/apps/api/views.py committee_export_data
  */
 function exportXlsx() {
   if (exporting.value) return
@@ -298,7 +300,7 @@ function exportXlsx() {
     now.getDate() + '日' +
     now.getHours() + '时' +
     now.getMinutes() + '分'
-  exportApi.exportGroupData({ group: props.group }).then((res) => {
+  committeeApi.exportData.data({ group: props.group }).then((res) => {
     const blob = res && res.data
     if (!blob) {
       ElMessage.error('响应为空')

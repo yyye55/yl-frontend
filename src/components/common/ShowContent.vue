@@ -37,9 +37,9 @@
           乐团集体照片文件--------
           <a
             :href="data.spectrum.url"
-            download="data.spectrum.filename"
             target="_blank"
             style="text-decoration:none;color:#1890FF"
+            @click.prevent="download(data.spectrum)"
           >下载</a>
         </div>
         <div
@@ -49,9 +49,9 @@
           视频文件--------
           <a
             :href="data.file.url"
-            download="data.file.filename"
             target="_blank"
             style="text-decoration:none;color:#1890FF"
+            @click.prevent="download(data.file)"
           >下载</a>
         </div>
         <div class="options" style="font-size:16px;font-weight:bold;text-align:center">
@@ -101,7 +101,7 @@
  *    time_length = models.IntegerField(default=0) 也印证是整数秒。
  *
  * ---------------------------------------------------------------------------
- * 【本项目改动 · 与 dist 的唯一差异】三处 text-align:center
+ * 【本项目改动 · 其一】三处 text-align:center
  * ---------------------------------------------------------------------------
  * dist 原文的「乐团集体照片文件 / 视频文件」两个块只有
  *   padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px
@@ -115,6 +115,15 @@
  *   写在 .options 上会一路继承到最内层文本。Status.vue 是各列表页共用的独立组件，
  *   改它风险更大，故不动。
  *
+ * ---------------------------------------------------------------------------
+ * 【本项目改动 · 其二】两个文件块的下载方式（第十二届修复）
+ * ---------------------------------------------------------------------------
+ * 原文模板里的 `download="data.spectrum.filename"` 漏了冒号，是静态字面量；且 href
+ * 跨域时 download 属性本来就被浏览器忽略 —— 存盘名因此不是数据库里的原始文件名。
+ * 现删掉该属性、改为 @click.prevent 走 downloadRemoteFile()（Blob + 同名 blob: URL）。
+ * 两个 <a> 的 href / target / style / 文案一字未改，预览与「打开原文件」的能力不变。
+ * 详见 script 里 download() 的【第十二届修复】说明。
+ *
  * 影响面：ShowContent 被 5 个可访问页面的详情弹窗共用 ——
  *   /city/elementary/list、/school/elementary/list（ReportList.vue）
  *   /committee/elementary1|2|3（CommitteeReportList.vue）
@@ -124,6 +133,7 @@
  */
 import { onMounted, ref } from 'vue'
 import Status from './Status.vue'
+import { downloadRemoteFile } from '@/utils/download'
 // dist 里这两个方法挂在 Vue.prototype；Vue3 的 <script setup> 没有 this，故具名导入。
 // 语义与 dist 完全一致（见 utils/date.js 中的实现与出处）。
 import { getM, getS } from '@/utils/date'
@@ -162,6 +172,34 @@ onMounted(() => {
     props.data.person = list
   }
 })
+
+/**
+ * 【第十二届修复】照片 / 视频下载：改用原始文件名存盘
+ *
+ * 原文两处模板（dist chunk-335604d9 模块 84fd）是
+ *     <a :href="data.spectrum.url" download="data.spectrum.filename">
+ *     <a :href="data.file.url"     download="data.file.filename">
+ * 有两个问题：
+ *
+ *   1) **漏了冒号**：`download="data.spectrum.filename"` 没有 `:`，Vue 只当它是
+ *      一个**静态字符串字面量**（编译结果是 download:"data.spectrum.filename"），
+ *      并不会去读 data.spectrum.filename 这个字段。存盘名会变成这串字面量本身。
+ *      （这也是本仓库迁移时反复出现的一类写法，见 ShowScFile 的同名问题。）
+ *   2) **跨域下 download 属性本就无效**：两个 href 都是 OSS 绝对地址，与本站不同源，
+ *      HTML 规范规定这种情况下浏览器忽略 download，退回用 URL 最后一段命名。
+ *
+ * data.spectrum / data.file 是后端 report_dict() 展开的 Files 记录
+ * （apps/core/services.py: "Laravel's eager-loaded relation names (`file` and
+ * `spectrum`) take precedence over the raw foreign-key scalar"），字段为
+ * {id,user_id,filename,type,size,url,...} —— 所以原始文件名取 .filename、地址取 .url，
+ * 与 scan_files 的 .name 不同名，两处不能混用。
+ *
+ * 只修 1) 没用，故改为取 Blob 后用同源 blob: URL 触发下载，
+ * 具体见 @/utils/download.js。
+ */
+function download(file) {
+  downloadRemoteFile(file.url, file.filename)
+}
 </script>
 
 <style lang="scss" scoped>

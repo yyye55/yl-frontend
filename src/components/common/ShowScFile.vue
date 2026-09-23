@@ -26,9 +26,9 @@
                   v-for="f in row.files"
                   :key="f.id"
                   :href="f.url"
-                  :download="row.filename"
                   target="_blank"
                   style="text-decoration:none;color:#1890FF;margin:5px"
+                  @click.prevent="download(f)"
                 >{{ f.name }}</a>
               </template>
             </el-table-column>
@@ -68,6 +68,8 @@
  *
  * 【未迁移项 —— 均为 dist 中的死代码，理由同 MainLayout 未移植 openNew/handleClick】
  *  1. showMoive / showImg / download 三个方法在原文模板中从未被调用；
+ *     （注意：见下方 download(f) 的【第十二届修复】说明 —— 该处新加的 download
+ *      与 dist 这笔死方法同名，但不是同一段代码，原文那笔仍未被移植。）
  *  2. 原文末尾的 <div id="wrapper" v-show="show"> 只有一个「关闭」按钮，而
  *     show 仅由死方法 showMoive 置为 true，即该节点在 dist 中恒不可见，故未移植。
  *
@@ -81,6 +83,7 @@
 
 import { ref } from 'vue'
 import { fileApi } from '@/api'
+import { downloadRemoteFile } from '@/utils/download'
 
 const props = defineProps({
   data: { type: Array, default: () => [] },
@@ -103,6 +106,30 @@ function showFile() {
   fileApi.getFileList({ ids: JSON.parse(raw) }).then(({ data: res }) => {
     if (res.code === 0) files.value = res.data
   })
+}
+
+/**
+ * 【第十二届修复】扫描件下载：改用原始文件名存盘
+ *
+ * 原文模板（dist chunk-112ce133 模块 f993）是
+ *     <a :href="f.url" :download="row.filename">
+ * 两个问题叠加，导致存盘名变成 OSS 的 ObjectKey（一串 UUID）：
+ *
+ *   1) **字段取错**：这里的 row 是 scan_files 记录
+ *      {id,user_id,type,files,status,remark,created_at,updated_at}，**根本没有
+ *      filename 字段**，row.filename 恒为 undefined；而 Vue 3 对 undefined 的
+ *      动态属性绑定会把这个属性整个**移除**（不是写成 "undefined"）。真正的原始
+ *      文件名在 row.files[i].name —— 见本组件头部说明与 UploadScanDialog.vue 里
+ *      push 的 {uid,url,name,size,type}。
+ *   2) **跨域下 download 属性本就无效**：f.url 是 OSS 绝对地址，与本站不同源，
+ *      HTML 规范规定这种情况下浏览器忽略 download，退回用 URL 最后一段命名。
+ *
+ * 只修 1) 没用，所以改为自己取 Blob 再用同源的 blob: URL 触发下载，
+ * 具体见 @/utils/download.js 的说明。`f.name || f.filename` 是为了同时兼容
+ * isShow=false 那条分支（走 /api/file/list，返回的是 Files 记录，字段名是 filename）。
+ */
+function download(f) {
+  downloadRemoteFile(f.url, f.name || f.filename)
 }
 </script>
 

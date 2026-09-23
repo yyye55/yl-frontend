@@ -39,5 +39,13 @@ export const committeeApi = {
   },
   index: {
     getIndexTotal: () => request.get(HOST + '/api/committee/index/total')
+  },
+  // 【新增·组委会整组导出】原 dist 里组委会页面借 communal.exportGroupData
+  // （GET /api/export/data）做整组导出；后端为修 P1-2 跨校数据泄漏给那条接口加了
+  // user_id 过滤，组委会名下没有报名，导出只剩表头。现改走组委会专属入口：
+  // 后端 role_error(request, 2) 门禁 + 只按 group 过滤（无 user_id），
+  // 数据范围与 Excel 格式均对齐原版 ExportController::exportReportData。
+  exportData: {
+    data: (params) => request.get(HOST + '/api/committee/export/data', { params, responseType: 'blob' })
   }
 }

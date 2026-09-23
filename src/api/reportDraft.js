@@ -110,6 +110,7 @@ export const DRAFT_ERR = {
   CONFLICT: 'conflict',                 // 409：版本冲突，草稿已被别处更新
   NOT_FOUND: 'not_found',               // 草稿不存在
   NOT_REJECTED: 'not_rejected',         // 报名不是驳回状态，不能进入修改
+  QUOTA: 'quota',                       // 409：超出每校限报额度（不是版本冲突，见下）
   INVALID: 'invalid',                   // 400：payload 不合法
   ALREADY_SUBMITTED: 'already_submitted', // 已提交（按成功处理，见 §十二）
   AUTH: 'auth',                         // 401/403
@@ -184,6 +185,30 @@ export function normalizeDraftError(err) {
     // 等校验失败走它。此前没单列，靠 status===400 兜成同一档，kind 恰好一致，
     // 但文案会退到笼统的「暂存内容不合法」；这里让它默认说清是提交校验没过。
     return { kind: DRAFT_ERR.INVALID, msg: body.msg || '提交校验未通过，请检查填写项', serverVersion: null, status }
+  }
+  if (code === 'REPORT_QUOTA_EXCEEDED') {
+    /*
+     * 【必须单列，否则会退化成假的「版本冲突」】
+     *
+     * 后端 ReportQuotaExceeded（report_drafts.py:73-75）挂在 **409** 上，理由是
+     * 「业务上拒绝这次写入」——但它和 version 冲突没有任何关系。不单列就会被下面的
+     * `status === 409` 吞成 CONFLICT，后果与 :156-159 记的那次误判同一类，这次更重：
+     *
+     *   提交时撞额度 → kind=CONFLICT → OrchestraForm.notifyDraftError 弹的是
+     *   **硬编码**的「该草稿已在其他页面或设备更新」，并只给一个按钮
+     *   「重新加载服务器草稿」；而 body.msg 里后端给的真实原因
+     *   （应先点名是哪个组别已占额）**一个字都不会出现在屏幕上**。
+     *   用户点那个按钮也永远解决不了额度问题。
+     *
+     * 【额度口径 2026-09-23 放宽】不再是「每校一支」，改为
+     * 「每所学校每个组别限报一支；小学组、中学组可各报一支（最多两支），大学组限报一支」。
+     * 依据是组委会的新口径，**已不是红头文件正文一(二)的原文**。
+     * 前端不自己判额度（判了也会和后端漂移），一律以后端为准、只负责把 msg 显示对。
+     *
+     * 所以这里既要把 kind 摘出来，也要保住 msg —— 它是用户**唯一**能知道发生了什么的渠道。
+     * serverVersion 置 null：额度错误没有版本可言，留着会被冲突恢复逻辑读走。
+     */
+    return { kind: DRAFT_ERR.QUOTA, msg: body.msg || '超出报送名额限制', serverVersion: null, status }
   }
 
   // 到这里说明后端没给可识别的字符串业务码（含本项目既有 failure() 的数字码 1），

@@ -9,24 +9,28 @@
       <div class="detail-content">
         <h2>{{ data.name }}</h2>
         <div class="fall-info">
-          <p>填报单位：{{ data.user.nickname }}</p>
-          <p>乐团名称：{{ data.choir_name }}</p>
-          <p>学校名称：{{ data.school_name }}</p>
+          <p><span class="label">填报单位：</span><span class="value">{{ data.user.nickname }}</span></p>
+          <p><span class="label">乐团名称：</span><span class="value">{{ data.choir_name }}</span></p>
         </div>
         <div class="fall-info">
-          <p>类型：{{ data.establishment }}</p>
-          <p>参演组别：{{ data.group }}</p>
-          <p>自选曲目：{{ data.name }}</p>
+          <p><span class="label">学校名称：</span><span class="value">{{ data.school_name }}</span></p>
+          <p><span class="label">类型：</span><span class="value">{{ data.establishment }}</span></p>
         </div>
         <div class="fall-info">
-          <p>指定曲目：{{ data.name1 || '未填写' }}</p>
-          <p>领队姓名：{{ data.contact_name }}</p>
-          <p>领队电话：{{ data.contact_phone }}</p>
+          <p><span class="label">参演组别：</span><span class="value">{{ data.group }}</span></p>
+          <p><span class="label">自选曲目：</span><span class="value">{{ data.name }}</span></p>
         </div>
         <div class="fall-info">
-          <p>联系地址：{{ data.contact_way }}</p>
-          <p>作品总时长：{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</p>
-          <p>乐团简介：{{ data.desc || '未填写' }}</p>
+          <p><span class="label">指定曲目：</span><span class="value">{{ data.name1 || '未填写' }}</span></p>
+          <p><span class="label">领队姓名：</span><span class="value">{{ data.contact_name }}</span></p>
+        </div>
+        <div class="fall-info">
+          <p><span class="label">领队电话：</span><span class="value">{{ data.contact_phone }}</span></p>
+          <p><span class="label">联系地址：</span><span class="value">{{ data.contact_way }}</span></p>
+        </div>
+        <div class="fall-info">
+          <p><span class="label">作品总时长：</span><span class="value">{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</span></p>
+          <p><span class="label">乐团简介：</span><span class="value">{{ data.desc || '未填写' }}</span></p>
         </div>
         <!-- 【本项目新增】style 末尾的 text-align:center 是本项目的改动，
              dist 原文只有前四个声明，详见 script 中的说明。 -->
@@ -35,11 +39,13 @@
           style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           乐团集体照片文件--------
+          <!-- 【第十二届修复】原写法 download="data.spectrum.filename" 只是**静态字符串**
+               （没有冒号，不是绑定），存盘名就是字面量 "data.spectrum.filename"。
+               改为点击后走 blob 下载，详见 script 里 downloadFile 的说明。 -->
           <a
-            :href="data.spectrum.url"
-            download="data.spectrum.filename"
-            target="_blank"
+            href="javascript:;"
             style="text-decoration:none;color:#1890FF"
+            @click="downloadFile(data.spectrum)"
           >下载</a>
         </div>
         <div
@@ -47,11 +53,11 @@
           style="padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px;text-align:center"
         >
           视频文件--------
+          <!-- 【第十二届修复】同上一处，原 download 是静态字符串，改为 blob 下载。 -->
           <a
-            :href="data.file.url"
-            download="data.file.filename"
-            target="_blank"
+            href="javascript:;"
             style="text-decoration:none;color:#1890FF"
+            @click="downloadFile(data.file)"
           >下载</a>
         </div>
         <div class="options" style="font-size:16px;font-weight:bold;text-align:center">
@@ -101,7 +107,7 @@
  *    time_length = models.IntegerField(default=0) 也印证是整数秒。
  *
  * ---------------------------------------------------------------------------
- * 【本项目改动 · 与 dist 的唯一差异】三处 text-align:center
+ * 【本项目改动 · 其一】三处 text-align:center
  * ---------------------------------------------------------------------------
  * dist 原文的「乐团集体照片文件 / 视频文件」两个块只有
  *   padding:5px;margin:10px 0;border:1px solid rgba(242,247,252,0.69);font-size:15px
@@ -121,9 +127,18 @@
  * 另有 3 处调用方（admin/report.vue、committee/colleges.vue、TeacherList.vue）
  * 对应路由已在第十二届摘除，无菜单入口。
  * .fall-info 的 3 列 grid、h2 居中、两个文件块的 border 均未改动。
+ *
+ * ---------------------------------------------------------------------------
+ * 【本项目改动 · 其二】两个「下载」链接改走 blob（第十二届修复）
+ * ---------------------------------------------------------------------------
+ * dist 原文是 `<a :href="…url" download="…filename" target="_blank">下载</a>`。
+ * 这里只动了「下载」这两个 <a> 的下载方式，块级容器、文案、border 等一律未改。
+ * 具体症状、成因与修法写在下方 downloadFile() 的注释里。
  */
 import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import Status from './Status.vue'
+import { downloadRemoteFile } from '@/utils/download'
 // dist 里这两个方法挂在 Vue.prototype；Vue3 的 <script setup> 没有 this，故具名导入。
 // 语义与 dist 完全一致（见 utils/date.js 中的实现与出处）。
 import { getM, getS } from '@/utils/date'
@@ -162,6 +177,29 @@ onMounted(() => {
     props.data.person = list
   }
 })
+
+/**
+ * 下载报名详情里的「乐团集体照片 / 视频」（第十二届新增）
+ *
+ * 入参是后端 report_dict 里 `spectrum` / `file` 两个字段的对象
+ * （apps/core/services.py：`model_dict(Files.objects.filter(pk=report.spectrum).first())`），
+ * 即一条 Files 记录：{ id, user_id, filename, type, size, url, created_at, updated_at }。
+ *   · url      → OSS 的随机 UUID 地址
+ *   · filename → 原始文件名（「乐团集体照片.jpg」「演出视频.mp4」）
+ *
+ * 【第十二届修复：文件名】模板原写作
+ *     :href="data.spectrum.url" download="data.spectrum.filename" target="_blank"
+ * 注意 download 这里**没有冒号**，是静态 HTML 字符串而非 Vue 绑定 —— 浏览器把它当作
+ * 字面量文件名，存盘名直接变成 "data.spectrum.filename"。
+ * 而即便补上冒号变成 `:download="data.spectrum.filename"`，只要还是跨源直链，
+ * download 属性仍会被浏览器忽略，退回用 UUID 命名。两种写法都必须改成 blob，
+ * 理由与 CORS 前提见 utils/download.js。
+ */
+function downloadFile(file) {
+  downloadRemoteFile(file.url, file.filename).catch((err) => {
+    ElMessage.error(err.message || '下载失败')
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -177,10 +215,31 @@ onMounted(() => {
 
 .fall-info {
   display: grid;
-  grid-template-columns: 33.3% 33.3% 33.3%;
+  grid-template-columns: 50% 50%;
   grid-template-rows: repeat(auto-fill, 100%);
   padding-top: 10px;
   text-align: center;
   color: #8c939d;
+}
+
+.fall-info p {
+  display: flex;
+  justify-content: flex-start;
+  align-items: baseline;
+  padding: 2px 10px;
+  margin: 0;
+  white-space: normal;
+}
+
+.fall-info .label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fall-info .value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  padding-left: 8px;
 }
 </style>

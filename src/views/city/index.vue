@@ -2,7 +2,7 @@
   <div class="container">
     <div v-if="success" class="container-text">
       <div class="export-demo" style="padding: 5px 0 20px 0">
-        <el-button type="primary" :disabled="!pass" @click="exportReport('报名信息表')">
+        <el-button type="primary" :disabled="!pass" @click="exportReport()">
           报名信息表导出
         </el-button>
         <el-button type="primary" :disabled="!pass" @click="dialogRef.open()">
@@ -46,6 +46,9 @@
  *   | 接口模块                     | city.index                | school.index          |
  *   | 作用域 id                    | 09486db2                  | 89781142              |
  *
+ * 【第十二届更正】表中「exportReport 传入的文件名」一行已是历史：现在两页都不传文件名，
+ * 由 utils/excel.js 的 downloadPdfFile 统一给默认名（见该函数与本页 exportReport 的注释）。
+ *
  * （dist 中还有第三个变体 /province/index（bec3，作用域 525d87bf），省级端已下线，未纳入本项目。）
  *
  * data(){ return { data:[], limit:[], success:[], tableData:[], pass:!0,
@@ -85,6 +88,7 @@ import { ElMessageBox } from 'element-plus'
 import { cityApi } from '@/api'
 import { exportApi } from '@/api/live'
 import { downloadPdfFile } from '@/utils/excel'
+import { showApiError } from '@/utils/request'
 import UploadScanDialog from '@/components/common/UploadScanDialog.vue'
 
 const data = ref([])
@@ -107,19 +111,32 @@ function getTotal() {
   })
 }
 
-/** dist: exportReport(e){ MessageBox.confirm("此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?","提示",{confirmButtonText:"确定",cancelButtonText:"取消",type:"warning"}).then(()=>{ $api.communal.exportReportData().then(t=>{ this.downloadPdfFile(t.data,e) }) }).catch(()=>{}) } */
-function exportReport(name) {
+/**
+ * dist: exportReport(e){ MessageBox.confirm("此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?","提示",{confirmButtonText:"确定",cancelButtonText:"取消",type:"warning"}).then(()=>{ $api.communal.exportReportData().then(t=>{ this.downloadPdfFile(t.data,e) }) }).catch(()=>{}) }
+ *
+ * 【第十二届改动，两处】
+ * 1. 不再传文件名：改由 utils/excel.js 的 downloadPdfFile 统一决定（默认
+ *    "报名信息表.pdf"，与后端 Content-Disposition 一致），避免 city/school 两页
+ *    各写一个名字、其中一个还与后端不符。注意这不是「让浏览器去读后端响应头」——
+ *    blob URL 拿不到响应头，原因与实测见该函数注释。
+ * 2. 内层请求必须 return：原写法是块体、无 return，下面 .catch 只能接住确认框的
+ *    取消，接不到接口失败 —— 非 401 的 4xx 会走 request.js 响应拦截器的 default
+ *    分支只 console.log，用户看到「点了没反应」。现补上 showApiError 提示。
+ *    （确认框的 'cancel'/'close' 传入 showApiError 会因其无 status 而静默返回，
+ *      行为与原来的 .catch(()=>{}) 一致。）
+ */
+function exportReport() {
   ElMessageBox.confirm('此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
   })
     .then(() => {
-      exportApi.exportReportData().then((res) => {
-        downloadPdfFile(res.data, name)
+      return exportApi.exportReportData().then((res) => {
+        downloadPdfFile(res.data)
       })
     })
-    .catch(() => {})
+    .catch((err) => showApiError(err, '导出失败'))
 }
 
 onMounted(getTotal)

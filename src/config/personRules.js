@@ -196,9 +196,18 @@ export function validatePersonCount(establishment, group, persons) {
   // position 语义与后端 ReportPerson.position 一致（见 registration_form.py:3）：
   //   0=正式队员  1=预备队员  2=指挥  4=指导老师
   persons.forEach(p => {
-    // 【第十二届】指挥单独统计，且必须放在下面那句 type!==0 的提前返回**之前**：
-    // 中小学指挥须为本校在职教师（type=1），放到后面就永远数不到，会恒为 0。
-    // 这里只用于下方构成明细的展示，不并入正式/预备人数（口径见上）。
+    /*
+     * 指挥按「角色」计，不按「身份」计 —— 只加一次。
+     *
+     * 位置必须在下面那句 `type !== 0` 的提前返回**之前**：指挥既可能是教师（type=1），
+     * 也可能是学生（type=0），而后半段只处理学生。挪到后面，教师指挥永远数不到、恒为 0。
+     *
+     * 后半段原有的 `else if (p.position === 2) conductorCount++` 已删除：学生指挥
+     * 不会被提前返回拦住，会在那里被加第二次。原注释称「中小学指挥须为本校在职教师」，
+     * 但这条约束在 checkLine / exportCheck / personFields.js 里都不存在，该假设不成立。
+     *
+     * 只用于下方 formalBreakdown 那行明细的数字，不并入正式/预备人数。
+     */
     if (p.position === 2) conductorCount++
     // type=1 是教师。指导教师另表登记（TeacherTable，position 固定为 4），不算乐团编制。
     if (p.type !== 0) return
@@ -214,13 +223,7 @@ export function validatePersonCount(establishment, group, persons) {
       }
     } else if (p.position === 1) {
       reserveCount++
-    } else if (p.position === 2) {
-      // 指挥：只记账、不设限。
-      // 既不属于正式成员、也不占用预备名额，故**不参与**上面任何一条 upper/lower bound，
-      // 只为 formalBreakdown 那行明细提供数字（用户看不出指挥算没算进去，正是要它显示的原因）。
-      conductorCount++
     }
-    // position===2（指挥）不计入正式/预备，也不占用预备名额，只在构成明细里单独展示
   })
 
   // 校验正式成员人数

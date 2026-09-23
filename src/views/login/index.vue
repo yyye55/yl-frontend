@@ -61,15 +61,21 @@ const loginForm = reactive({
   password: ""
 })
 
+/**
+ * 【登录页只判必填，刻意不判长度 —— 别"顺手补上"】
+ *
+ * 原先这里是 username 3-15 / password 5-15，而账号是历史上按「添加账号」的
+ * 2-20 / 6-32 建出来的。两套数一撞，就出现「管理员建得出、用户登不进」：
+ * 输入完全正确的 20 位密码，被这里的 max:15 拦下，doLogin() 连请求都发不出，
+ * 用户只会一遍遍重输，管理员那边看列表一切正常。
+ *
+ * 登录页是"读"（校验存量凭证），写规则在 src/config/accountRules.js。
+ * 读的口子判长度不提供任何安全性（攻击者不走 UI），只提供锁定风险，
+ * 所以这里只留 required，长度判断交给后端（用户名不存在 / 账号或密码错误）。
+ */
 const loginFormRules = {
-  username: [
-    { required: true, message: "请输入用户名", trigger: "blur" },
-    { min: 3, max: 15, message: "长度在 3 到 15 个字符", trigger: "blur" }
-  ],
-  password: [
-    { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 5, max: 15, message: "长度在 5 到 15 个字符", trigger: "blur" }
-  ]
+  username: [{ required: true, message: "请输入用户名", trigger: "blur" }],
+  password: [{ required: true, message: "请输入密码", trigger: "blur" }]
 }
 
 const INITIAL_PASSWORD = "scylb@2026"

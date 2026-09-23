@@ -73,7 +73,7 @@
             <el-option label="学校账号" :value="0" />
           </el-select>
         </el-form-item>
-        <p style="margin:10px">提示：如果输入密码，则会更新密码，不输入，则不会改变密码</p>
+        <p style="margin:10px">提示：密码为必填项，长度需为 {{ PASSWORD_MIN }} 到 {{ PASSWORD_MAX }} 个字符</p>
         <p style="margin:10px">其他信息：（可以填写一些关于账号的介绍）</p>
         <el-input
           v-model="form.description"
@@ -195,10 +195,15 @@
  *  细节与源码依据见 resetPassword() 上方注释。
  *
  * 【保留的原文瑕疵 —— 已按本次决定修正其中一处】
- *  rules 中 password 的校验区间 min:6 / max:32 未动；但提示文案原本写的是
- *  「长度在 2 到 32 个字符」，与实际区间不符。接线前这条规则永远不跑，错话没人看见；
- *  接线后它会真的弹给用户（输 3 位密码被提示「长度在 2 到 32」而卡住），
- *  故只把文案改为「长度在 6 到 32 个字符」，规则本身一字未改。
+ *  rules 中 password 的提示文案原本写的是「长度在 2 到 32 个字符」，与实际区间不符。
+ *  接线前这条规则永远不跑，错话没人看见；接线后它会真的弹给用户
+ *  （输 3 位密码被提示「长度在 2 到 32」而卡住），故当时把文案改成了「长度在 6 到 32 个字符」。
+ *
+ * 【本次变更：数字收敛到 src/config/accountRules.js】
+ *  上面那次只改了文案，区间还是本页自己写死的 6-32，与登录页、自助改密各说各话。
+ *  现在账号 3-20、密码 6-20 全站一份常量，本页的 rules 与「重置密码」的 inputValidator
+ *  都改成引用它。另外「添加用户」弹窗里那句「如果输入密码，则会更新密码，不输入，则不会改变密码」
+ *  是从「修改信息」弹窗复制来的 —— 添加账号的密码是必填，照这句话不填会被拒，已改为如实说明。
  */
 
 import { ref, reactive } from 'vue'
@@ -206,6 +211,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { adminApi } from '@/api'
 import { downloadExcelFile } from '@/utils/excel'
+import {
+  ACCOUNT_MIN,
+  ACCOUNT_MAX,
+  MSG_ACCOUNT_LENGTH,
+  PASSWORD_MIN,
+  PASSWORD_MAX,
+  MSG_PASSWORD_LENGTH,
+  checkPasswordInput
+} from '@/config/accountRules'
 
 const keyword = ref(null)
 const showInfo = ref(false)
@@ -239,7 +253,7 @@ const rules = {
   ],
   username: [
     { required: true, message: '请输入账号', trigger: 'blur' },
-    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+    { min: ACCOUNT_MIN, max: ACCOUNT_MAX, message: MSG_ACCOUNT_LENGTH, trigger: 'blur' }
   ],
   leader: [
     { required: false, message: '请输入负责人名称', trigger: 'blur' },
@@ -247,7 +261,7 @@ const rules = {
   ],
   password: [
     { required: true, message: '请输入登录密码', trigger: 'blur' },
-    { min: 6, max: 32, message: '长度在 6 到 32 个字符', trigger: 'blur' }
+    { min: PASSWORD_MIN, max: PASSWORD_MAX, message: MSG_PASSWORD_LENGTH, trigger: 'blur' }
   ],
   type: [{ required: true, message: '请选择类型', trigger: 'blur' }]
 }
@@ -259,7 +273,7 @@ const editRules = {
   ],
   username: [
     { required: true, message: '请输入账号', trigger: 'blur' },
-    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+    { min: ACCOUNT_MIN, max: ACCOUNT_MAX, message: MSG_ACCOUNT_LENGTH, trigger: 'blur' }
   ]
 }
 
@@ -302,7 +316,7 @@ function modify(row) {
  * 【症状】弹窗里什么都不输（或只打空格）就点「确定」，页面提示「重置成功」，
  * 但密码根本没变 —— 而且列表还会刷一次，看起来完全正常。
  *
- * 【原因】后端 user_update_admin（apps/api/views.py:673-680）改密码的条件是
+ * 【原因】后端 user_update_admin（apps/api/views.py，以函数名定位）改密码的条件是
  * `if data.get("password")`：空串是 falsy，这一句不成立，于是密码字段被跳过、
  * 接口仍然返回 success() → 前端只能看到 code 0。
  *
@@ -320,15 +334,18 @@ function modify(row) {
  * 【inputType: 'password' 是本次一并加的】EP 的 prompt 默认 inputType 是 'text'，
  * 新密码原本是明文显示在屏幕上的。
  *
- * 【本次不做的】不限制密码长度 —— rules 里的 6-32 是「用户自助改密码」的规则，
- * 管理员重置成一个临时短密码不该被它堵住（后端对长度也不设限）。
+ * 【本次变更：长度也一并按统一口径拦（原先只拦空串与纯空格）】
+ * 原先不判长度，管理员可以把密码重置成 `a` 这种 1 位 —— 接口照样返回成功，
+ * 而用户拿着它去登录会被前端拦下（或干脆记不住），管理员侧看不到任何异常。
+ * 现在改用 src/config/accountRules.js 的 checkPasswordInput，与「添加账号」「自助改密」
+ * 同一组数（6-20），不再是这一处说了算。
  */
 function resetPassword(id) {
   ElMessageBox.prompt('请输入新密码', '重置密码', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    // 空串与纯空格都拦下（后端把 '   ' 当真值，会真的设成新密码）
-    inputValidator: (v) => (v && v.trim() ? true : '请输入新密码'),
+    // 空串 / 纯空格 / 长度越界都拦下，口径见 src/config/accountRules.js
+    inputValidator: checkPasswordInput,
     inputType: 'password'
   })
     .then(({ value }) => {

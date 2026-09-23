@@ -2,7 +2,7 @@
   <div class="container">
     <div v-if="success" class="container-text">
       <div class="export-demo" style="padding: 5px 0 20px 0">
-        <el-button type="primary" @click="exportReport('报名信息表导出')">
+        <el-button type="primary" @click="exportReport()">
           报名信息表导出
         </el-button>
         <el-button type="primary" @click="dialogRef.open()">
@@ -38,6 +38,8 @@
  *   1. 导出按钮**没有** :disabled="!pass" 绑定；
  *   2. el-upload 的 limit 是 2（city 为 1）；
  *   3. exportReport 传入的文件名是 "报名信息表导出"（city 为 "报名信息表"）。
+ *      【第十二届更正】本条已是历史：现在两页都不传文件名，由 utils/excel.js 的
+ *      downloadPdfFile 统一给默认名（见该函数与本页 exportReport 的注释）。
  * 接口模块为 school.index，作用域 id 89781142。
  *
  * data(){ return { data:[], limit:[], success:[], tableData:[], pass:!0,
@@ -63,6 +65,7 @@ import { ElMessageBox } from 'element-plus'
 import { schoolApi } from '@/api'
 import { exportApi } from '@/api/live'
 import { downloadPdfFile } from '@/utils/excel'
+import { showApiError } from '@/utils/request'
 import UploadScanDialog from '@/components/common/UploadScanDialog.vue'
 
 const data = ref([])
@@ -85,19 +88,26 @@ function getTotal() {
   })
 }
 
-/** dist: exportReport(e){ MessageBox.confirm("此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?","提示",{…}).then(()=>{ $api.communal.exportReportData().then(t=>{ this.downloadPdfFile(t.data,e) }) }).catch(()=>{}) } */
-function exportReport(name) {
+/**
+ * dist: exportReport(e){ MessageBox.confirm("此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?","提示",{…}).then(()=>{ $api.communal.exportReportData().then(t=>{ this.downloadPdfFile(t.data,e) }) }).catch(()=>{}) }
+ *
+ * 【第十二届改动，两处】与 city/index.vue 完全一致：不再传文件名（改由
+ * utils/excel.js 的 downloadPdfFile 统一决定，默认 "报名信息表.pdf"，
+ * 原先本页传的 "报名信息表导出" 与后端不符），以及内层请求 return 出来
+ * 让 .catch 能接住失败。详见 src/views/city/index.vue 的 exportReport 注释。
+ */
+function exportReport() {
   ElMessageBox.confirm('此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
   })
     .then(() => {
-      exportApi.exportReportData().then((res) => {
-        downloadPdfFile(res.data, name)
+      return exportApi.exportReportData().then((res) => {
+        downloadPdfFile(res.data)
       })
     })
-    .catch(() => {})
+    .catch((err) => showApiError(err, '导出失败'))
 }
 
 onMounted(getTotal)

@@ -82,6 +82,7 @@
             <el-table-column
               prop="school_name"
               label="参展学校"
+              width="200"
               header-align="center"
               align="center"
               show-overflow-tooltip
@@ -97,12 +98,13 @@
             <el-table-column
               prop="contact_phone"
               label="领队联系电话"
+              width="150"
               header-align="center"
               align="center"
             />
           </template>
 
-          <el-table-column label="人员信息" header-align="center" align="center">
+          <el-table-column label="人员信息" width="120" header-align="center" align="center">
             <template #default="{ row }">
               <ShowPerson :data="row.person" />
             </template>
@@ -116,6 +118,7 @@
 
           <el-table-column
             label="操作"
+            width="360"
             header-align="center"
             align="center"
             :width="cfg.actionWidth"

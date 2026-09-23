@@ -126,12 +126,12 @@
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="参展学校" prop="school_name">
-                <el-input v-model="form.school_name" placeholder="请填写参展学校全称" />
+                <el-input v-model="form.school_name" placeholder="请填写参展学校" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="领队姓名" prop="contact_name">
-                <el-input v-model="form.contact_name" placeholder="请填写领队姓名即可" />
+                <el-input v-model="form.contact_name" placeholder="请填写领队姓名" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -140,7 +140,7 @@
           <el-row :gutter="40">
             <el-col :span="12">
               <el-form-item label="领队联系电话" prop="contact_phone">
-                <el-input v-model="form.contact_phone" placeholder="请输入领队电话（手机号或固定电话）" />
+                <el-input v-model="form.contact_phone" placeholder="请输入领队联系电话" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -179,7 +179,7 @@
                         原 dist 提示有 typo「JEPG」，已订正。
                         600dpi 检测由后端保证；前端无法检测 PDF/JPEG 的 DPI。
                       -->
-                      乐团集体电子照用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
+                      乐团集体电子照片用于制作秩序册，分辨率不低于600dpi，格式为JPEG或TIFF。
                     </div>
                   </template>
                 </el-upload>

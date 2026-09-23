@@ -112,7 +112,7 @@
           <!-- 列集合 II（elementary1 / school/elementary）：乐团 + 自选曲目 + 学校 + 领队 -->
           <template v-else>
             <el-table-column prop="choir_name" label="乐团名称" header-align="center" align="center" show-overflow-tooltip />
-            <el-table-column prop="name" label="自选曲目名称" header-align="center" align="center" show-overflow-tooltip />
+            <el-table-column prop="name" label="自选曲目" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="user.nickname" label="提交单位" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="school_name" label="参展学校" width="200" header-align="center" align="center" show-overflow-tooltip />
             <el-table-column prop="contact_name" label="领队姓名" header-align="center" align="center" />

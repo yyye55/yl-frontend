@@ -89,7 +89,7 @@
             />
             <el-table-column
               prop="name"
-              label="自选曲目名称"
+              label="自选曲目"
               header-align="center"
               align="center"
               show-overflow-tooltip

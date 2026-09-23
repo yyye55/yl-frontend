@@ -13,11 +13,11 @@
           <p><span class="label">乐团名称：</span><span class="value">{{ data.choir_name }}</span></p>
         </div>
         <div class="fall-info">
-          <p><span class="label">学校名称：</span><span class="value">{{ data.school_name }}</span></p>
-          <p><span class="label">类型：</span><span class="value">{{ data.establishment }}</span></p>
+          <p><span class="label">参展学校：</span><span class="value">{{ data.school_name }}</span></p>
+          <p><span class="label">乐团类别：</span><span class="value">{{ data.establishment }}</span></p>
         </div>
         <div class="fall-info">
-          <p><span class="label">参演组别：</span><span class="value">{{ data.group }}</span></p>
+          <p><span class="label">参展组别：</span><span class="value">{{ data.group }}</span></p>
           <p><span class="label">自选曲目：</span><span class="value">{{ data.name }}</span></p>
         </div>
         <div class="fall-info">
@@ -25,11 +25,11 @@
           <p><span class="label">领队姓名：</span><span class="value">{{ data.contact_name }}</span></p>
         </div>
         <div class="fall-info">
-          <p><span class="label">领队电话：</span><span class="value">{{ data.contact_phone }}</span></p>
+          <p><span class="label">领队联系电话：</span><span class="value">{{ data.contact_phone }}</span></p>
           <p><span class="label">联系地址：</span><span class="value">{{ data.contact_way }}</span></p>
         </div>
         <div class="fall-info">
-          <p><span class="label">作品总时长：</span><span class="value">{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</span></p>
+          <p><span class="label">展示时长：</span><span class="value">{{ getM(data.time_length) }}分{{ getS(data.time_length) }}秒</span></p>
           <p><span class="label">乐团简介：</span><span class="value">{{ data.desc || '未填写' }}</span></p>
         </div>
         <!-- 【本项目新增】style 末尾的 text-align:center 是本项目的改动，

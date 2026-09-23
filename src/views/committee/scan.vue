@@ -8,6 +8,11 @@
   业务说明（基于 dist data()）：
     - 标题：报名列表
     - 表格仅 3 列：序号 / 学校名称(user.nickname) / 操作（ShowScFile 预览或"没有扫描文件上传"）
+      ↑ 【2026-09-23 起本条不再逐字等于 dist】第 2 列列头「学校名称」已改为「填报单位」。
+        只改 label，prop="nickname" 与取值未动 —— 改的是文案，不是数据。
+        起因：本列显示的是账号所属的填报单位（User.nickname），叫「学校名称」不准。
+        注：本列**搜索本来就是好的** —— 后端 /api/scan/list 的 keyword 走 nickname__icontains
+        （apps/api/views.py:329-330），而 nickname 就是这个填报单位，故本轮无需任何后端改动。
     - 有 keyword 搜索 UI（el-input + #append 搜索按钮，@change 触发 getData）
     - 无 group select
     - 无 status select
@@ -60,7 +65,8 @@
         <el-table :data="data" border style="width: 100%">
           <!-- dist 三列均无 align / header-align（与 log.vue 不同，勿照抄） -->
           <el-table-column type="index" prop="date" label="序号" width="60" />
-          <el-table-column prop="nickname" label="学校名称" />
+          <!-- label 2026-09-23 由「学校名称」改「填报单位」；prop 不动，见文件头注释 -->
+          <el-table-column prop="nickname" label="填报单位" />
           <el-table-column label="操作">
             <template #default="{ row }">
               <ShowScFile v-if="row.scanfile && row.scanfile.length > 0" :data="row.scanfile" :is-show="true" />

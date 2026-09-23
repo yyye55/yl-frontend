@@ -8,6 +8,12 @@
   业务说明（基于 dist 模块 1727）：
     - 标题：人员管理
     - 表格 5 列：序号 / 姓名 / 身份证号码 / 学校名称 / 操作（修改按钮）
+      ↑ 【2026-09-23 起本条不再逐字等于 dist】第 4 列列头「学校名称」已改为「填报单位」。
+        只改 label，prop="school" 与取值一律未动 —— 改的是文案，不是数据。
+        起因：该列的值是各校在人员表里手填的单位名（Person.school），大学组等场景下未必是学校。
+        ⚠️ 本列**目前搜不到、也筛不了**：前端把 keyword 原样发给 /api/admin/person/list，
+           而后端该接口的 keyword 只匹配 name/card、不含 school，也没有 school 参数。
+           能力缺口已写进 docs/后端协助问题清单-人员管理按填报单位搜索与筛选.md，等后端接口。
     - 修改 dialog：el-form（name + card），含验证规则
     - 无新增、无删除、无导出
     - 分页 page-sizes=[10,20,50,100]（limit 默认 10）
@@ -58,7 +64,8 @@
           <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="name" label="姓名" align="center" />
           <el-table-column prop="card" label="身份证号码" align="center" />
-          <el-table-column prop="school" label="学校名称" align="center" />
+          <!-- label 2026-09-23 由「学校名称」改「填报单位」；prop 不动，见文件头注释 -->
+          <el-table-column prop="school" label="填报单位" align="center" />
           <el-table-column label="操作" align="center">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="modify(row)">修改</el-button>

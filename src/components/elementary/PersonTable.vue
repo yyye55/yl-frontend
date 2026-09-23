@@ -549,7 +549,7 @@ function importExcel(file) {
         data.value.push(row)
       }
     }
-  })
+  }).catch(() => ElMessage.error('导入失败，请刷新页面后重试'))
 }
 
 /** dist: switch(e){ case "正式队员":0; case "预备队员":1; case "指挥":2; case "伴奏":3; default:0 } */

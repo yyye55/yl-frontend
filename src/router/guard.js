@@ -80,9 +80,13 @@ router.afterEach((to) => {
  * （产物里 `for (const a of i||[]) a.status==="rejected" && o(a.reason)`）。
  * 所以「路由分片 + 它整条依赖闭包」都在内。
  *
- * 【明确不覆盖】utils/excel.js 的 import('xlsx')、services/ossUpload.js 的 import('ali-oss')
- * 这类非路由动态 import。它们同样会 dispatch vite:preloadError，但错误抛回调用方，
- * 不经过 router.onError；要覆盖需另挂 window 上的 vite:preloadError 监听。
+ * 【非路由动态 import】utils/xlsx.js 的 import('xlsx')、services/ossUpload.js 的
+ * import('ali-oss') 不经过 router.onError（错误抛回调用方），由文件末尾那个
+ * window 上的 vite:preloadError 监听接住，复用下面同一个判定函数。
+ *
+ * 【导出按钮不走这条路】各页导出用的是 downloadExcelFile / downloadPdfFile，收的是
+ * 后端生成的 blob，不加载任何分片 —— 点了必然成功，与分片 404 无关。
+ * （utils/excel.js 里会 import('xlsx') 的三个函数中，exportTable / makeXLSX 零调用方。）
  *
  * 【为什么刷新能修】旧标签页只要重新取一次 HTML（index.html 是 no-cache），拿到的就是
  * 新构建的入口与新哈希。表单内容不会丢 —— OrchestraForm 的 beforeunload 会把内容镜像进本地缓存。
@@ -158,4 +162,27 @@ router.onError((error) => {
   // 已自愈（含刚触发刷新）时不再重复记录
   if (tryRecoverChunkError(error)) return
   console.error('[Router Error]', error)
+})
+
+/*
+ * 非路由动态 import 的分片 404 自愈（复用上面同一个判定）
+ *
+ * 覆盖 utils/xlsx.js 的 import('xlsx') 与 services/ossUpload.js 的 import('ali-oss')。
+ * 这两个错误抛回调用方，不经过 router.onError，只能靠 window 事件接。
+ *
+ * 【为什么一个监听就够】产物里全项目只有一份 preload 助手，放在入口 index.<hash>.js，
+ * 每个动态 chunk 都从它导入（各自起别名 _e / fa / We）。实测 dist 里含
+ * "vite:preloadError" 的 chunk 只有入口那一个 —— 所以 xlsx、ali-oss、路由、
+ * 以及它们依赖的共享分片，全部从这一个入口过。
+ *
+ * 【不会与 router.onError 重复刷新】路由分片失败时两条路都会响，顺序是
+ * dispatchEvent 在前、throw 在后。window 这条先跑并写入时间戳，router.onError
+ * 那条再判定时 now - last 已是 0，直接返回 false —— 时间戳那行就是幂等锁。
+ *
+ * 【注意】导出按钮不在此列：各页导出走的是 downloadExcelFile/downloadPdfFile，
+ * 收的是后端生成的 blob，不加载任何分片，点了必然成功。
+ */
+window.addEventListener('vite:preloadError', (e) => {
+  if (tryRecoverChunkError(e.payload)) return
+  console.error('[Chunk Error]', e.payload)
 })

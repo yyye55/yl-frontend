@@ -7,12 +7,16 @@
  *
  * 【route.meta.requiresAuth】 控制是否需要登录
  * 【route.meta.role】 限制角色（仅登录后路由生效）
+ * 【route.meta.reportWrite】 报名写入页；只读角色（市州端）不可进入，
+ *   跳 meta.reportWriteRedirect。见 beforeEach 里的说明。
  */
 
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
+import { ElMessage } from 'element-plus'
 import router from './index'
 import { getToken, getUser, clearToken, clearUser } from '@/utils/auth'
+import { isViewOnlyScope } from '@/config/roles'
 
 NProgress.configure({ showSpinner: false })
 
@@ -48,6 +52,25 @@ router.beforeEach((to, from, next) => {
   if (to.meta && to.meta.role !== undefined && user.type !== to.meta.role) {
     // 没有权限，跳转到自己的 layout
     return next('/middle')
+  }
+
+  /**
+   * 【第十二届权限调整】只读角色不得进入「报名写入页」
+   *
+   * 市州端不再具有赛事报名权限，只保留报名信息查看权限。侧边栏不渲染入口、
+   * 列表页不给编辑/删除按钮，都只是表现层 —— 手敲 /city/elementary/create
+   * 或 /city/elementary/edit/5 仍能直达表单。这里补上真正的拦截。
+   *
+   * 判据取自路由 meta（reportWrite），不是匹配 URL 字符串，也不是页面名判断：
+   * 以后新增同类页面，在路由上标 reportWrite 即可自动受管。
+   * 只读与否由 @/config/roles.js 的 isViewOnlyScope 判定（与菜单、按钮同源）。
+   *
+   * 跳转目标写在 meta.reportWriteRedirect 上（守卫因此不认识任何具体路径）；
+   * 未标该字段时兜底回 /middle —— 宁可回首页，也不能放行。
+   */
+  if (to.meta && to.meta.reportWrite && isViewOnlyScope(user.type)) {
+    ElMessage.warning('市州端账号不再具有赛事报名权限，已跳转到报名汇总')
+    return next(to.meta.reportWriteRedirect || '/middle')
   }
 
   next()

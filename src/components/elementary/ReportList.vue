@@ -134,16 +134,23 @@
 
                 「删除」按钮原样保留（0 和 -1 都还在），它不属于本次暂存改造的范围。
                 状态取值：-2 未填写 / -1 已驳回 / 0 待审核 / 1 组委会通过（见 Status.vue）。
+
+                【第十二届权限调整】「编辑」「删除」再叠一层角色判断 canEditReport：
+                市州端不再具有赛事报名权限（只保留查看），进到 /city/elementary/list 时
+                这两个按钮不渲染；「查看详情」（ShowContent）与「驳回原因」（Remark）
+                对市州端照旧保留 —— 本次只收走写操作的入口。
+                学校端两个变体（/school/teacher/list、/school/elementary/list）的
+                canEditReport 恒为 true，显示结果与本改造前逐字节相同。
               -->
               <template v-if="row.status === -1">
                 <Remark :data="row.remark" />
                 <ShowContent :data="row" />
-                <el-button @click="edit(row)">编辑</el-button>
-                <el-button @click="remove(row.id)">删除</el-button>
+                <el-button v-if="canEditReport" @click="edit(row)">编辑</el-button>
+                <el-button v-if="canEditReport" @click="remove(row.id)">删除</el-button>
               </template>
               <template v-else-if="row.status === 0">
                 <ShowContent :data="row" />
-                <el-button @click="remove(row.id)">删除</el-button>
+                <el-button v-if="canEditReport" @click="remove(row.id)">删除</el-button>
               </template>
               <template v-else>
                 <ShowContent :data="row" />
@@ -266,6 +273,7 @@ import { Search } from '@element-plus/icons-vue'
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
 import { useTabs } from '@/composables/useTabs'
+import { usePermission } from '@/composables/usePermission'
 
 import ShowPerson from '@/components/common/ShowPerson.vue'
 import Status from '@/components/common/Status.vue'
@@ -314,6 +322,8 @@ if (!cfg) {
 }
 
 const { openWindow } = useTabs()
+/** 【第十二届权限调整】市州端只读：报名汇总里不提供「编辑」「删除」*/
+const { canEditReport } = usePermission()
 
 /* ------------------------- dist data() ------------------------- */
 const keyword = ref(null)

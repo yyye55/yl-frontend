@@ -21,7 +21,7 @@
       dist 用的是 index + @click，不是 el-menu 的 router 模式：
       点击时走 openWindow(index, label)，由它负责建标签页 + 跳路由。
     -->
-    <template v-for="(item, i) in menu.items" :key="i">
+    <template v-for="(item, i) in visibleItems" :key="i">
       <div v-if="item.type === 'line'" class="line" :class="{ hidden: collapse }">
         <div>{{ item.text }}</div>
       </div>
@@ -73,7 +73,8 @@ import {
   DataAnalysis, Grid, Flag, Shop, Star, QuestionFilled, Goods
 } from '@element-plus/icons-vue'
 import { useTabs } from '@/composables/useTabs'
-import { getLayoutMenu } from '@/config/menus'
+import { useUserStore } from '@/store/modules/user'
+import { getLayoutMenu, isMenuItemVisible } from '@/config/menus'
 
 /**
  * Element UI 2.x 图标类名 -> Element Plus 图标组件
@@ -112,8 +113,43 @@ const props = defineProps({
 
 const route = useRoute()
 const { openWindow } = useTabs()
+const userStore = useUserStore()
 
 const menu = computed(() => getLayoutMenu(route.path) || { title: ['', ''], items: [] })
+
+/**
+ * 按当前登录角色过滤后的菜单项
+ *
+ * 【第十二届权限调整】市州端不再具有赛事报名权限，其「赛事报名」项以
+ * `requires: 'reportCreate'` 声明（见 config/menus.js），这里按登录角色过滤掉。
+ * 判据是 user.type，不是"市州 layout 下面固定没有" —— 所以学校端不受影响，
+ * 将来若要恢复市州端报名，改 MENU_REQUIREMENTS 一处即可，无需动本文件。
+ *
+ * 传的是 userType 本身而不是 usePermission 的布尔量：能力判定在
+ * MENU_REQUIREMENTS 里是拿角色查表的，只读布尔不足以还原角色。
+ *
+ * 第二段过滤的是「空分组线」：city 的「—— 网上报名 ——」下面只有赛事报名一项，
+ * 过滤后若把分组线留着，侧边栏会多出一条上下皆空的分隔条。
+ */
+const visibleItems = computed(() =>
+  dropEmptyGroups(menu.value.items.filter((item) => isMenuItemVisible(item, userStore.userType)))
+)
+
+/**
+ * 去掉下面已无可见项的分组线，保留其余项的相对顺序。
+ * 规则：一条 line 只有在「它之后、下一条 line 之前」还存在可见的普通菜单项时才保留。
+ */
+function dropEmptyGroups(items) {
+  return items.filter((item, i) => {
+    if (item.type !== 'line') return true
+    for (let j = i + 1; j < items.length; j++) {
+      // 遇到下一条分组线：本组为空
+      if (items[j].type === 'line') break
+      return true
+    }
+    return false
+  })
+}
 
 /**
  * dist: handleOpen(e,t){console.log(e,t)} / handleClose(e,t){console.log(e,t)}

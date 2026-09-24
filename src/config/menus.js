@@ -23,8 +23,13 @@
  *   icon   Element UI 2.x 图标类名（原样保留，不改成 Element Plus 的组件名）
  *          —— 类名保持原样是为了让本文件与 dist 的渲染函数可以逐条对照；
  *             实际映射到 Element Plus 图标组件的逻辑在 Sidebar.vue 里（那里才需要 import 组件）。
+ *   requires  可选，能力名（见本文件末尾 MENU_REQUIREMENTS）。
+ *             当前登录角色不具备该能力时，Sidebar 不渲染这一项；
+ *             若某一分组线下面已无可见项，连分组线一起不渲染。
  *
  * 【分组分隔线】dist 中为 `div.line > div`，文案含前后各两个破折号，原样保留。
+ * 第十二届起分组线多一条规则：若它下面已无可见菜单项（项被角色过滤掉），
+ * 分组线本身也不再渲染 —— 见本文件末尾的 isMenuItemVisible 与 Sidebar.vue。
  *
  * 【keepAlive】dist 中 el-main 的内容分两种写法：
  *   admin / committee：  t("el-main",[t("router-view")],1)
@@ -46,7 +51,17 @@
  * 3. 第十二届组别待后端确认后，将用于：
  *    - 组委会审核页面筛选
  *    - 统计页面显示
+ * 4. 【权限调整】市州端不再具有赛事报名权限，只保留报名信息查看权限。
+ *    city 的「赛事报名」项**不是删掉**，而是标上 requires:'reportCreate'，
+ *    由 Sidebar 按当前登录角色过滤（学校端照旧可见）。这样：
+ *      - 入口的显示判据是 user.type，不是"这个 layout 下面固定没有"；
+ *      - 将来若市州端恢复报名权限，改 MENU_REQUIREMENTS 一处即可，
+ *        菜单项本身（文案/图标/顺序）无需改动。
+ *    注意 school 的「赛事报名」不加 requires —— 学校端必须保持原样。
  */
+
+/** 【第十二届权限调整】菜单项的可见性判据统一来自 @/config/roles.js */
+import { isViewOnlyScope } from './roles'
 
 /** “意林杯”系列 layout 共用的品牌标题
  * 【第十二届改造】2024年改为2026年 */
@@ -96,8 +111,10 @@ export const LAYOUT_MENUS = {
     keepAlive: true,
     items: [
       { index: '/city/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
+      // 【第十二届权限调整】该分组线下面只有「赛事报名」一项，市州端登录后这一项被
+      // requires 过滤掉，分组线也由 Sidebar 一并去掉（否则会剩一条空的分隔线）。
       { type: 'line', text: '—— 网上报名 ——' },
-      { index: '/city/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag' },
+      { index: '/city/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag', requires: 'reportCreate' },
       // 【第十二届新增】铜管乐团报名待后端确认后添加
       // { index: '/city/brass/create', text: '铜管乐团报名', label: '铜管乐团报名', icon: 'el-icon-s-flag' },
       { type: 'line', text: '—— 报名信息 ——' },
@@ -146,4 +163,36 @@ export function resolveLayoutKey(path) {
 /** 取某个 layout 的菜单配置 */
 export function getLayoutMenu(path) {
   return LAYOUT_MENUS[resolveLayoutKey(path)] || null
+}
+
+/* =========================================================================
+ * 菜单项的可见性（按当前登录角色）
+ * ========================================================================= */
+
+/**
+ * 能力名 -> 判定函数（形参是当前登录用户的 user.type）
+ *
+ * 菜单项在配置里写 `requires: '能力名'`，Sidebar 拿登录角色来这里查表。
+ * 判据全部落在 @/config/roles.js 上，本表只做"能力名 -> 判定"的映射，
+ * 不在这里重新拼角色数字。
+ */
+export const MENU_REQUIREMENTS = {
+  /** 赛事报名入口：市州端不可见（学校端照旧）*/
+  reportCreate: (type) => !isViewOnlyScope(type)
+}
+
+/**
+ * 某一菜单项对给定角色是否可见
+ *
+ * 【能力名写错时按「不可见」处理（fail-closed）】
+ * 菜单是权限的表现层，两种出错方向代价不对等：
+ *   - 误判为不可见：只少显示一项，而且开发时一眼就能看出来；
+ *   - 误判为可见：市州端会重新露出赛事报名入口，正是本次改造要消除的东西。
+ * 所以查不到能力名时不放行。
+ * （真正防越权的是 router/guard.js，菜单只管显示。）
+ */
+export function isMenuItemVisible(item, type) {
+  if (!item || !item.requires) return true
+  const check = MENU_REQUIREMENTS[item.requires]
+  return check ? check(type) : false
 }

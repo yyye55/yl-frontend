@@ -215,6 +215,17 @@ const props = defineProps({
   showdata: { default: undefined }
 })
 
+/*
+ * 【第十二届·第四轮】新增一个对外事件，只为「指导教师超员了立刻提示」这一个用途。
+ *
+ * 【背景】父页面要校验「指导教师最多 1 人（教师指挥）/ 2 人」这条上限，而它要跟参展人员
+ * 表里的指挥身份**一起**看才知道用哪个上限，所以判定在父页面做、本表只负责通知
+ * 「我这边行数变了」。本表原本没有任何事件，父页面只在暂存 / 提交时调 getCacheData()，
+ * 于是加到第 3 行也不会有人吭声，要等提交才被打回。
+ * 【只增不改】prop showdata 与 getData / getCacheData 的签名、语义一字未动。
+ */
+const emit = defineEmits(['rows-change'])
+
 const data = ref([])
 
 /*
@@ -240,6 +251,19 @@ onMounted(() => {
     data.value = props.showdata ? props.showdata : []
   })
 })
+
+/*
+ * 【第十二届·第四轮】「影响校验的字段变了」的通知口。
+ * 本表没有身份 / 角色两列（add() 推的行固定是 { type: 1, position: 4 }，见下），
+ * 所以**行数就是唯一的变量**：加一行 / 删一行 / 清空。
+ * 用 watch(data.length) 而不是 deep watch —— 用户打姓名、身份证时不该触发校验。
+ * 父组件整体替换 showdata（编辑页回填、草稿恢复）同样会触发一次，这是故意保留的：
+ * 一张按旧规则存下来的、有 3 名指导教师的表，一打开就该看见不合规提示。
+ *
+ * 【位置必须在 data 声明之后】watch 的取值函数会被**立即执行一次**（用来建立初始依赖），
+ * 放在 const data 之前会撞上 TDZ，挂载时就抛 ReferenceError。
+ */
+watch(() => data.value.length, () => emit('rows-change'))
 
 /** dist: add(){ this.data.push({type:1,position:4}) } —— 指导教师固定 type=1（教师）、position=4（指导教师） */
 function add() {

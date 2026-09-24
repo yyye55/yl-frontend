@@ -352,6 +352,21 @@ const props = defineProps({
   showdata: { default: undefined }
 })
 
+/*
+ * 【第十二届·第四轮】新增两个对外事件，只为「填错了立刻提示」这一个用途。
+ *
+ * 【背景】父页面（OrchestraForm / ProgramForm）要校验「指挥最多 1 人 / 中小学不许学生
+ * 指挥 / 指导教师最多 1~2 人」，而这三条都依赖**本表已经填了什么**。本表对外原本只有
+ * prop showdata 与 getData / getCacheData 两个方法，父页面只能在暂存 / 提交那一刻才拿到
+ * 数据，于是用户填错了要一直等到点「立即报名」才被打回。新增：
+ *   rows-change —— 「影响校验的字段变了」（行增删，或某行的身份 / 角色被改）
+ *   imported    —— 「批量导入结束了」（成功重建数据之后，紧接着发一次）
+ *
+ * 【只增不改】prop showdata 与 getData / getCacheData 的签名、语义一字未动；
+ * 不监听这两个事件的父页面（如果有）行为与改动前**完全相同**。
+ */
+const emit = defineEmits(['rows-change', 'imported'])
+
 const data = ref([])
 // 【第十二届改造·第二轮】QiniuData / domain / host / filename 已移除：
 // 上传改走阿里云 OSS（biz: image，小文件由后端代传），key 由后端生成、
@@ -384,6 +399,37 @@ watch(
     data.value = val
   }
 )
+
+/**
+ * 供下面的 watch 使用：把「影响校验的字段」压成一个字符串。
+ * 不解回任何东西，只回答一个问题 —— 「跟上次比，变了没有」。
+ *
+ * 串里放的是什么（父页面那三条规则只依赖这两样）：
+ *   data.length          —— 行数（加一行 / 删一行 / 清空）
+ *   r.type | r.position  —— 每行的身份与角色（两列都是下拉，值变了就是用户改选了）
+ * '#' 与 ',' 只是分隔符，取值本身不含它们，不会拼出相同的串。
+ *
+ * 非数组时返回空串：showdata 理论上恒为数组，但父组件在接口返回前可能传 null；
+ * 那种情况下模板本来就渲染成空表，这里也不必再让 .map 抛异常。
+ */
+function rowsSignature() {
+  if (!Array.isArray(data.value)) return ''
+  return data.value.length + '#' + data.value.map((r) => (r ? `${r.type}|${r.position}` : '')).join(',')
+}
+
+/*
+ * 【第十二届·第四轮】「影响校验的字段变了」的通知口。
+ *
+ * 【为什么 watch 特征串，而不是 watch(data, { deep: true })】
+ * 父页面那三条规则只看「有几行、每行的身份与角色」，不看姓名 / 身份证 / 电话 / 乐器。
+ * deep watch 会在用户打字的**每一个字符**上触发 —— 校验一次弹一次错误，表格直接没法用。
+ * 特征串只在 行增删 / 身份变 / 角色变 这三种情况下才变，打字完全不会触发。
+ *
+ * 【什么情况会多触发一次】父组件整体替换 showdata（编辑页回填、草稿恢复）会一次性改变
+ * 长度与所有行的角色 → 触发一次。这是**故意保留**的：一张按旧规则存下来的报名表
+ * （例如 3 名指导教师）一打开就该看见不合规提示，而不是等用户点提交才被打回。
+ */
+watch(rowsSignature, () => emit('rows-change'))
 
 onMounted(() => {
   nextTick(() => {
@@ -581,6 +627,12 @@ function importExcel(file) {
         if (row.card && oldHeads[row.card]) row.head = oldHeads[row.card]
         data.value.push(row)
       }
+
+      // 【第十二届·第四轮】导入成功（数据已重建完）→ 通知父页面立刻校验一次。
+      // 位置在重建循环**之后**：父页面拿到的必须是导入后的完整数据。
+      // 上面两条提前 return 的失败路径都走不到这里，符合预期 ——
+      // 那两条路径按设计不改动任何数据（先校验、通过后才清表），没什么可校验的。
+      emit('imported')
     }
   }).catch(() => ElMessage.error('导入失败，请刷新页面后重试'))
 }

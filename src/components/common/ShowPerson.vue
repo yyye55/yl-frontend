@@ -24,7 +24,7 @@
         <el-table-column prop="person_info.phone" label="联系电话" width="150" align="center" header-align="center" />
       </el-table>
 
-      <div class="show-title">参演人员</div>
+      <div class="show-title">参展人员</div>
       <el-table :data="person" border style="width:100%">
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
         <el-table-column prop="person_info.name" label="姓名" width="100" align="center" header-align="center" />

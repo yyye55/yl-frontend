@@ -38,6 +38,43 @@
 .el-table th { background-color: #fafafa !important; color: #333; }
 .el-button + .el-button { margin-left: 8px; }
 
+/* ---------- 【第十二届新增 2026-09-24】所有表格：表头与单元格内容统一居中 ----------
+ *
+ * 【需求】四个端（管理员 / 组委会 / 市级 / 学校）所有页面上表格里的文字一律居中。
+ *
+ * 【为什么只写一条规则就能覆盖全部表格】
+ *   el-table 的每一个表头格 <th> 和内容格 <td> 里面，都有一个 <div class="cell">
+ *   专门用来装文字 —— th 与 td 用的是**同一个** .cell 类，没有区分。
+ *   所以这一条选择器写下去，表头行和内容行会同时生效，不需要分别写两条。
+ *   又因为选择器只认 .el-table 这个类、不认具体页面，所以：
+ *     · 四个端的 20 处表格（含弹窗里的表格）自动全覆盖；
+ *     · 以后新写的表格也自动继承，不必再逐页补 align 属性。
+ *
+ * 【为什么不加 !important】
+ *   Element Plus 自带的居中规则是
+ *       .el-table .el-table__cell.is-center { text-align: center }
+ *   —— 它作用在 **td/th 本身** 上（列上写了 align="center" 时，EP 会给该格加上
+ *   is-center 类，见 table-body/styles-helper.mjs 的 getCellClass）。
+ *   而这一条作用在 td/th **里面的 .cell** 上。
+ *   同一元素上，"直接声明"永远赢过"从父级继承"，而两者根本不在同一个元素上比，
+ *   所以不存在被 EP 覆盖的问题，不需要 !important。
+ *   （不加 !important 的好处：将来若某个页面确实要单独改回左对齐，
+ *     在那个页面的 <style scoped> 里写一条同选择器就能覆盖回来。）
+ *
+ * 【为什么写全 .el-table__cell > .cell，而不简写成 .el-table .cell】
+ *   多带一个类名 = 特异性从 (0,2,0) 提到 (0,3,0)，与 EP 的 is-center 规则同级。
+ *   将来有人往本文件或组件里再加表格样式时，不容易被意外压掉，行为更可预期。
+ *
+ * 【影响范围】纯 CSS，不涉及任何 JS / 模板 / 接口 / 路由。
+ *   已居中的页面（人员管理、日志、市级与学校首页、报名汇总、组委会审核、人员信息弹窗）
+ *   结果不变，视觉零差异；原本左对齐的页面（四个首页的统计表、账号列表、扫描件列表、
+ *   文件列表、扫描件页报名列表）改为居中。列宽、省略号截断、hover 提示均不受影响
+ *   —— text-align 只挪文字位置，不参与列宽计算。
+ */
+.el-table .el-table__cell > .cell {
+  text-align: center;
+}
+
 /* 通用页面容器 */
 .page-container { padding: 16px; }
 .page-card { background: #fff; padding: 16px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,21,41,.08); }

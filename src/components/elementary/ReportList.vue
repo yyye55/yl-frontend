@@ -118,7 +118,7 @@
 
           <el-table-column
             label="操作"
-            width="350"
+            width="360"
             header-align="center"
             align="center"
             :width="cfg.actionWidth"

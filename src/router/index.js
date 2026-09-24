@@ -33,6 +33,13 @@
  *
  * 【路由命名规则】
  * 沿用 dist 中的 name 命名（如 "/login"、"/admin/index"），方便后续排查
+ *
+ * 【第十二届新增的 meta 字段】
+ *   reportWrite         该路由是「报名写入页」（填表/改表）。只读角色（市州端）不可进入，
+ *                       由 router/guard.js 拦截并跳到 reportWriteRedirect。
+ *                       判据是 meta，不是 URL 字符串匹配 —— 加路由时别忘了带这个标记。
+ *   reportWriteRedirect 被 reportWrite 拦下后跳哪里。写在路由上而不是守卫里，
+ *                       守卫因此不需要知道任何具体路径。
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
@@ -118,8 +125,12 @@ const routes = [
     meta: { requiresAuth: true, role: 1, title: '市级后台' },
     children: [
       { path: 'index',                     name: '/city/index',                  component: () => import('@/views/city/index.vue'),           meta: { title: '首页', icon: 'House' } },
-      { path: 'elementary/create',         name: '/city/elementary/create',      component: () => import('@/views/city/elementary-create.vue'),meta: { title: '中小学组-新增' } },
-      { path: 'elementary/edit/:id',       name: '/city/elementary/edit/:id',    component: () => import('@/views/city/elementary-edit.vue'), meta: { title: '中小学组-编辑' } },
+      // 【第十二届权限调整】这两条是「报名写入页」，meta.reportWrite 声明这一点，
+      // 由 router/guard.js 按登录角色拦截 —— 市州端不再有赛事报名权限，手敲 URL 也进不来。
+      // 路由与页面文件都**不删**：将来若恢复市州端报名权限，去掉叶子上的 meta 即可。
+      // 学校端对应的 /school/elementary/{create,edit/:id} **不加**此 meta（照旧可写）。
+      { path: 'elementary/create',         name: '/city/elementary/create',      component: () => import('@/views/city/elementary-create.vue'),meta: { title: '中小学组-新增', reportWrite: true, reportWriteRedirect: '/city/elementary/list' } },
+      { path: 'elementary/edit/:id',       name: '/city/elementary/edit/:id',    component: () => import('@/views/city/elementary-edit.vue'), meta: { title: '中小学组-编辑', reportWrite: true, reportWriteRedirect: '/city/elementary/list' } },
       { path: 'elementary/list',           name: '/city/elementary/list',        component: () => import('@/views/city/elementary-list.vue'),  meta: { title: '中小学组-列表', icon: 'Document' } },
       // 【第十二届摘除】教师组新增/编辑/列表（group=2，第十一届模型）。页面文件保留，见文件头说明。
       // 摘除理由之一：create 页会向 Report 写 group="2"，而本作用域报名汇总不带 group 参数（查全部），

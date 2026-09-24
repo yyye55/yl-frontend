@@ -2,10 +2,21 @@
   <div class="container">
     <div v-if="success" class="container-text">
       <div class="export-demo" style="padding: 5px 0 20px 0">
+        <!--
+          【第十二届权限调整】市州端不负责上传盖章材料，故「盖章扫描件上传」按钮
+          按登录角色隐藏（判据见 composables/usePermission.js，不写死 type）。
+          「报名信息表导出」保留 —— 市州端要用它汇总本市州各校报名信息。
+          el-button 上的 :disabled="!pass" 与 dist 一致（pass 恒为 true，见文件头说明 2）。
+        -->
         <el-button type="primary" :disabled="!pass" @click="exportReport()">
           报名信息表导出
         </el-button>
-        <el-button type="primary" :disabled="!pass" @click="dialogRef.open()">
+        <el-button
+          v-if="canUploadSealScan"
+          type="primary"
+          :disabled="!pass"
+          @click="dialogRef.open()"
+        >
           报名信息表表盖章扫描件上传
         </el-button>
       </div>
@@ -89,7 +100,11 @@ import { cityApi } from '@/api'
 import { exportApi } from '@/api/live'
 import { downloadPdfFile } from '@/utils/excel'
 import { showApiError } from '@/utils/request'
+import { usePermission } from '@/composables/usePermission'
 import UploadScanDialog from '@/components/common/UploadScanDialog.vue'
+
+// 【第十二届权限调整】市州端只读：隐藏盖章扫描件上传入口（导出保留）
+const { canUploadSealScan } = usePermission()
 
 const data = ref([])
 const limit = ref([])

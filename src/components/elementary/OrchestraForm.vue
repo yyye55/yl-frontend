@@ -20,6 +20,12 @@
         label-width="120px"
       >
         <div class="bg1">
+          <p style="font-size: 14px; color: black; margin: 0 0 10px">
+            管乐团指定曲目、自选曲目两首乐曲及视
+奏乐曲的总展示时间为：小学组不超过12分钟，中学组不超过
+15分钟，大学组不超过18分钟；铜管乐团指定曲目、自选曲目
+的总展示时长为：小学组、中学组均不超过10分钟。
+          </p>
           <!-- ============ 第 1 行：乐团名称 / 类型 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
@@ -202,7 +208,7 @@
                   <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
                   <template #tip>
                     <div class="el-upload__tip">
-                      视频格式为MP4或MOV，大小不超过700MB。
+                      视频格式为MP4或MOV，大小不超过700MB。报名视频中的自选曲目须与现场展示的自选曲目一致。
                     </div>
                   </template>
                 </el-upload>
@@ -229,20 +235,31 @@
         <div class="bg4">
           <div style="position: relative">
             <div style="font-size: 16px; font-weight: bold">指导教师</div>
-            <p style="font-size: 14px; color: #ff0000">
-              请各学校在报名时明确指导教师排名顺序，下方填报顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
+            <p style="font-size: 14px; color: black">
+              请各学校在报名时明确指导教师排名顺序，下方署名顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
             </p>
-            <Teacher ref="teacherRef" :showdata="form.teacher" />
+            <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="font-weight: bold">张三123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456</span> 且姓名为 <span style="font-weight: bold">张三</span> 的人员对应。</p>
+
+            <!-- 【第十二届·第四轮】@rows-change 只是「子表内容变了」的通知，判定在父页面做
+                 （规则要同时看两张表：指导教师超没超，取决于参展人员里指挥的身份）。 -->
+            <Teacher ref="teacherRef" :showdata="form.teacher" @rows-change="onPeopleChange" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
-            <p style="font-size: 14px; color: #ff0000">
+            <p style="font-size: 14px;">
+              乐团须以学校为单位组建，中小学乐团指挥须为本校在职教师；高校乐团指挥可为本校在职教师或在校学生；乐团成员须为本校在校学生。<br/>
               管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（报名时可报预备队员3人）。
             </p>
-            <Person ref="personRef" :showdata="form.person" />
+            <!-- @imported 是「批量导入结束了」，父页面收到后会**强制**提示一次（不去重） -->
+            <Person
+              ref="personRef"
+              :showdata="form.person"
+              @rows-change="onPeopleChange"
+              @imported="onPersonImported"
+            />
           </div>
         </div>
 
         <p style="padding-bottom: 5px; padding-top: 5px; color: red">
-          请仔细阅读报名须知，确认无误后勾选报名须知，即可进行报名。
+          请仔细阅读报名须知，确认无误后勾选报名须知，即可进行报名。注：乐团名单报名确定后不得更改，如经资格审查有非本校师生的，则取消报名资格和成绩。
         </p>
 
         <el-form-item label="报名须知">
@@ -400,7 +417,9 @@
  *   非 0/1 code），页面会提示"成功"并清空表单/跳转，而数据其实没写进去。
  *   本组件按 dist 原样使用 `res.code === 1`，不改判据。
  *
- * 【中·影响用户操作】编辑页每打开一次就要重走「指导教师最多3人 / 乐团人数区间」两道人数校验，
+ * 【中·影响用户操作】编辑页每打开一次就要重走「指导教师人数上限 / 乐团人数区间」两道人数校验，
+ *   （原文案里写的是「最多3人」，第十二届·第四轮已改为按指挥身份分层 1~2 人，见 personRules.js，
+ *     故此处不再写死具体数字）
  *   而这两个数值来自 `form.teacher` / `form.person`。回填逻辑（getMessage）只在
  *   `i.length>0` 时才写 `this.form.person` / `this.form.teacher`（见下），person 为空时
  *   两个字段保持编辑前的值；配合 `t.person = e`（e 由 teacher 先 push、person 后 push 组成），
@@ -515,7 +534,8 @@
  * 【结论】**4 个变体一律无条件渲染「指定曲目」**（管乐团 / 铜管乐团都一样）。
  *   实现上就是去掉 5e02 那个三元条件，与其余三个模块原本的写法对齐。
  */
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+// 【第十二届·第四轮】新增 watch：类型/组别变化时重跑资格类校验（见「资格类实时校验」一节）
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -530,7 +550,17 @@ import { getM, getS, formatDateTime } from '@/utils/date'
 import { useTabs } from '@/composables/useTabs'
 
 // 【第十二届改造】导入人员规则校验
-import { validatePersonCount, validateDuration, getDurationLimit } from '@/config/personRules'
+// 【第十二届·第四轮】validatePersonCount 换成了它的外层组合 validatePeople
+// （= 资格类 validatePeopleQualification + 人数区间 validatePersonCount），提交路径上
+// 多拦「指挥最多1人 / 中小学不许学生指挥 / 指导教师上限」三条；人数区间的判定与文案没变。
+// 两个都要 import：validatePeople 用于提交时（资格类+人数区间），
+// validatePeopleQualification 用于下面的实时校验/导入后提示（**只**查资格类，不报人数不足）。
+import {
+  validatePeople,
+  validatePeopleQualification,
+  validateDuration,
+  getDurationLimit
+} from '@/config/personRules'
 import { validateName, validateSchool, validatePhone, validateAddress } from '@/config/formFields'
 
 // 【第十二届·暂存】服务端草稿会话（串行队列 / version / 409 都在里面；不含任何定时器）
@@ -1532,6 +1562,137 @@ onBeforeUnmount(() => {
   flushLocalCache()
 })
 
+/* --------------- 资格类实时校验（第十二届·第四轮） --------------- */
+
+/**
+ * 【这一节要解决的问题】
+ * 「指挥最多 1 人 / 中小学乐团指挥须为本校在职教师 / 指导教师最多 1~2 人」这三条，
+ * 此前前端一条都没有，用户填错了要等点「立即报名」才被后端 0009 触发器打回
+ * （而不再有前端兜底时，就是数据库级的报错）。现在改成三条路径都会 error 出原因：
+ *   ① 手动填写时 —— 子表 rows-change → onPeopleChange
+ *   ② 批量导入后 —— 子表 imported → onPersonImported（强制提示一次）
+ *   ③ 点「立即报名」时 —— onSubmit 里的 validatePeople（拦截提交）
+ * **暂存不校验**（本轮明确不动）：那条路径是「先存下来、等会儿接着填」，
+ * 中途拦住用户就填不完了。
+ *
+ * 【为什么判定必须放在父页面】两张子表各自把自己那份数据复制在组件内部，
+ * 父页面原本只有 getCacheData() 一个取数口、而且只在暂存/提交时才调。
+ * 现在子表把「变了」这件事通过事件通知上来，判定统一在本组件做 ——
+ * 因为规则本来就不是某一张表的私事：指导教师超没超，取决于参展人员里指挥的身份。
+ *
+ * 【规则本体在 config/personRules.js】本组件不重复任何一条判定与文案，
+ * 只负责「什么时候查、查到第几条、弹不弹」。三处文案同源，不可能出现
+ * 「填的时候说 2 人、提交时说 1 人」。
+ */
+
+/**
+ * 上一次弹过的错误文案。只用于去重，不参与渲染，所以是普通变量、不是 ref。
+ * 改对了（校验通过）就置回 null，于是「改对了以后再犯」还能再弹一次；
+ * 同一个错连续触发只弹一次 —— 否则用户在同一个错上多点两下就会被弹两次。
+ */
+let lastQualificationError = null
+
+/**
+ * 多行提示用的 class，配合本文件末尾那段**非 scoped** 的 CSS，让提示里的 \n 真正换行。
+ * 不能写在 scoped 块里：ElMessage 的节点由 Element Plus 挂到 document.body 下，
+ * 已经不在本组件的 DOM 子树里，scoped 生成的 [data-v-xxx] 选择器匹配不到（详见文件末尾）。
+ */
+const QUAL_TOAST_CLASS = 'qual-error-toast'
+
+/** 本轮（同一批用户动作）里是否已经安排了校验，见 scheduleQualificationCheck */
+let pendingCheckTimer = null
+/** 本轮是否需要强制提示（批量导入路径置位） */
+let pendingCheckForce = false
+
+/**
+ * 把同一批用户动作触发的多次校验合并成一次，再决定弹不弹。
+ *
+ * 【为什么必须合并，而不是在事件回调里直接校验】
+ * 「点批量导入」这**一个**动作会同时产生两个触发源：
+ *   子表 emit('imported')      —— 同步发出
+ *   上面的 rows-change watch   —— 排在 Vue 的更新队列里（微任务）
+ * 两者谁先谁后取决于 Vue 的调度时机，且两份文案不同时还会「后一条盖住前一条」。
+ * 不合并的话，同一个动作可能弹两次。
+ *
+ * 【为什么用 setTimeout(0)，而不是 nextTick】
+ * 两者都是「等一等再执行」，但 setTimeout 是**宏任务**，一定在所有微任务
+ * （含 Vue 那次组件更新）都跑完之后才执行；nextTick 挂进的是微任务队列，
+ * 排在 Vue 的刷新任务前面还是后面取决于调用时机，不确定。
+ * 用宏任务就得到一条与先后无关的保证：
+ *     一个用户动作 = 一次校验 = 最多一条提示。
+ * 代价只是提示晚不到 1 毫秒出现，感知不到。
+ */
+function scheduleQualificationCheck({ force = false } = {}) {
+  if (force) pendingCheckForce = true
+  if (pendingCheckTimer !== null) return // 本轮已经安排过了，合并进去（force 已记在 pendingCheckForce 上）
+  pendingCheckTimer = setTimeout(() => {
+    pendingCheckTimer = null
+    const forceNow = pendingCheckForce
+    pendingCheckForce = false
+    runQualificationCheck(forceNow)
+  }, 0)
+}
+
+/**
+ * 真正执行校验并提示。
+ *
+ * 取数一律走 getCacheData()：它不校验、不弹窗、没有副作用（getData() 会逐行校验并弹窗，
+ * 提交时才用）。取到的就是界面上当前看到的那份数据。
+ * 子组件未挂载时 ref 为 null，按空数组处理。
+ */
+function runQualificationCheck(force) {
+  const persons = personRef.value ? personRef.value.getCacheData() : []
+  const teachers = teacherRef.value ? teacherRef.value.getCacheData() : []
+  const { valid, errors } = validatePeopleQualification(
+    form.value.establishment,
+    form.value.group,
+    persons,
+    teachers
+  )
+
+  if (valid) {
+    lastQualificationError = null // 改对了 → 清空，下次再犯还能提示
+    return
+  }
+  /*
+   * 【第十二届·第五轮】原来是 errors[0]（只报第一条），现改为**把命中的每一条都列出来**。
+   * 理由：validatePeopleQualification 每次都把四条规则全跑一遍、把不满足的全收进 errors，
+   * 只显示第一条会逼着用户「改一条 → 再被弹第二条 → 再改」；导入场景尤其难受
+   * （每条错都要回去改 Excel 再导一次）。
+   * 命中的最多 3 条：① + ② + (③或④) —— ③ 与 ④ 互斥（同一个上限不可能既是 1 又是 2）。
+   * 去重逻辑不变，只是比对对象从「单条文案」换成「这一整串」。
+   */
+  const message = errors.join('\n')
+  if (!force && message === lastQualificationError) return // 同一批错不重复弹
+  lastQualificationError = message
+  ElMessage.error({ message, customClass: QUAL_TOAST_CLASS })
+}
+
+/** ① 填写时：子表行增删、身份 / 角色被改 → 去重提示 */
+function onPeopleChange() {
+  scheduleQualificationCheck()
+}
+
+/** ② 批量导入后：强制提示。导入是明确的用户动作，每次都要给一次反馈 */
+function onPersonImported() {
+  scheduleQualificationCheck({ force: true })
+}
+
+/*
+ * 类型 / 组别变了也要重查：「中小学」这条判定完全依赖组别 ——
+ * 从中学组切到大学组，学生指挥就该从「不合规」变成「合规」，反过来亦然；
+ * 而「小组别」还会影响取到的编制规则本身。
+ *
+ * 【为什么这里用 watch，而指定曲目那里用的是 @change】两者诉求相反：
+ * 指定曲目那边要**改数据**（清掉不在候选里的旧曲目），编辑页 getMessage() 整体回填时
+ * 触发会把历史数据误清，所以只能绑 @change；
+ * 这里只是**提示**，回填时多提示一次正是想要的（那正是「打开旧数据就该发现不合规」的场景）。
+ */
+watch(
+  () => [form.value.establishment, form.value.group].join('|'),
+  () => scheduleQualificationCheck()
+)
+
 /* ------------------------- 提交 ------------------------- */
 
 /**
@@ -1563,20 +1724,37 @@ function onSubmit() {
      * 故取本分支版本。origin/main 那段注释的结论（三个计数器是死代码）已被下方
      * 「【第十二届·暂存改造】」长注释与 config/personRules.js 覆盖，信息未丢失。
      */
-    if (form.value.teacher && form.value.teacher.length > 3) {
-      return ElMessage.error('指导教师最多3人！')
-    }
-
-    // 【第十二届改造】使用统一的人员规则校验
-    const personValidation = validatePersonCount(
+    /*
+     * 【第十二届·第四轮】这里原本是两条独立的 inline 校验：
+     *     if (form.value.teacher && form.value.teacher.length > 3)
+     *       return ElMessage.error('指导教师最多3人！')      ← 硬编码 3 人，与后端已不一致
+     *     const personValidation = validatePersonCount(establishment, group, person)
+     *
+     * 现在合并成一次 validatePeople() 调用（config/personRules.js）：
+     *   资格类（指挥最多1人 / 中小学不许学生指挥 / 指导教师 1~2 人）在前 ——
+     *     其中「指挥最多1人」与后端 0009 一样排在最前；第五轮起提示改成**逐条列出**，
+     *     所以第一行仍然是「指挥最多1人」这条最该先修的（与后端 0009 先中止在它上面一致）
+     *     （与后端 0009 的内部顺序还有一点差别，见 personRules.js 的说明，无害）；
+     *   人数区间类（正式35-65 / 预备 / 打击乐）在后 —— 判定与文案一字未改。
+     * 上限为什么是「无指挥或学生指挥 → 2、教师指挥 → 1」，见 personRules.js 里的长注释。
+     * 这里必须把 teacher 一并传进去：指导教师超没超，取决于参展人员里指挥的身份。
+     */
+    const peopleValidation = validatePeople(
       form.value.establishment,
       form.value.group,
-      form.value.person || []
+      form.value.person || [],
+      form.value.teacher || []
     )
-    
-    if (!personValidation.valid) {
-      // 返回第一个错误
-      return ElMessage.error(personValidation.errors[0])
+
+    if (!peopleValidation.valid) {
+      /* 【第十二届·第五轮】原为「返回第一个错误」，现改为把命中的每一条都列出来。
+         提交是最后一道关，一次说完，省得用户改一条再点一次提交。
+         顺序仍是资格类在前、人数区间在后（见 personRules.js），所以「指挥问题」永远
+         排在「人数不足」前面 —— 用户先看到的还是最该先修的那条。 */
+      return ElMessage.error({
+        message: peopleValidation.errors.join('\n'),
+        customClass: QUAL_TOAST_CLASS
+      })
     }
 
     if (form.value.person === undefined) form.value.person = []
@@ -1753,5 +1931,31 @@ function onSubmit() {
 
 .draft-status--danger {
   color: #f56c6c;
+}
+</style>
+
+<!--
+  资格类「逐条列出」提示的换行样式。
+
+  【为什么这一段**故意不加 scoped**】
+  ElMessage 弹出的节点是 Element Plus 自己挂到 document.body 下的，已经不在本组件的
+  DOM 子树里；scoped 编译出来的是 `.el-message[data-v-xxxxxxx]` 这类属性选择器，
+  匹配不到那个节点，写了也不生效。所以这里只能写一段不带 scoped 的样式。
+
+  【为什么不会波及别的元素】
+  选择器只认 `qual-error-toast`（我们通过 ElMessage 的 customClass 传进去的类名）
+  且必须是它的后代 `.el-message__content`。全项目只有资格类提示用这个类名，
+  其他 el-message 都不带它，因此这段样式的作用范围就是我们自己弹的那条提示。
+
+  【white-space: pre-line 是这段样式的关键】
+  提示文案里的多行是用 \n 拼的，而 HTML 默认会把 \n 渲染成空格（所以会连成一长句）。
+  pre-line = 「保留换行、但把连续空格和行首缩进折叠掉」，正是我们要的效果：
+  \n 换行，而文案里万一多打了空格也不会显示成一片空白。
+  （不用 pre / pre-wrap：那两个会连空格一起保留，中文文案里多一个空格就会看着别扭。）
+-->
+<style lang="scss">
+.qual-error-toast .el-message__content {
+  white-space: pre-line;
+  line-height: 1.7; // 多条时给点行距，否则挤成一坨看不清是几句
 }
 </style>

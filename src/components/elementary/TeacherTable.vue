@@ -3,6 +3,21 @@
     <div class="options">
       <el-button style="color: #1890ff" type="text" @click="add">添加一行</el-button>
       <el-button style="color: #1890ff" type="text" @click="flush">清空</el-button>
+      <!--
+        【第十二届·第三轮】隐藏的单张照片上传通道，与参展人员表同款同源。
+        整条 el-upload 加 hidden 不显示；用户点某一行「上传照片」时，
+        upAvatar(index) 先记下要写哪一行，再 .click() 下面这个按钮去弹文件选择框。
+        里面那个 <button> 不能删 —— el-upload 的文件选择框是挂在它的点击上的，
+        它就是这个通道的「扳机」，只是被 hidden 藏起来了。
+      -->
+      <el-upload
+        :http-request="uploadFileSingle"
+        :before-upload="beforeUploadSingle"
+        hidden
+        :show-file-list="false"
+      >
+        <button ref="uploadAvatar" type="button">click</button>
+      </el-upload>
     </div>
     <!-- ref 给 useDragScroll：按住表头行/序号列等空白处可鼠标拖动横滚 -->
     <div ref="boxRef" class="box">
@@ -15,6 +30,8 @@
         <div class="box-col">年龄</div>
         <div class="box-col">学校名称</div>
         <div class="box-col">联系电话</div>
+        <!-- 【第十二届·第三轮】新增列，位置与参展人员表一致（联系电话之后、操作之前） -->
+        <div class="box-col">电子照片</div>
         <div class="box-col">操作</div>
       </div>
 
@@ -42,6 +59,23 @@
           <el-input v-model="item.phone" placeholder="请输入联系电话" />
         </div>
         <div class="box-col">
+          <!--
+            【第十二届·第三轮】电子照片格，与参展人员表逐字同款：
+            有地址画 <img>，没有则画同尺寸（59×82）占位遮罩。
+            教师行加行时推的是 {type:1, position:4}，没有 head 字段；后端草稿回填
+            给的是 head:''（见 src/services/draftPayload.js 的 payloadToPerson）——
+            两种情况 v-if 都为假，都走占位分支，不会再出现破碎图片图标。
+            占位块的样式来自 @use 进来的共用文件，两表逐像素一致。
+          -->
+          <img v-if="item.head" style="width: 59px; height: 82px" :src="item.head" />
+          <div v-else class="head-placeholder">
+            <span class="head-placeholder-icon">+</span>
+            <span>待上传</span>
+          </div>
+        </div>
+        <div class="box-col">
+          <!-- 「上传照片」与参展人员表同款：先记行号，再弹文件框（见 upAvatar）。 -->
+          <el-button @click="upAvatar(index)">上传照片</el-button>
           <el-button type="danger" @click="remove(index)">删除</el-button>
         </div>
       </div>
@@ -78,6 +112,28 @@
  *   this.$refs.teacher.getData()        // 提交前校验，失败返回 false
  *   this.$refs.teacher.getCacheData()   // 直接取数组（草稿缓存用）
  * 因此本组件的对外契约（prop showdata / 方法 getData、getCacheData）必须保持原样。
+ *
+ * ===========================================================================
+ * 【第十二届·第三轮 新增：电子照片列 + 逐行上传照片 —— dist 里没有这个功能】
+ * ===========================================================================
+ * 上面那份 dist 原文没有照片列、没有上传。本表这一列是**新加**的，为的是让指导教师
+ * 也能交照片，且交互、校验、存储与参展人员表完全一致（用户要求「用的逻辑+设计与
+ * 下方参展人员的电子照片设计+上传照片一样」）。新增内容只有三块：
+ *   1) 表头/行体各多一格「电子照片」（联系电话 与 操作 之间），有地址画 <img>，
+ *      没有则画 59×82 占位遮罩（与人员表逐字同款，样式来自 src/styles/photo-cell.css）；
+ *   2) 操作列多一个「上传照片」按钮 + 一条 hidden 的 el-upload 通道；
+ *   3) 脚本里 usePhotoUpload() 取回 upAvatar / beforeUploadSingle / uploadFileSingle。
+ *
+ * 【为什么不影响对外契约 / 不用改后端】
+ *   head 是人员行本来就有的字段：草稿的 build/restore 走
+ *   src/services/draftPayload.js 的 personToPayload / payloadToPerson，教师行与
+ *   参展人员行走的是同一份映射（buildDraftPayload 把 form.teacher 一并放进 payload.person），
+ *   head 已经在里面。所以照片写进 `item.head` 后，暂存、提交、编辑页回填自动带上，
+ *   后端与接口一个都不用动。dist 的 check/checkLine 也不校验 head，无需改校验。
+ *
+ * 【本表**没有**批量上传照片】「批量上传照片」按钮在参展人员表的工具栏里，它只遍历
+ *   参展人员表的数据（form.person），够不到本表的行（form.teacher）。本轮明确不做
+ *   跨表批量，教师照片按行逐张上传。
  *
  * ===========================================================================
  * 逐条移植理由
@@ -141,6 +197,12 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { checkPersonBasics } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
+/* 【第十二届·第三轮】单张上传照片的零件，与参展人员表共用同一份实现
+   （@/composables/usePhotoUpload）：体积上限、JPG、命名规则、OSS 通道、
+   占位块尺寸都不再有第二份副本。
+   本表**不用** beforeUpload —— 那是「批量上传照片」的基础闸，而批量按钮在参展
+   人员表上、只匹配 form.person，够不到本表的行（见本轮改造说明）。 */
+import { usePhotoUpload } from '@/composables/usePhotoUpload'
 
 // 8 列下限合计 855px，本项目常见分辨率下都放得下（1440 实测无横向滚动），
 // 挂上是因为它跟参展人员表上下并排：只让一张表能拖、另一张拖不动会更奇怪，
@@ -153,7 +215,29 @@ const props = defineProps({
   showdata: { default: undefined }
 })
 
+/*
+ * 【第十二届·第四轮】新增一个对外事件，只为「指导教师超员了立刻提示」这一个用途。
+ *
+ * 【背景】父页面要校验「指导教师最多 1 人（教师指挥）/ 2 人」这条上限，而它要跟参展人员
+ * 表里的指挥身份**一起**看才知道用哪个上限，所以判定在父页面做、本表只负责通知
+ * 「我这边行数变了」。本表原本没有任何事件，父页面只在暂存 / 提交时调 getCacheData()，
+ * 于是加到第 3 行也不会有人吭声，要等提交才被打回。
+ * 【只增不改】prop showdata 与 getData / getCacheData 的签名、语义一字未动。
+ */
+const emit = defineEmits(['rows-change'])
+
 const data = ref([])
+
+/*
+ * 【第十二届·第三轮】接上单张上传照片的三个零件：
+ *   uploadTrigger → 模板里 ref="uploadAvatar"，就是那个藏起来的「扳机」按钮
+ *   upAvatar      → 「上传照片」按钮的点击处理：记下这一行的下标，再弹文件选择框
+ *   beforeUploadSingle → 文件选中后的校验（体积/格式/文件名是否对上这一行的人）
+ *   uploadFileSingle   → 通过校验后真正上传，成功后把 url 写回该行的 head
+ * 传进去的回调回答「第 i 行是哪个对象」—— 公共模块不认识本表的数据结构。
+ */
+const { uploadTrigger: uploadAvatar, upAvatar, beforeUploadSingle, uploadFileSingle } =
+  usePhotoUpload((i) => data.value[i])
 
 watch(
   () => props.showdata,
@@ -167,6 +251,19 @@ onMounted(() => {
     data.value = props.showdata ? props.showdata : []
   })
 })
+
+/*
+ * 【第十二届·第四轮】「影响校验的字段变了」的通知口。
+ * 本表没有身份 / 角色两列（add() 推的行固定是 { type: 1, position: 4 }，见下），
+ * 所以**行数就是唯一的变量**：加一行 / 删一行 / 清空。
+ * 用 watch(data.length) 而不是 deep watch —— 用户打姓名、身份证时不该触发校验。
+ * 父组件整体替换 showdata（编辑页回填、草稿恢复）同样会触发一次，这是故意保留的：
+ * 一张按旧规则存下来的、有 3 名指导教师的表，一打开就该看见不合规提示。
+ *
+ * 【位置必须在 data 声明之后】watch 的取值函数会被**立即执行一次**（用来建立初始依赖），
+ * 放在 const data 之前会撞上 TDZ，挂载时就抛 ReferenceError。
+ */
+watch(() => data.value.length, () => emit('rows-change'))
 
 /** dist: add(){ this.data.push({type:1,position:4}) } —— 指导教师固定 type=1（教师）、position=4（指导教师） */
 function add() {
@@ -247,6 +344,10 @@ defineExpose({ getData, getCacheData })
 </script>
 
 <style lang="scss" scoped>
+/* 【第十二届·第三轮】@use 必须是 style 块里的第一条语句（Sass 语法要求）。
+   占位块样式与参展人员表共用同一份，两表逐像素一致。 */
+@use '../../styles/photo-cell.css';
+
 /* dist/css/chunk-0294a80a.260c9e35.css 中 [data-v-12e40084] 的全部 9 条规则 */
 .container {
   margin-bottom: 10px;
@@ -281,23 +382,39 @@ defineExpose({ getData, getCacheData })
  * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。
  *   1660px 是目前最常见的 1920 屏下 .box 的实宽
  *   （1440 视口 − 侧栏 200 − el-main 左右 padding 40 − .bg4 左右 padding 20 = 1180，
- *     1920 视口同式得 1660）。权重和 16.60 恰好 = 参照容器 ÷ 100，
- *   所以 1660px 下每条轨道就等于设计值。实测：1660px → 70/240/300/160/170/340/260/120；
- *   1180px（1440 屏）→ 50/171/213/114/121/242/185/85；3420px（4K）同样不截断。
+ *     1920 视口同式得 1660）。
  *
  * 【为什么不跟 PersonTable 的前 7 列逐列对齐】
- *   两表列数不同（8 列 vs 12 列），「总宽相等」与「前 7 列逐列对齐」数学上不可兼得 ——
- *   教师表要凑满和人员表一样的宽度，多出来的 500 多 px 只能全塞进「操作」一列。
- *   用户这次明确要的是「两个表的长度宽度都要一致」，所以取等宽、放弃逐列对齐。
- *   改这里的任一个 fr 权重，必须同步改 PersonTable.vue 的对应权重，
- *   否则两张表的总宽不再相等（这是本轮唯一需要两个文件同步的地方）。 */
+ *   两表列数不同（9 列 vs 12 列），「总宽相等」与「前 7 列逐列对齐」数学上不可兼得 ——
+ *   教师表要凑满和人员表一样的宽度，多出来的像素只能全塞进「操作」一列。
+ *   用户明确要的是「两个表的长度宽度都要一致」，所以取等宽、放弃逐列对齐。
+ *
+ * ===========================================================================
+ * 【第十二届·第三轮：新增「电子照片」列后的列宽账】
+ * ===========================================================================
+ * 列数 8 → 9，新增的一列插在 联系电话 与 操作 之间。两处取值刻意与 PersonTable
+ * 的对应列**完全相同**，理由不是对齐（两表列数不同，对不齐）而是「同样的内容给同样的宽度」：
+ *   · 电子照片  minmax(72px, 0.78fr) —— 与人员表那一列逐字相同。
+ *       下限 72px 的算法：占位块/照片 59px + padding 5×2 + 左边框 1 = 70，取 72 留 2px。
+ *   · 操作      minmax(72px, 1.20fr) → minmax(168px, 1.61fr)。
+ *       这一列现在要放下「上传照片 + 删除」两个按钮（和人员表一样），
+ *       168px 是人员表实测值；不改成 168 的话两个按钮会被挤成两行、行高被撑高。
+ * 下限合计：30+105+178+99+105+133+133+72+168 = 1023px。
+ *   1440 视口下 .box 实宽 1180px ≥ 1023，不出现横向滚动（1366 视口是 1046，也够）。
+ *
+ * 【一句更正】上面「改这里的 fr 权重，必须同步改 PersonTable 的权重，否则总宽不等」
+ *   是**不准确**的：总宽相等由「两张表的 .box 同宽 + 全部轨道都是 fr」两条保证，
+ *   与权重取值无关（fr 永远把容器分完）。真正会让两表看起来不一样宽的是**下限之和
+ *   超过容器**：那时该表出现横向滚动条、表体被裁切。所以改权重是自由的，
+ *   改 minmax 的下限才要看这张账。本轮两表的下限之和都远小于常见容器宽度 */
 .box-line-title,
 .box-line {
   display: grid;
-  /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      操作 */
+  /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      电子照片      操作 */
   grid-template-columns:
     minmax(30px, 1.00fr) minmax(105px, 2.40fr) minmax(178px, 3.00fr) minmax(99px, 1.60fr)
-    minmax(105px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr) minmax(72px, 1.20fr);
+    minmax(105px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr) minmax(72px, 0.78fr)
+    minmax(168px, 1.61fr);
   justify-content: stretch;
 }
 

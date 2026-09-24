@@ -21,7 +21,7 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
-              <p style="color: red; margin-bottom: 10px">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
+              <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="font-weight: bold">123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456 </span>的人员对应。</p>
       <el-upload
         class="import-bar"
         style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
@@ -143,7 +143,26 @@
           </el-select>
         </div>
         <div class="box-col">
-          <img style="width: 59px; height: 82px" :src="item.head" />
+          <!--
+            【第十二届·占位遮罩】dist 原文是无条件渲染 `<img :src="item.head">`。
+            没上传照片时 item.head 是空串（添加一行推的是 {}、编辑页后端回填的是 ""），
+            `src=""` 会被浏览器当成「这张图加载失败」，于是渲染出破碎图片的小图标 + alt 边框。
+            改成二选一：有地址才渲染 <img>，没地址渲染同尺寸占位遮罩。
+
+            ① 尺寸 59×82 必须与照片严格一致：本列没有固定行高，行高由这一格撑开
+               （无照片的行，最高的一格就是这张图）。占位块只要矮 1px，整行就跟着矮 1px，
+               表头行和它下面的行会错位。
+            ② v-if 判的是「值真假」不是「!== undefined」：空串、null、undefined 三种
+               都走占位分支。空串正是后端编辑页回填的形态，也是当前破碎图标的来源。
+            ③ 只改渲染，不动数据：item.head 依旧不初始化，uploadSuccess 依旧在拿到
+               url 时 `data.value[i].head = url`（见 PersonTable.vue:199 的注释），
+               赋值后 v-if 立即为真、<img> 与占位块原位互换，无需额外 code。
+          -->
+          <img v-if="item.head" style="width: 59px; height: 82px" :src="item.head" />
+          <div v-else class="head-placeholder">
+            <span class="head-placeholder-icon">+</span>
+            <span>待上传</span>
+          </div>
         </div>
         <div class="box-col sticky-column">
           <el-button @click="upAvatar(index)">上传照片</el-button>
@@ -206,7 +225,10 @@
  *    不需要响应式（dist 里也没有任何模板引用它们）。
  *    → 【第十二届改造·第二轮】`let filename` 已删除：它唯一的用途是给七牛上传的
  *      info.filename 赋值（见下方缺陷 f），改用 options.file.name 现取后失去意义。
- *      `let Arrayindex` 保留 —— upAvatar 写入、uploadFileSingle 读取，与上传通道无关。
+ *    → 【第十二届·第三轮】`let Arrayindex` 也删了：upAvatar / uploadFileSingle 整体
+ *      搬进 @/composables/usePhotoUpload，它在那边是 usePhotoUpload() 闭包里的一个
+ *      局部变量 —— **每个组件实例各一份**，比原来「模块级、两个实例共享」更贴近
+ *      dist 的 `this.Arrayindex`（实例属性）。本文件不再有它。
  *
  * 3) 工具 / 接口来源（dist 是全局的，本项目改为显式 import）
  *    - this.$api.files.saveFileInfo   → `import { fileApi } from '@/api/misc'` → fileApi.saveFileInfo
@@ -313,6 +335,12 @@ import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
 import { checkPersonBasics } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
+/* 【第十二届·第三轮】照片上传的零件（parsePhotoName / beforeUpload /
+   beforeUploadSingle / uploadFileSingle / upAvatar）已搬到共用模块，
+   与指导教师表用同一份实现 —— 体积上限、命名规则、OSS 通道都不再有第二份副本。
+   批量上传（uploadFileBatch）留在本文件：它写的是本表自己的 data，
+   且「一文件匹配多行」的算法只有参展人员表用得上。 */
+import { usePhotoUpload, parsePhotoName } from '@/composables/usePhotoUpload'
 
 // 12 列下限合计 1376px，1366/1440 乃至 1600/1680 屏都放不下，只能横向滚。
 // 横向滚动条贴在表格最下方、又只有十几像素高，很难拉 —— 于是支持按住空白处直接拖。
@@ -324,6 +352,21 @@ const props = defineProps({
   showdata: { default: undefined }
 })
 
+/*
+ * 【第十二届·第四轮】新增两个对外事件，只为「填错了立刻提示」这一个用途。
+ *
+ * 【背景】父页面（OrchestraForm / ProgramForm）要校验「指挥最多 1 人 / 中小学不许学生
+ * 指挥 / 指导教师最多 1~2 人」，而这三条都依赖**本表已经填了什么**。本表对外原本只有
+ * prop showdata 与 getData / getCacheData 两个方法，父页面只能在暂存 / 提交那一刻才拿到
+ * 数据，于是用户填错了要一直等到点「立即报名」才被打回。新增：
+ *   rows-change —— 「影响校验的字段变了」（行增删，或某行的身份 / 角色被改）
+ *   imported    —— 「批量导入结束了」（成功重建数据之后，紧接着发一次）
+ *
+ * 【只增不改】prop showdata 与 getData / getCacheData 的签名、语义一字未动；
+ * 不监听这两个事件的父页面（如果有）行为与改动前**完全相同**。
+ */
+const emit = defineEmits(['rows-change', 'imported'])
+
 const data = ref([])
 // 【第十二届改造·第二轮】QiniuData / domain / host / filename 已移除：
 // 上传改走阿里云 OSS（biz: image，小文件由后端代传），key 由后端生成、
@@ -332,12 +375,23 @@ const data = ref([])
 /** 部署前缀（dist 是写死的 "/ylbxt/"），用法见文件头「移植理由 3」最后一段 */
 const BASE = import.meta.env.BASE_URL
 
-/** 隐藏的单个头像上传 input 的触发按钮（dist: this.$refs.uploadAvatar） */
-const uploadAvatar = ref(null)
-
-/* dist 里这个是「挂在 this 上、未写进 data」的实例属性，见文件头「移植理由 2」。
-   同组的 filename 已随七牛链路移除（原名改用 options.file.name 现取）。 */
-let Arrayindex = 0
+/*
+ * 【第十二届·第三轮】单张上传的全部零件改从共用模块取：
+ *   uploadTrigger —— 改名成 uploadAvatar，模板里 ref="uploadAvatar" 一字不用改
+ *   upAvatar      —— 「上传照片」按钮的点击处理（原样，含 window.event 那个 dist 缺陷）
+ *   beforeUpload  —— 批量路径绑它
+ *   beforeUploadSingle / uploadFileSingle —— 单张路径绑它们
+ * 传进去的回调负责回答「第 i 行是哪个对象」，公共模块不认识本表的数据结构。
+ * 原文件里那个模块级 `let Arrayindex` 随之删除：它的作用域收进这个组件实例
+ * （dist 原版是 this.Arrayindex，即实例属性，这样反而更贴近 dist）。
+ */
+const {
+  uploadTrigger: uploadAvatar,
+  upAvatar,
+  beforeUpload,
+  beforeUploadSingle,
+  uploadFileSingle
+} = usePhotoUpload((i) => data.value[i])
 
 watch(
   () => props.showdata,
@@ -345,6 +399,37 @@ watch(
     data.value = val
   }
 )
+
+/**
+ * 供下面的 watch 使用：把「影响校验的字段」压成一个字符串。
+ * 不解回任何东西，只回答一个问题 —— 「跟上次比，变了没有」。
+ *
+ * 串里放的是什么（父页面那三条规则只依赖这两样）：
+ *   data.length          —— 行数（加一行 / 删一行 / 清空）
+ *   r.type | r.position  —— 每行的身份与角色（两列都是下拉，值变了就是用户改选了）
+ * '#' 与 ',' 只是分隔符，取值本身不含它们，不会拼出相同的串。
+ *
+ * 非数组时返回空串：showdata 理论上恒为数组，但父组件在接口返回前可能传 null；
+ * 那种情况下模板本来就渲染成空表，这里也不必再让 .map 抛异常。
+ */
+function rowsSignature() {
+  if (!Array.isArray(data.value)) return ''
+  return data.value.length + '#' + data.value.map((r) => (r ? `${r.type}|${r.position}` : '')).join(',')
+}
+
+/*
+ * 【第十二届·第四轮】「影响校验的字段变了」的通知口。
+ *
+ * 【为什么 watch 特征串，而不是 watch(data, { deep: true })】
+ * 父页面那三条规则只看「有几行、每行的身份与角色」，不看姓名 / 身份证 / 电话 / 乐器。
+ * deep watch 会在用户打字的**每一个字符**上触发 —— 校验一次弹一次错误，表格直接没法用。
+ * 特征串只在 行增删 / 身份变 / 角色变 这三种情况下才变，打字完全不会触发。
+ *
+ * 【什么情况会多触发一次】父组件整体替换 showdata（编辑页回填、草稿恢复）会一次性改变
+ * 长度与所有行的角色 → 触发一次。这是**故意保留**的：一张按旧规则存下来的报名表
+ * （例如 3 名指导教师）一打开就该看见不合规提示，而不是等用户点提交才被打回。
+ */
+watch(rowsSignature, () => emit('rows-change'))
 
 onMounted(() => {
   nextTick(() => {
@@ -364,13 +449,7 @@ function remove(index) {
   data.value.splice(index, 1)
 }
 
-/** dist: upAvatar(e){ event.preventDefault(), this.Arrayindex=e, this.$refs.uploadAvatar.click() } */
-function upAvatar(index) {
-  // 【dist 已知缺陷】引用全局 window.event 而非形参，原样保留
-  event.preventDefault()
-  Arrayindex = index
-  uploadAvatar.value.click()
-}
+/** dist: upAvatar(...) / flush() —— upAvatar 已搬到 usePhotoUpload，这里只剩 flush */
 
 /** dist: flush(){ this.data=[] } */
 function flush() {
@@ -548,6 +627,12 @@ function importExcel(file) {
         if (row.card && oldHeads[row.card]) row.head = oldHeads[row.card]
         data.value.push(row)
       }
+
+      // 【第十二届·第四轮】导入成功（数据已重建完）→ 通知父页面立刻校验一次。
+      // 位置在重建循环**之后**：父页面拿到的必须是导入后的完整数据。
+      // 上面两条提前 return 的失败路径都走不到这里，符合预期 ——
+      // 那两条路径按设计不改动任何数据（先校验、通过后才清表），没什么可校验的。
+      emit('imported')
     }
   }).catch(() => ElMessage.error('导入失败，请刷新页面后重试'))
 }
@@ -577,33 +662,11 @@ function getPosition(position) {
  *
  * 【为什么处理器不返回 Promise】Element Plus 只在 httpRequest 返回 Promise 时才跑
  * 自己那套内部成功路径（往 fileList 里塞条目），本组件靠 :show-file-list="false"
- * 不显示列表，返回非 Promise 让行为完全由下面的 .then 控制。
+ * 不显示列表，返回非 Promise 让行为完全由 .then 控制。
  *
- * 【顺带修掉的缺陷】dist 的 uploadSuccess 用 `info.filename = this.filename`
- * （也就是 beforeUpload 里存下的那个模块级变量，见文件头「dist 已知缺陷 f」），
- * 并发上传时有串号风险；改用 options.file.name 现取，不再共享状态。
+ * 【第十二届·第三轮】单张的 uploadFileSingle 已搬到 usePhotoUpload（与教师表共用）；
+ * 下面只留批量这一路 —— 它唯一被这张表用到。
  */
-
-/** dist 原文见 git 历史：uploadSuccess(e,t){ n.filename=this.filename, ... } */
-function uploadFileSingle(options) {
-  const file = options.file
-  uploadToOss({ file, biz: 'image' })
-    .then(({ url }) => {
-      const info = {}
-      info.filename = file.name
-      info.type = file.type
-      info.size = file.size
-      info.url = url
-
-      fileApi.saveFileInfo(info).then(({ data: body }) => {
-        if (body.code === 0) data.value[Arrayindex].head = info.url
-        else ElMessage.error('文件上传失败')
-      })
-    })
-    .catch((err) => {
-      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
-    })
-}
 
 /**
  * dist 原文见 git 历史：uploadSuccessBatch(e,t){ n.filename=t.name, ... }
@@ -675,125 +738,6 @@ function uploadFileBatch(options) {
     })
 }
 
-/**
- * 【第十二届】从「去掉扩展名的文件名」里解析出身份证后 6 位 + 姓名（仅教师）。
- * 解析不出来返回 null。beforeUpload 与 uploadFileBatch 共用这一份判据，
- * 避免两处正则各写一遍后漂移。
- *   学生：`123456`      → { cardTail: '123456', personName: '' }
- *   教师：`张三123456`  → { cardTail: '123456', personName: '张三' }
- */
-function parsePhotoName(nameNoExt) {
-  if (/^\d{6}$/.test(nameNoExt)) {
-    return { cardTail: nameNoExt, personName: '' }
-  }
-  if (/^\D.*\d{6}$/.test(nameNoExt)) {
-    return { cardTail: nameNoExt.slice(-6), personName: nameNoExt.slice(0, -6) }
-  }
-  return null
-}
-
-/**
- * dist:
- *   beforeUpload(e){
- *     this.QiniuData.key="ylbxt/", this.filename=e.name;
- *     const t="image/jpeg"===e.type;
- *     this.QiniuData.key+=this.rename(e.name);
- *     const n=e.size/1024/1024<.1;
- *     return n ? (t ? (t&&n) : (Message.error("格式只能是jpg"),!1))
- *              : (Message.error("文件大小不能超过100k"),!1)
- *   }
- * 注意 dist 的顺序：先判体积、后判格式，下面逐字保留。
- *
- * 【第十二届改造·第二轮】删去写 QiniuData.key / filename 的两行（以及只服务于
- * 拼 key 的 rename 导入）：key 改由后端生成，文件名由处理器从 options.file 现取。
- */
-function beforeUpload(file) {
-  /*
-   * 【第十二届改造】红头文件要求：
-   *   - 师生电子照片：蓝底、免冠证件照、JPG、每张不超过 100KB
-   *   - 学生照片命名：「身份证后6位.jpg」
-   *   - 教师照片命名：「姓名+身份证后6位.jpg」
-   * 客户端硬校验：JPG + ≤100KB + 命名格式；只有「蓝底」无法像素级校验，仅在前端提示。
-   */
-  const isJpg = file.type === 'image/jpeg'
-
-  // dist 原文顺序：先判体积、再判格式（保留）
-  const sizeOk = file.size / 1024 < 100
-  if (!sizeOk) {
-    ElMessage.error('文件大小不能超过100KB')
-    return false
-  }
-  if (!isJpg) {
-    ElMessage.error('照片格式只能是JPG')
-    return false
-  }
-  // 【第十二届】命名格式硬校验。原来只在 uploadFileBatch 里判，那时文件已经传上 OSS
-  // 并写进 files 表 —— 格式错的照片就成了没人认领的孤儿文件。前移到 here：格式不对
-  // 直接不发请求。批量直接绑本函数，单张经 beforeUploadSingle 调进来，两路都过这道。
-  const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
-  if (!parsePhotoName(nameNoExt)) {
-    ElMessage.error(
-      '文件名格式错误：' + file.name + '（学生照片：身份证号后6位；教师照片：姓名+身份证号后6位）'
-    )
-    return false
-  }
-  return isJpg && sizeOk
-}
-
-/**
- * 【第十二届】单独上传头像的校验器 —— **只给隐藏的那条单张 el-upload 用**
- * （模板里绑的是它，不是 beforeUpload）。
- *
- * 【为什么另起一个函数，而不是全塞进 beforeUpload】
- * beforeUpload 是两条路共用的「基础闸」：批量直接绑它，单张经本函数调它，所以它只能判
- * 格式/体积这类「与哪一行无关」的事。而「文件名对不对得上这一行的人」需要行下标与行内
- * 姓名/身份证号，只有单张路径拿得到 —— 这正是下面这段的职责。
- *
- * 【格式校验已在 beforeUpload 里做过一遍】
- * 所以对「格式就不合法」的文件（如 照片.jpg），用户看到的是 beforeUpload 那句格式提示；
- * 只有格式合法但写错人时，才落到下面这句「请改为 xxx.jpg」。单张不靠文件名定位（走
- * upAvatar 存下的行下标 Arrayindex），这里的校验只为让入库的 Files.filename 与批量
- * 上传同一口径（`info.filename = file.name` 会落库，后端只 setdefault 不校验）。
- *
- * 规则与 uploadFileBatch 完全一致：
- *   - 学生行：去扩展名后 === 该行身份证号后 6 位
- *   - 教师行：去扩展名后 === 该行姓名 + 该行身份证号后 6 位
- */
-function beforeUploadSingle(file) {
-  // 格式 / 体积沿用批量那套，逻辑一个字不重写
-  if (!beforeUpload(file)) return false
-
-  const item = data.value[Arrayindex]
-  if (!item) {
-    // Arrayindex 是模块级变量，正常路径下由 upAvatar 刚刚写入；这里是防哑雷
-    ElMessage.error('未定位到人员行，请重新点击该行的「上传照片」')
-    return false
-  }
-  if (item.type !== 0 && item.type !== 1) {
-    ElMessage.error('请先选择该行的身份，再上传照片')
-    return false
-  }
-  if (!item.card) {
-    ElMessage.error('请先填写该行的身份证号，再上传照片')
-    return false
-  }
-  const isTeacher = item.type === 1
-  if (isTeacher && !item.name) {
-    ElMessage.error('请先填写该行的姓名，再上传照片')
-    return false
-  }
-
-  // 身份证短于 6 位时按整串比对，与 uploadFileBatch 的取法保持一致
-  const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-  const expected = isTeacher ? item.name + tail : tail
-  const actual = file.name.substring(0, file.name.lastIndexOf('.'))
-  if (actual !== expected) {
-    ElMessage.error('文件名不符合命名规则，请改为：' + expected + '.jpg 后再上传')
-    return false
-  }
-  return true
-}
-
 /* 【第十二届改造·第二轮】getQiniuToken() 已删除。
    dist: getQiniuToken(){ $api.communal.getQiNiuToken().then(...) }
    它原来只在 onMounted 里被调用一次，用途是把七牛 uptoken 填进 QiniuData.token。
@@ -803,6 +747,10 @@ defineExpose({ getData, getCacheData })
 </script>
 
 <style lang="scss" scoped>
+/* 【第十二届·第三轮】@use 必须是 style 块里的第一条语句（Sass 语法要求），
+   所以它排在下面那条 dist 注释之前。引用的是与指导教师表共用的占位块样式。 */
+@use '../../styles/photo-cell.css';
+
 /* dist/css/chunk-0294a80a.260c9e35.css 中 [data-v-5568d648] 的全部 10 条规则 */
 .container {
   margin-bottom: 10px;
@@ -902,6 +850,9 @@ defineExpose({ getData, getCacheData })
   z-index: 10;
   border-right: 1px solid #ddd;
 }
+
+/* 【电子照片占位遮罩】的样式已抽到 src/styles/photo-cell.css，与指导教师表共用一份。
+   引入方式见本 style 块第 2 行（@use 必须在其它规则之前）。 */
 
 /* 「下载模板 / 批量导入 / 添加一行 / 清空 / 批量上传头像」这一排按钮。
    它们分散在 Upload 根 / UploadContent / 内层 Upload 三种容器里，改前实测间距是

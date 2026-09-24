@@ -5,6 +5,9 @@
  * 1. 前端人员数量校验
  * 2. 展示时长限制
  * 3. 视奏要求
+ * 4. 资格类校验（指挥唯一 / 中小学不许学生指挥 / 指导教师人数上限）
+ *    —— validatePeopleQualification / validatePeople，与人员数量校验共用一张规则表，
+ *       口径对齐后端 apps/core/migrations/0009_...py 的触发器
  * 
  * 【官方明确 - 第十二届红头文件】
  * - 管乐团：正式成员35-65人，预备最多5人
@@ -256,6 +259,116 @@ export function validatePersonCount(establishment, group, persons) {
       percussion: percussionCount,
       rules: rules
     }
+  }
+}
+
+/**
+ * 取出「指挥」的数量与身份 —— 供下面两条资格类校验共用，也是与后端对齐的唯一口径。
+ *
+ * 返回 { count, type }：
+ *   count —— 指挥行数（只数 position === 2，不看身份）
+ *   type  —— null 无指挥 / 0 学生 / 1 教师
+ *
+ * 【为什么 type 取所有指挥行里的**最大值**，而不是取第一行】
+ * 后端 0009 触发器用的就是 `max(CASE WHEN position = 2 THEN type END)`
+ * （迁移文件 apps/core/migrations/0009_...py 的 PG 版第 50 行、SQLite 版第 97 行），
+ * 只要出现一个教师指挥就按教师判。前端必须用同一个口径：否则「两个指挥，一教师一学生」
+ * 时前端按学生判（放行 2 名指导教师）、后端按教师判（只许 1 名），同一份数据两边结论不同。
+ * 注：这种数据本身已被「指挥最多 1 人」拦下（见下），max 只是让两边在**报出那条错之前**
+ * 的判定也保持一致。
+ *
+ * 【为什么统一 Number() 转换】position / type 有三个来源，类型并不统一：
+ *   · 界面下拉：type 由 :value="0|1" 绑成数字、position 走 getPosition() 返回数字；
+ *   · Excel 导入：importExcel 里 `type: sheet[i].type === '学生' ? 0 : 1`，同样是数字；
+ *   · 草稿回填：payloadToPerson 已过 Number()。
+ * 但 '2' === 2 为假，字符串形式的历史数据会被漏掉，故统一转数字；
+ * 并用 Number.isFinite 把 NaN / undefined / 空串挡掉，避免「角色还没选」的行被当成指挥。
+ *
+ * @param {Array} persons - 参展人员数组
+ */
+function conductorInfoOf(persons) {
+  let count = 0
+  let type = null
+  ;(persons || []).forEach((p) => {
+    if (!p) return
+    if (Number(p.position) !== 2) return
+    count++
+    const current = Number(p.type)
+    // 第一个指挥直接赋值，之后取最大值 —— 等价于后端的 max(type)
+    if (Number.isFinite(current)) type = type === null ? current : Math.max(type, current)
+  })
+  return { count, type }
+}
+
+/**
+ * 【资格类】只判「填了报名不该出现的内容」。
+ *
+ * 与 validatePersonCount 的分工（两条互补，不要互相取代）：
+ *   · 本函数 —— 指挥唯一、中小学指挥身份、指导教师人数上限。**与「人数够不够」无关**，
+ *     所以用户一边填就能一边提示（不会「刚加第 1 个人就喊不够 35 人」）。
+ *   · validatePersonCount —— 正式/预备/打击乐的人数区间，只在提交时查。
+ * 三条提示路径（填写时 / 批量导入后 / 提交时）全都调本函数，为的是
+ * 「实时提示的文案」与「提交拦截的文案」不可能不一致。
+ *
+ * @param {string} establishment - 乐团类型；教师组渠道没有这个概念，传 undefined
+ * @param {string} group - 组别
+ * @param {Array} persons - 参展人员数组（PersonTable 的行）
+ * @param {Array} teachers - 指导教师数组（TeacherTable 的行，position 恒为 4）
+ * @returns {{ valid: boolean, errors: Array }}
+ */
+export function validatePeopleQualification(establishment, group, persons, teachers) {
+  const errors = []
+  const conductor = conductorInfoOf(persons)
+  const rules = getPersonRules(getRuleKey(establishment, group))
+  const teacherCount = (teachers || []).length
+
+  // ① 指挥唯一 —— 对应后端 0009 规则 1（部分唯一索引 report_person_one_conductor_idx）。
+  // 必须是第一条：指挥超过 1 人时「按 max(type) 判身份」本身就语义模糊，先拦下来，
+  // 后面两条分层判断才有确定含义（后端也是先判这条）。
+  // 文案用后端那句翻译后的原文（services._RULE_MESSAGE_HINTS），不用触发器的原始英文式报错。
+  if (conductor.count > 1) errors.push('每张报名表只能有 1 名指挥。')
+
+  // ② 中小学不许学生指挥 —— 对应后端 0009 规则 5。
+  // conductor.type === 0 表示「有指挥、且所有指挥都是学生」（max 口径下没有教师指挥）。
+  // rules 为 null（教师组渠道、或历史非法组合）时**跳过**：拿不到 level 就无从判断
+  // 是不是中小学，宁可不报也不误报 —— 与后端「空值/未知值放行」的口径一致。
+  // level 只有 小学组 / 中学组 / 大学组 三种，大学组是唯一允许学生当指挥的组别。
+  if (rules && conductor.type === 0 && rules.level !== '大学组') {
+    errors.push('中小学乐团指挥须为本校在职教师。')
+  }
+
+  // ③④ 指导教师人数上限（分层）—— 对应后端 0009 规则 2 / 3 / 4。
+  // 分层同样是 max(type) 口径：教师指挥 → 最多 1 人；其余（无指挥 / 学生指挥）→ 最多 2 人。
+  // 【与后端的一处刻意不同】后端只在「有指挥」时才查指导教师人数（它的分支全挂在 c_cnt = 1 上），
+  // 前端在**无指挥**时也按 2 拦。这是本轮的产品要求（「现在指导教师最多2人」），比后端更严，
+  // 不会出现「前端放行、后端打回」。
+  const teacherMax = conductor.type === 1 ? 1 : 2
+  if (teacherCount > teacherMax) {
+    errors.push(conductor.type === 1 ? '指挥是教师时，指导教师最多1人！' : '指导教师最多2人！')
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+/**
+ * 提交时的完整校验 = 资格类 + 人数区间类。
+ *
+ * 顺序：资格类在前 —— 「填错了」比「还没填够」更该先修。
+ * 【与后端 0009 报错顺序的差别（已知，且无害）】后端触发器的判定顺序是
+ * ① 指挥 > 1 → ③④ 指导教师超限 → ② 中小学指挥身份；本函数是 ① → ② → ③④。
+ * 差异只在「同时违反多条」时先看到哪一条（后端靠第一条 RAISE 中止事务，也只报一条），
+ * 两条都是真错误，用户改掉先弹的那条之后就会看到另一条，不会漏报。
+ * validatePersonCount 本体一字未改，stats 原样透出。
+ *
+ * @returns {{ valid: boolean, errors: Array, stats: Object }}
+ */
+export function validatePeople(establishment, group, persons, teachers) {
+  const qualification = validatePeopleQualification(establishment, group, persons, teachers)
+  const count = validatePersonCount(establishment, group, persons)
+  return {
+    valid: qualification.valid && count.valid,
+    errors: [...qualification.errors, ...count.errors],
+    stats: count.stats
   }
 }
 

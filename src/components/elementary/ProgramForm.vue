@@ -231,9 +231,16 @@
         <div class="bg4">
           <div style="position: relative">
             <div style="font-size: 16px; font-weight: bold">指导教师</div>
-            <Teacher ref="teacherRef" :showdata="form.teacher" />
+            <!-- 【第十二届·第四轮】@rows-change / @imported 只是「子表内容变了」的通知，
+                 判定在父页面做（指导教师超没超，取决于参展人员里指挥的身份）。 -->
+            <Teacher ref="teacherRef" :showdata="form.teacher" @rows-change="onPeopleChange" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
-            <Person ref="personRef" :showdata="form.person" />
+            <Person
+              ref="personRef"
+              :showdata="form.person"
+              @rows-change="onPeopleChange"
+              @imported="onPersonImported"
+            />
           </div>
         </div>
 
@@ -371,7 +378,8 @@
  * 过滤非数字字符。Vue 3 对字面量 `on*` 属性的编译行为与 Vue 2 不同，本组件保持原文，
  * 其实际效果在浏览器中验证（见本轮报告的验证小节）。
  */
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+// 【第十二届·第四轮】新增 watch：组别变化时重跑资格类校验（见「资格类实时校验」一节）
+import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -383,6 +391,10 @@ import { fileApi } from '@/api/misc'
 import { uploadToOss } from '@/services/ossUpload'
 import { addCache, getCache, clearCache } from '@/utils/auth'
 import { validateName, validatePhone, validateAddress } from '@/config/formFields'
+/* 【第十二届·第四轮】资格类校验：指挥最多1人 / 指导教师上限（分层 1~2 人）。
+   只取资格类、**不**取 validatePeople：教师组渠道没有乐团编制，组别是 2/3 的节目类别，
+   「正式35-65人」这类规则在这里不适用，也不能拿它去报「未找到人员编制规则」。 */
+import { validatePeopleQualification } from '@/config/personRules'
 import { getM, getS } from '@/utils/date'
 import { useTabs } from '@/composables/useTabs'
 
@@ -992,6 +1004,126 @@ onBeforeUnmount(() => {
   flushLocalCache()
 })
 
+/* --------------- 资格类实时校验（第十二届·第四轮） --------------- */
+
+/**
+ * 【与 OrchestraForm 那一节同源，但只做其中两条】
+ *
+ * 本渠道（教师组节目报名）用同一对子表（TeacherTable / PersonTable），因此后端
+ * report_person 上的 0009 触发器**同样管到这里**，用户填错了也一样会在提交时被打回。
+ * 所以本轮一并补上前端校验，三条路径与 OrchestraForm 完全一致：
+ *   ① 手动填写时 —— @rows-change → onPeopleChange
+ *   ② 批量导入后 —— @imported → onPersonImported（强制提示一次）
+ *   ③ 点「立即报名」时 —— onSubmit 里的 validatePeopleQualification（拦截提交）
+ * **暂存不校验**（本轮明确不动）。
+ *
+ * 【本渠道只有「指挥最多 1 人」和「指导教师上限」两条生效，「中小学不许学生指挥」不生效】
+ * 依据（都是事实，不是取舍）：personRules.js 里那条判定依赖编制规则表 PERSON_RULES 的
+ * level 字段（小学组/中学组/大学组），而本渠道没有乐团类型、组别是节目类别
+ * （form.group = 2 = 中小学教师组 / 3 = 高校教师组，见 VARIANTS 的 formInit），
+ * getRuleKey() 查不到规则 → rules 为 null → 该条**跳过**。
+ * 后端那边同样不生效：0009 触发器把 report.group 当字符串比
+ * '小学组/中学组/中小学组/中小学教师组'，而本渠道提交的 group 是数字 2/3，落不进这个名单
+ * （迁移文件注释里写的「空值/数字串/未知值放行」就是这个意思）。
+ * 即：这条规则前后端在教师组渠道**都没管**，前端没有单方面加严。
+ *
+ * 【指导教师上限在本渠道是「无指挥或学生指挥 → 2、教师指挥 → 1」】
+ * 分层的判据同样来自指挥行的身份，与 OrchestraForm 一致；后端也按同一口径拦。
+ * 注意比改动前的「最多3人」更严了：这是本轮的要求。
+ */
+
+/** 上一次弹过的错误文案（只用于去重，不参与渲染，故用普通变量） */
+let lastQualificationError = null
+
+/**
+ * 多行提示用的 class，配合本文件末尾那段**非 scoped** 的 CSS，让提示里的 \n 真正换行。
+ * 不能写在 scoped 块里：ElMessage 的节点由 Element Plus 挂到 document.body 下，
+ * 已经不在本组件的 DOM 子树里，scoped 生成的 [data-v-xxx] 选择器匹配不到（详见文件末尾）。
+ */
+const QUAL_TOAST_CLASS = 'qual-error-toast'
+
+/** 本轮是否已经安排了校验，见 scheduleQualificationCheck */
+let pendingCheckTimer = null
+/** 本轮是否需要强制提示（批量导入路径置位） */
+let pendingCheckForce = false
+
+/**
+ * 把同一批用户动作触发的多次校验合并成一次，再决定弹不弹。
+ *
+ * 「点批量导入」这一个动作会同时产生两个触发源：子表同步 emit('imported')、
+ * 以及子表 rows-change 的 watch（排在 Vue 的更新队列里，微任务）。
+ * 两者先后取决于 Vue 的调度时机，不合并就可能弹两次、后一条还盖住前一条。
+ * setTimeout 是**宏任务**，一定在所有微任务（含 Vue 那次更新）跑完之后才执行，
+ * 于是得到一条与先后无关的保证：一个用户动作 = 一次校验 = 最多一条提示。
+ * （不用 nextTick：它挂进微任务队列，排在 Vue 刷新任务的前面还是后面不确定。）
+ */
+function scheduleQualificationCheck({ force = false } = {}) {
+  if (force) pendingCheckForce = true
+  if (pendingCheckTimer !== null) return // 本轮已安排过，合并进去
+  pendingCheckTimer = setTimeout(() => {
+    pendingCheckTimer = null
+    const forceNow = pendingCheckForce
+    pendingCheckForce = false
+    runQualificationCheck(forceNow)
+  }, 0)
+}
+
+/**
+ * 真正执行校验并提示。取数走 getCacheData()（不校验、不弹窗、无副作用；
+ * getData() 会逐行校验并弹窗，那是提交时才该做的）。子组件未挂载时 ref 为 null，按空数组处理。
+ *
+ * 第一个参数（乐团类型）传 undefined：本渠道没有这个概念，也正因如此上面说的
+ * 「中小学不许学生指挥」这条会自然跳过。第二个参数传 form.group（数字 2/3）。
+ */
+function runQualificationCheck(force) {
+  const persons = personRef.value ? personRef.value.getCacheData() : []
+  const teachers = teacherRef.value ? teacherRef.value.getCacheData() : []
+  const { valid, errors } = validatePeopleQualification(
+    undefined,
+    form.value.group,
+    persons,
+    teachers
+  )
+
+  if (valid) {
+    lastQualificationError = null // 改对了 → 清空，下次再犯还能提示
+    return
+  }
+  /*
+   * 【第十二届·第五轮】原来是 errors[0]（只报第一条），现改为**把命中的每一条都列出来**。
+   * 理由同 OrchestraForm：validatePeopleQualification 每次都把四条规则全跑一遍、
+   * 把不满足的全收进 errors，只显示第一条会逼着用户「改一条 → 再被弹第二条 → 再改」，
+   * 导入场景尤其难受（每条错都要回去改 Excel 再导一次）。
+   * 命中的最多 3 条：① + ② + (③或④) —— ③ 与 ④ 互斥（同一个上限不可能既是 1 又是 2）。
+   * 去重逻辑不变，只是比对对象从「单条文案」换成「这一整串」。
+   */
+  const message = errors.join('\n')
+  if (!force && message === lastQualificationError) return // 同一批错不重复弹
+  lastQualificationError = message
+  ElMessage.error({ message, customClass: QUAL_TOAST_CLASS })
+}
+
+/** ① 填写时：子表行增删、身份 / 角色被改 → 去重提示 */
+function onPeopleChange() {
+  scheduleQualificationCheck()
+}
+
+/** ② 批量导入后：强制提示，每次导入都给一次反馈 */
+function onPersonImported() {
+  scheduleQualificationCheck({ force: true })
+}
+
+/*
+ * 组别变化也要重查。本渠道的组别没有下拉（由 VARIANTS 的 formInit 固定、提交时按
+ * cfg.submitGroup 回写），所以这个 watch 实际只在编辑页回填整份表单时触发一次 ——
+ * 那正是「打开旧数据就该发现不合规」的场景。
+ * 用 watch 而不是 @change：本条只**提示**、不改任何数据。
+ */
+watch(
+  () => [form.value.group, form.value.group_type].join('|'),
+  () => scheduleQualificationCheck()
+)
+
 /* ------------------------- 提交 ------------------------- */
 
 /**
@@ -1008,6 +1140,34 @@ function onSubmit() {
     form.value.person = personRef.value.getData()
     form.value.teacher = teacherRef.value.getData()
 
+    /*
+     * 【第十二届·第四轮】资格类校验：指挥最多1人 / 指导教师上限（教师指挥 1 人，否则 2 人）。
+     *
+     * 放在这里的两个理由：
+     *   1) 必须在 `form.value.person / teacher` 刚同步完之后 —— 校验的就是这份数据；
+     *   2) 必须是**无条件**的 —— 原来那句 `if (form.value.teacher.length > 3)` 写在下面
+     *      allPeople 的 teacher 分支里，指导教师为空时根本走不到，而「指挥最多1人」
+     *      恰恰要在没有指导教师时也能拦住。
+     *
+     * 第一个参数传 undefined：本渠道没有乐团类型，故「中小学不许学生指挥」这条会跳过
+     * （后端在教师组渠道同样不管这条，见本节上方的长注释）。
+     */
+    const qualification = validatePeopleQualification(
+      undefined,
+      form.value.group,
+      form.value.person || [],
+      form.value.teacher || []
+    )
+    if (!qualification.valid) {
+      /* 【第十二届·第五轮】原为只报 errors[0]，现改为把命中的每一条都列出来。
+         提交是最后一道关，一次说完，省得用户改一条再点一次提交。
+         顺序仍是资格类在前（见 personRules.js），用户先看到的是最该先修的那条。 */
+      return ElMessage.error({
+        message: qualification.errors.join('\n'),
+        customClass: QUAL_TOAST_CLASS
+      })
+    }
+
     if (fileList1.value && fileList1.value.length === 0) return ElMessage.error('未上传曲谱')
     // 仅 60d5 / b202 / 4be7 / 3fb9 / 7fcd：视频必填
     if (cfg.requireVideo && fileList.value && fileList.value.length === 0) {
@@ -1019,7 +1179,12 @@ function onSubmit() {
       form.value.person.forEach((p) => allPeople.push(p))
     }
     if (form.value.teacher && form.value.teacher.length > 0) {
-      if (form.value.teacher.length > 3) return ElMessage.error('指导教师最多3人！')
+      /* 【第十二届·第四轮】这里原有的一句 `if (form.value.teacher.length > 3)
+         return ElMessage.error('指导教师最多3人！')` 已**上移**到本函数开头、
+         并换成 validatePeopleQualification（分层 1~2 人）。
+         移走的原因有二：一是上限定为 3 与后端 0009 已不一致；
+         二是它挂在这个 `length > 0` 分支里，指导教师为空时走不到，
+         而「指挥最多1人」这条恰恰要在没有指导教师时也能拦住。 */
       form.value.teacher.forEach((t) => allPeople.push(t))
     }
 
@@ -1156,5 +1321,21 @@ function onSubmit() {
     padding: 10px 20px;
     margin: auto;
   }
+}
+</style>
+
+<!--
+  资格类「逐条列出」提示的换行样式。
+  与 OrchestraForm 里那段同名同类，内容一致：只针对 customClass='qual-error-toast'
+  的 ElMessage，作用范围就是资格类提示本身。
+  【为什么故意不加 scoped】ElMessage 的节点挂在 document.body 下，不在本组件子树里，
+  scoped 的属性选择器匹配不到；不加 scoped 且限定类名，则不会波及其他元素。
+  【white-space: pre-line】文案里的多行是用 \n 拼的，HTML 默认会把 \n 渲染成空格，
+  pre-line 保留换行同时折叠多余空格，正是需要的效果。
+-->
+<style lang="scss">
+.qual-error-toast .el-message__content {
+  white-space: pre-line;
+  line-height: 1.7; // 多条时给点行距，否则挤成一坨看不清是几句
 }
 </style>

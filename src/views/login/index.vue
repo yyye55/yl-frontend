@@ -4,7 +4,7 @@
 <template>
   <div class="login_container">
     <div class="login_box">
-      <p class="title">“意林杯”四川省第十二届管乐展示活动</p>
+      <p class="title">“意林杯”四川省第十二届<br/>管乐展示活动</p>
 
       <el-form
         ref="loginFormRef"
@@ -225,7 +225,7 @@ async function submit() {
 
 .title {
   text-align: center;
-  font-size: 30px;
+  font-size: 32px;
   font-weight: bold;
   color: #1a1a1a;
   margin-bottom: 32px;

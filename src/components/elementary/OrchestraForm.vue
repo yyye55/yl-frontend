@@ -20,6 +20,12 @@
         label-width="120px"
       >
         <div class="bg1">
+          <p style="font-size: 14px; color: black; margin: 0 0 10px">
+            管乐团指定曲目、自选曲目两首乐曲及视
+奏乐曲的总展示时间为：小学组不超过12分钟，中学组不超过
+15分钟，大学组不超过18分钟；铜管乐团指定曲目、自选曲目
+的总展示时长为：小学组、中学组均不超过10分钟。
+          </p>
           <!-- ============ 第 1 行：乐团名称 / 类型 ============ -->
           <el-row :gutter="40">
             <el-col :span="12">
@@ -202,7 +208,7 @@
                   <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
                   <template #tip>
                     <div class="el-upload__tip">
-                      视频格式为MP4或MOV，大小不超过700MB。
+                      视频格式为MP4或MOV，大小不超过700MB。报名视频中的自选曲目须与现场展示的自选曲目一致。
                     </div>
                   </template>
                 </el-upload>
@@ -229,14 +235,15 @@
         <div class="bg4">
           <div style="position: relative">
             <div style="font-size: 16px; font-weight: bold">指导教师</div>
-            <p style="font-size: 14px; color: #ff0000">
-              请各学校在报名时明确指导教师排名顺序，下方填报顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
+            <p style="font-size: 14px; color: black">
+              请各学校在报名时明确指导教师排名顺序，下方署名顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
             </p>
-            <p style="color: red; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
+            <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="font-weight: bold">张三123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456</span> 且姓名为 <span style="font-weight: bold">张三</span> 的人员对应。</p>
 
             <Teacher ref="teacherRef" :showdata="form.teacher" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
-            <p style="font-size: 14px; color: #ff0000">
+            <p style="font-size: 14px;">
+              乐团须以学校为单位组建，中小学乐团指挥须为本校在职教师；高校乐团指挥可为本校在职教师或在校学生；乐团成员须为本校在校学生。<br/>
               管乐团正式成员不少于35人，不超过65人（报名时可报预备队员5人）；铜管乐团正式成员不少于20人，不超过45人，其中打击乐不超过8人（报名时可报预备队员3人）。
             </p>
             <Person ref="personRef" :showdata="form.person" />
@@ -244,7 +251,7 @@
         </div>
 
         <p style="padding-bottom: 5px; padding-top: 5px; color: red">
-          请仔细阅读报名须知，确认无误后勾选报名须知，即可进行报名。
+          请仔细阅读报名须知，确认无误后勾选报名须知，即可进行报名。注：乐团名单报名确定后不得更改，如经资格审查有非本校师生的，则取消报名资格和成绩。
         </p>
 
         <el-form-item label="报名须知">

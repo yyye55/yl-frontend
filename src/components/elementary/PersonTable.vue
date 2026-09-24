@@ -21,7 +21,7 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
-              <p style="color: red; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
+              <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="font-weight: bold">123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456 </span>的人员对应。</p>
       <el-upload
         class="import-bar"
         style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"

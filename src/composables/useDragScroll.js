@@ -28,7 +28,7 @@
  *   用 `startScrollLeft - (clientX - startX)` 就天然没有这个问题：越界那部分自动被丢弃。
  */
 
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 
 /** 落在这些元素上时不启动拖动 —— 用户是在操作控件，不是在平移表格 */
 const INTERACTIVE_SELECTOR = [
@@ -47,7 +47,9 @@ const INTERACTIVE_SELECTOR = [
 /**
  * 让一个横向溢出容器支持鼠标拖拽平移。
  *
- * @param {import('vue').Ref<HTMLElement|null>} targetRef 容器（模板上写 ref="boxRef"）
+ * @param {import('vue').Ref<HTMLElement|null>} targetRef 容器（模板上写 ref="boxRef"）。
+ *   允许「一开始为 null、稍后才有值」—— 内部会持续监听，元素一出现就自动挂上
+ *   （弹窗里的表格要用到这一点，详见下方 onMounted 处的说明）。
  * @param {{ threshold?: number }} [options] threshold 拖动判定阈值，默认 4px
  */
 export function useDragScroll(targetRef, options = {}) {
@@ -154,9 +156,13 @@ export function useDragScroll(targetRef, options = {}) {
     el.style.cursor = el.scrollWidth > el.clientWidth ? 'grab' : ''
   }
 
-  onMounted(() => {
-    el = targetRef.value
-    if (!el) return
+  /** 把一套事件挂到目标节点上。对同一个节点重复调用是安全的（幂等）。 */
+  function attach(node) {
+    if (!node) return
+    // 目标换成了另一个节点：先把旧节点上的摘干净，别把监听器留在废弃的 DOM 上
+    if (el && el !== node) detach()
+    if (el === node) return
+    el = node
     el.addEventListener('pointerdown', onPointerDown)
     el.addEventListener('pointermove', onPointerMove)
     el.addEventListener('pointerup', onPointerUp)
@@ -170,9 +176,16 @@ export function useDragScroll(targetRef, options = {}) {
     resizeObserver = new ResizeObserver(updateCursor)
     resizeObserver.observe(el)
     updateCursor()
-  })
+  }
 
-  onBeforeUnmount(() => {
+  /** 摘掉事件与观察器。可重复调用；连接状态一并复位。 */
+  function detach() {
+    // 注意：观察器要在 el 判空**之前**关 —— 否则 el 已经是 null 时这里会提前 return，
+    // 把上一轮的 ResizeObserver 漏在后台（原实现在「先返回后 disconnect」的顺序上有此隐患）。
+    if (resizeObserver) {
+      resizeObserver.disconnect()
+      resizeObserver = null
+    }
     if (!el) return
     el.removeEventListener('pointerdown', onPointerDown)
     el.removeEventListener('pointermove', onPointerMove)
@@ -181,10 +194,45 @@ export function useDragScroll(targetRef, options = {}) {
     el.removeEventListener('click', onDragClickCapture, true)
     el.removeEventListener('dragstart', onDragStart)
     el.removeEventListener('pointerenter', updateCursor)
-    if (resizeObserver) resizeObserver.disconnect()
-    resizeObserver = null
     el = null
+    // 拖动中途被摘掉时，把交互状态一起归零，避免下次挂载带着旧的 pointerId / phase
+    pointerId = null
+    phase = 'idle'
+    didDrag = false
+  }
+
+  /*
+   * 【为什么用 watch，而不是原来的「在 onMounted 里读一次 targetRef.value」】
+   *
+   * 原写法是 `el = targetRef.value; if (!el) return` —— 只抓一次，抓不到就永久放弃。
+   * 对 PersonTable / TeacherTable 完全够用：容器跟着组件一起挂载，
+   * 走到 onMounted 时元素必然已经在，一次就能抓到。过去一直没出过问题。
+   *
+   * 但把它用到「表格装在 el-dialog 里」的场景就会**静默失效**：
+   * el-dialog 默认懒渲染（EP use-dialog.mjs 的 rendered ref），不点开弹窗，
+   * 表格根本不在 DOM 里。而调用方（ShowPerson）自己的 onMounted 发生在页面初次渲染时，
+   * 那一刻只能读到 null → 直接 return → 之后代码看上去毫无问题、控制台一句报错都没有，
+   * 就是拖不动。实测（probe）：溢出 732px、光标是 auto（说明压根没挂上）、
+   * 拖 120px 后 scrollLeft 仍为 0。
+   *
+   * 换成 watch + immediate 之后，两种调用方走同一条路径：
+   *   · ref 一开始就有值（PersonTable / TeacherTable）—— immediate 立刻回调，
+   *     挂载时机与原来**完全一致**，行为不变；
+   *   · ref 稍后才有值（弹窗打开后表格才创建）—— 值一变就挂上，不再错过。
+   * 调用方因此不必关心「谁先挂载」，也不需要 nextTick / 手动重试。
+   */
+  onMounted(() => {
+    watch(
+      () => targetRef.value,
+      (node) => {
+        if (node) attach(node)
+        else detach()
+      },
+      { immediate: true }
+    )
   })
+
+  onBeforeUnmount(detach)
 }
 
 export default useDragScroll

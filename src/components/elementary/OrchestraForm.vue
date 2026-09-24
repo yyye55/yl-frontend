@@ -232,6 +232,8 @@
             <p style="font-size: 14px; color: #ff0000">
               请各学校在报名时明确指导教师排名顺序，下方填报顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
             </p>
+            <p style="color: red; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="color: black">123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456 </span>的人员对应；教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="color: black">张三123456.jpg</span>则与身份证号码后六位为 <span style="color: black">123456</span> 且姓名为 <span style="color: black">张三</span> 的人员对应。</p>
+
             <Teacher ref="teacherRef" :showdata="form.teacher" />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
             <p style="font-size: 14px; color: #ff0000">

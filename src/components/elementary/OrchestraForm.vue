@@ -737,12 +737,30 @@ const fileList1 = ref([])
  * dist 的表单初值。三个模块是 {read,minute,second,dinner_reservation}，
  * 只有 3d27 多 group/establishment 两个键（见文件头第二节）。
  * 注意：**没有** group_type / tranches / accompany —— 那些属于 ProgramForm 族。
+ *
+ * ===========================================================================
+ * 【第十二届·偏离 dist】minute / second 由 0 改为 ''
+ * ===========================================================================
+ * dist 是 0（数字）。实测后果（真浏览器）：新建页两个输入框里明着显示「0 分 0 秒」，
+ * 而 async-validator 判空只看 undefined / null / '' / []，**数字 0 不算空值**，
+ * 于是 minuteValidator 开头两句 `if (value === '')` 形同虚设、required 规则静默放过 ——
+ * 空表单点「立即报名」时其余 9 个必填项全报红，**唯独「展示时长」一声不响**，
+ * 用户以为「框里写着 0 就是填好了」，其实一个字没填。
+ *
+ * 改成空串后：
+ *   ① 输入框是空的，不再误导用户以为已填；
+ *   ② minuteValidator 的 `value === ''` 分支与 required 规则真正生效，
+ *      空表单报「请输入分钟数 / 请输入秒数」，与其余 9 个必填项同一口径。
+ *
+ * 【零副作用】唯一的读取方 draftPayload.js:287 用的是 `Number(f.minute || 0)`，
+ * '' || 0 得 0 —— 暂存发出去的 time_length 与改动前**逐字节相同**。
+ * 校验顺序、上限判断、> 60 的拆分口径全部不受影响（见 minuteValidator）。
  */
 function makeForm() {
   return {
     read: false,
-    minute: 0,
-    second: 0,
+    minute: '',
+    second: '',
     dinner_reservation: [],
     /*
      * 【第十二届·第七轮】两张人员表的数组必须在这里就建出来，不能留 undefined。
@@ -916,7 +934,7 @@ function name1Validator(rule, value, callback) {
  *   改为查表后两处同源，时长上限只剩 PERSON_RULES 一个来源。
  *   报错文案保持逐字不变（铜管那条**不带组别**）；查不到规则时不校验上限。
  *
- * 校验顺序：分钟数 → 秒数 → 格式 → 时长限制 → 范围
+ * 校验顺序：分钟数 → 秒数 → 格式 → 全零 → 时长限制 → 范围
  */
 function minuteValidator(rule, value, callback) {
   const second = form.value.second
@@ -924,6 +942,27 @@ function minuteValidator(rule, value, callback) {
   if (second === '') callback(new Error('请输入秒数'))
   if (!/(^[0-9]\d*$)/.test(value)) callback(new Error('分钟数只能是正整数'))
   if (!/(^[0-9]\d*$)/.test(second)) callback(new Error('秒数只能是正整数'))
+
+  /*
+   * 【第十二届新增】分钟和秒不能同时为 0（即至少要 1 秒）。
+   *
+   * 【为什么必须带 value !== '' && second !== '' 这个前置条件】
+   *   Number('') === 0 是 JS 的既定行为。用户把两个框都清空时 value 和 second
+   *   都是空串，不排除的话这里会先报「不能为0分0秒」，把上面刚发出的
+   *   「请输入分钟数 / 请输入秒数」盖掉 —— 那样反倒看不懂了。
+   *   加上这个条件后：空串走上面的分支，只有真的填了两个 0 才落到这里。
+   *
+   * 【为什么只有这一句写了 return】
+   *   本函数其余 4 个分支都只写 callback(...) 不 return，靠 async-validator
+   *   「第一个错误生效」的既有行为。本条是提交闸门，加 return 更稳：
+   *   0分0秒 一定不会触发下面的上限和 0-60 范围判断（0 不超限、0 在范围内），
+   *   所以在这里 return 是**行为等价**的，只是不再依赖那个没写进文档的实现细节。
+   *
+   * 【只禁「同时为 0」】0分30秒、5分0秒 都是正常填法，不在拦截范围内。
+   */
+  if (value !== '' && second !== '' && Number(value) === 0 && Number(second) === 0) {
+    return callback(new Error('展示时长不能为0分0秒'))
+  }
 
   // 【第十二届改造】上限查 personRules.js，不在本函数内硬编码
   const limit = getDurationLimit(form.value.establishment, form.value.group)
@@ -1449,12 +1488,30 @@ function getMessage() {
       const r = res.data.data
       form.value = r
 
-      if (r.time_length > 60) {
-        form.value.minute = getM(r.time_length)
-        form.value.second = getS(r.time_length)
+      /*
+       * 【第十二届·显示层修复】time_length === 0 表示「这份报名还没填时长」，
+       * 回填成「0 分 0 秒」会让用户以为已经填好了。与 makeForm() 的初值口径统一：
+       * 未填写 → 两个框都留空，交给 required 规则提示「请输入分钟数 / 请输入秒数」。
+       *
+       * 【> 60 的分支口径一字未动】沿用 dist 判据（是 > 60，不是 >= 60），
+       * time_length === 60 仍走最后那个 else，回填成「0 分 60 秒」，往返无损。
+       * 本次只在中间插一个 === 0 的分支。
+       *
+       * 【为什么包一层 Number(x || 0)】老数据的 time_length 可能是 undefined / null。
+       * 旧代码直接比较时，这类行会落进 else 得到 `minute = 0` 且 `second = undefined`
+       * —— 一个「半空」状态（分钟框写 0、秒框空着）。包一层后统一成「空 / 空」，
+       * 不再出现半空。这是本次唯一的既有行为变化，且只影响缺字段的异常行。
+       */
+      const totalSeconds = Number(r.time_length || 0)
+      if (totalSeconds > 60) {
+        form.value.minute = getM(totalSeconds)
+        form.value.second = getS(totalSeconds)
+      } else if (totalSeconds === 0) {
+        form.value.minute = ''
+        form.value.second = ''
       } else {
         form.value.minute = 0
-        form.value.second = r.time_length
+        form.value.second = totalSeconds
       }
 
       fileList.value = []

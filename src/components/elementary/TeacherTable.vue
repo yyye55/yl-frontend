@@ -428,10 +428,44 @@ const data = ref([])
 const { uploadTrigger: uploadAvatar, upAvatar, beforeUploadSingle, uploadFileSingle } =
   usePhotoUpload((i) => data.value[i])
 
+/*
+ * 【第十二届·第十三轮】给 watch 补上 `? : []` 兜底 —— 修一个会打断编辑页整份回填的既有崩溃。
+ *
+ * 【为什么会出现 undefined】父组件 OrchestraForm.vue:1489 是 `form.value = r`，
+ * r 是后端 report_dict() 的原始返回对象，而它**永远没有 teacher 键**（后端不返回），
+ * 所以那一刻 form.teacher === undefined；紧接着 `if (people.length > 0)`（同文件 :1538）
+ * 只在 person 非空时才把数组补回去 —— person 为空时这个 undefined 会一路留着传进来。
+ * 而 person 为空正是「参演人员被全部软删」那种报名表的常态（ReportPerson 走软删管理器）。
+ *
+ * 【不补会怎样】data.value 被写成 undefined → 本文件里所有读 `data.value.length`
+ * 的地方一起遭殃，其中**最先被引爆**的是下面那句
+ * `watch(() => data.value.length, () => emit('rows-change'))` ——
+ * 它的取值函数会被重新执行，直接抛 TypeError，Vue 这一轮 flush 被这个异常打断，
+ * 同批的渲染任务不再执行 → 接口其实成功返回了，页面上却是一张空表。
+ * 实测：pageerror「Cannot read properties of undefined (reading 'length')」，
+ * 且「乐团名称」框读不到已回填的值。
+ *
+ * 【同一次改动顺带解除的其它隐患（都是同一个 undefined 引起的）】
+ *   · `watch(() => props.conductor, …)` 回调里的 `data.value.length`
+ *     —— 指挥进表那一刻若 data.value 还是 undefined 就会抛；补上后它读到 0，
+ *        而 0 正是「手填 0 行、指挥排第一」这个正确答案；
+ *   · `conductorIndex` 里的 `Math.min(slot, data.value.length)`；
+ *   · `flush()` / `check()` 等处的 `data.value.forEach` / `[...data.value]`。
+ * 这些位置本文件都会写行号，此处不写 —— 行号会随改动平移，写死容易过期。
+ *
+ * 【为什么是这个写法】与紧邻的 onMounted 里
+ * `data.value = props.showdata ? props.showdata : []` 逐字一致 ——
+ * 本组件对 showdata 的既有约定就是「假值一律视为空表」（见前面「逐条移植理由」第 1 条），
+ * 这里只是把同一个约定补到 watch 这条入口上，没有引入任何新语义。
+ * 不用 `||` 也不用 `??`：与 onMounted 保持同一种写法，读起来是一处而不是两处规则。
+ *
+ * 【改的是哪一条入口】父组件有两个入口把 showdata 送进来（watch / onMounted），
+ * onMounted 本来就有兜底，缺的一直只有 watch 这一条。
+ */
 watch(
   () => props.showdata,
   (val) => {
-    data.value = val
+    data.value = val ? val : []
   }
 )
 

@@ -387,9 +387,21 @@ export function restoreDraftPayload(payload, baseForm) {
    * 且它往返无损：0 分 60 秒 → 0*60+60 = 60，与 1 分 0 秒完全等价。
    * 改成 >= 只会让恢复出来的值偏离 dist / 偏离界面自己的校验区间，不解决任何问题。
    */
+  /*
+   * 【第十二届·显示层修复】total === 0 表示「这份草稿还没填时长」，
+   * 恢复成「0 分 0 秒」会让人以为已经填好了。与 OrchestraForm 的 makeForm() 初值、
+   * 编辑页回填三处口径统一：未填写 → 两个框都空，交给 required 规则提示。
+   *
+   * 【上面「判据是 > 60，不是 >= 60」那 20 行注释仍然完全成立】
+   * 本次只在最前面插一个 total === 0 的分支，`> 60` 与 `== 60` 的判断一字未动：
+   * total === 60 依旧走最后的 else，恢复成「0 分 60 秒」，往返无损。
+   */
   if (total > 60) {
     form.minute = getM(total)
     form.second = getS(total)
+  } else if (total === 0) {
+    form.minute = ''
+    form.second = ''
   } else {
     form.minute = 0
     form.second = total

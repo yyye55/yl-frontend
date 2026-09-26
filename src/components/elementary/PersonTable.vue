@@ -393,10 +393,29 @@ const {
   uploadFileSingle
 } = usePhotoUpload((i) => data.value[i])
 
+/*
+ * 【第十二届·第十三轮】与 TeacherTable.vue 同款、同日修的兜底（那条改动的完整因果链
+ * 写在该文件的 watch 上方，此处不重复展开）。两表是孪生模块，父组件、
+ * prop 契约、onMounted 写法都完全对称，所以两边的 watch 也必须对称。
+ *
+ * 【本表为什么当时没崩、现在也必须补】
+ * 因为本表下面 watch 的是 `rowsSignature`，而那个函数第一行就写了
+ * `if (!Array.isArray(data.value)) return ''` —— 相当于**意外**被兜住了，
+ * 抛不出错。但 data.value = undefined 这个坏状态本身仍然成立了，只是没被引爆：
+ *   · flush() 里的 `data.value.splice(0, data.value.length)`
+ *   · 导入重建时那句同样的 splice
+ *   · check() 之外仍然裸读 `data.value.length` 的地方
+ * 一旦用户点「清空」或走导入，就会轮到它们抛。
+ * 所以这里补的不是「修一个正在崩的地方」，而是**把坏状态从源头掐掉**。
+ * （不写行号：本文件改动后行号会平移，写死容易过期。）
+ *
+ * 【写法】与 onMounted 的 `props.showdata ? props.showdata : []` 逐字一致，
+ * 与 TeacherTable.vue 改后也逐字一致 —— 三处同一个约定，不留第二种写法。
+ */
 watch(
   () => props.showdata,
   (val) => {
-    data.value = val
+    data.value = val ? val : []
   }
 )
 

@@ -49,6 +49,15 @@
       TeacherList / colleges），它们弹的是同一个框，所以会**一起变宽** —— 这是预期的，
       不会出现「有的页面宽、有的窄」。除此之外不改任何文件、任何逻辑。
       写法与项目里其它弹窗一致（ModifyUserInfo 用 40%、admin/user 用 50%）。
+
+      【2026-09-26 补充 —— 指导教师表加了「电子照片」列，上面的数字要这样读】
+      加这列（width=100）之后，指导教师表从 870px 变成 970px，
+      于是上表里所有的「师滚」数字都要 **+100px**：
+        1366 屏 60%：师滚 82 → 182px    1440 屏 60%：师滚 38 → 138px    1920 屏 60%：0 → 0
+      参展人员表（1300px）一行没变，仍是真正的宽度瓶颈，所以 60% 这个结论不推翻。
+      实测（Playwright，1366×900，60% 弹窗）：可视宽 788px、指导教师表内容宽 970px、
+      参展人员表内容宽 1300px —— 与上表推算的 788/870/1300 完全吻合，只多了这 100px。
+      两张表都有拖拽横滚，多出的一段拖得到。
     -->
     <el-dialog v-model="dialogTableVisible" title="人员信息" width="60%" append-to-body>
       <!--
@@ -71,10 +80,55 @@
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
         <el-table-column prop="person_info.school" label="学校名称" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.phone" label="联系电话" width="150" align="center" header-align="center" />
+        <!--
+          【第十二届·新增】电子照片列 —— 指导教师表原本没有这一列。
+
+          为什么加在这里（最后一列）：前面 7 列（序号/姓名/身份证号/性别/年龄/学校名称/
+          联系电话）的顺序、宽度、prop 一个都不动，老列不会错位；只是尾部多一格。
+
+          数据从哪来：row.person_info.head。
+          本组件拿到的每一行都是后端 report_dict 的产出一份，而
+          apps/core/services.py:296 给**每一行**（含 position=4 的教师行）都挂了
+          person_info = model_dict(Person(...))，model_dict 又是 Person 的全字段导出
+          （services.py:43-53），head 正是 Person 的字段（models.py:267）。
+          换句话说：这个字段接口一直在返回，下面参展人员表的同一列读的就是它，
+          老师行只是缺了一格 HTML 把它显示出来而已 —— 本次不改任何接口、不发任何新请求。
+
+          宽度 100 与下面参展人员表的电子照片列一致，两张表右边缘因此对齐。
+        -->
+        <el-table-column label="电子照片" width="100" align="center" header-align="center">
+          <template #default="{ row }">
+            <!--
+              有地址才画图。尺寸 59×82 与下面参展人员表那一列**逐字相同**。
+              第一层兜底：极端情况下 person_info 可能是 null（该 Person 记录已被删除），
+              不判空会取到 undefined —— 不报错、但整列空白，最难查。
+            -->
+            <img
+              v-if="row.person_info && row.person_info.head"
+              :src="row.person_info.head"
+              style="width:59px;height:82px"
+            />
+            <!--
+              没上传过照片 → 显示文字「未上传」。
+
+              【为什么不是一行 `-`】`-` 只有一行文字高，有照片的行被照片撑到 105px，
+              没照片的行只有 40px —— 同一张表里行高差一倍，看起来像表格错位。
+              占位框做成与照片**完全相同的 59×82**，有没有照片的行就一样高。
+
+              【为什么不是无条件的 <img>】（参展人员表原来就是无条件写法）
+              head 是空串时浏览器把 src="" 当成「这张图加载失败」，
+              渲染出碎图标 + alt 边框，用户会以为系统坏了。
+              所以两张表都用 v-if/v-else 二选一。
+
+              样式见本文件 <style> 里的 .photo-empty —— 两张表共用这一份。
+            -->
+            <div v-else class="photo-empty">未上传</div>
+          </template>
+        </el-table-column>
       </el-table>
 
       <!--
-        参展人员表 —— 与上面那张的差别只在列：多了「身份/角色/使用乐器/头像」四列。
+        参展人员表 —— 与上面那张的差别只在列：多了「身份/角色/使用乐器/电子照片」四列。
         两张表都挂了 ref（各自的拖拽靠它定位内部滚动节点），
         也都开了 :scrollbar-always-on（只加一张会显得像 bug）。
         列定义与原件逐字一致，没有增删改。
@@ -111,9 +165,27 @@
           </template>
         </el-table-column>
         <el-table-column prop="person_info.instrument" label="使用乐器" width="150" align="center" header-align="center" />
-        <el-table-column prop="person_info.head" label="头像" width="100" align="center" header-align="center">
+        <!-- 【第十二届·文字调整】表头「头像」→「电子照片」。
+             只改这一个显示字符串，prop / width / 原有的渲染方式一个字没动；
+             报名表单里那张表（elementary/TeacherTable.vue、PersonTable.vue）的表头
+             本来就叫「电子照片」，改完两处口径一致。 -->
+        <el-table-column prop="person_info.head" label="电子照片" width="100" align="center" header-align="center">
           <template #default="{ row }">
-            <img :src="row.person_info.head" style="width:59px;height:82px" />
+            <!--
+              与上面指导教师表的电子照片列**逐字同款**（含那个 59×82 的占位框），
+              两张表的行高才会完全一致。
+
+              【本轮修掉的缺陷】这里原本是无条件的
+                  <img :src="row.person_info.head" style="width:59px;height:82px" />
+              head 是空串时浏览器按「这张图加载失败」处理，渲染成碎图标 + alt 边框。
+              改成 v-if/v-else 二选一：有照片画图，没照片显示「未上传」。
+            -->
+            <img
+              v-if="row.person_info && row.person_info.head"
+              :src="row.person_info.head"
+              style="width:59px;height:82px"
+            />
+            <div v-else class="photo-empty">未上传</div>
           </template>
         </el-table-column>
       </el-table>
@@ -335,5 +407,41 @@ useTableDragScroll(personTableRef)
   font-weight: 700;
   margin-top: 10px;
   margin-bottom: 10px;
+}
+
+/*
+ * 「电子照片」列没上传照片时的占位框（里面写「未上传」）。
+ * 指导教师表、参展人员表的这一列共用这一份 —— 规则只有一处，改这里两张表同时生效。
+ *
+ * 【尺寸必须与照片完全相同（59×82）】
+ * el-table 的行高由这一行里最高的那一格撑开。占位框只要矮一截，
+ * 「没照片的行」就比「有照片的行」矮，同一张表里行高参差不齐，看起来像表格错位。
+ * （改之前这一格显示的是 `-`，只有一行文字高 —— 有照片的行 105px、没照片的行 40px。）
+ *
+ * 【display:inline-block + overflow:hidden 两个都不能省】
+ * 两者一起用，占位框的基线才落在**盒子下边缘**（CSS 2.1：overflow 计算值不是 visible 的
+ * inline-block，其基线取下外边距边缘），与 <img> 这类替换元素的行为完全一致，
+ * 于是它撑出来的行盒高度和真正的照片一模一样。
+ * 只写 inline-block、不写 overflow:hidden 的话，基线会取内部文字的基线，
+ * 行盒比有照片的行更高，反而更不齐。
+ *
+ * 【为什么用 line-height 居中，而不是 flex】
+ * 占位框固定 82px 高，行高写 82px 就能把「未上传」垂直居中；
+ * 若改用 display:flex / inline-flex，行盒行为就不再等价于 <img>，行高又会对不上。
+ *
+ * 【user-select: none】
+ * 占位框里有文字，不禁选的话按住它横向拖动表格会变成「选中文字」，
+ * 原生选区会朝 useDragScroll 抛 pointercancel、正在进行的平移被打断
+ * （与 styles/photo-cell.css 里 .head-placeholder 同一条理由）。
+ */
+.photo-empty {
+  width: 59px;
+  height: 82px;
+  display: inline-block;
+  overflow: hidden;
+  line-height: 82px;
+  color: #909399; /* Element Plus 的次要文字灰 */
+  font-size: 12px;
+  user-select: none;
 }
 </style>

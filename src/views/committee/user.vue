@@ -35,6 +35,8 @@
     - 重置密码的 prompt：`inputValidator`（空串 / 纯空格 / 长度越界都不放行，口径见
       src/config/accountRules.js）+ `inputType: 'password'`
       （dist 无；不加的话空输入会被提示「重置成功」而密码没变，且新密码是明文显示）
+    - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码 scylb@2026。
+      这是给操作者的操作约定，不是系统自动行为 —— 详见模板里那段注释。
 -->
 <template>
   <div class="bg">
@@ -65,6 +67,15 @@
     <div class="content">
       <div class="bg-list">
         <p class="title">账号列表</p>
+
+        <!--
+          【本仓库新增，dist 无】重置密码的默认口径提示。
+          ⚠️ 这是给操作者看的一条**操作约定**（重置时请填这个值），不是系统行为：
+          后端 user_update_admin 并不会自动套用默认密码，它按弹窗里输入的明文
+          set_password（apps/api/views.py:517 `if data.get("password")`），
+          输入框留空则密码纹丝不动。所以这句话在提醒人，不是在描述功能。
+        -->
+        <p style="margin:10px;">提示：重置密码后恢复为默认密码：<b>scylb@2026</b></p>
 
         <el-table :data="data" border style="width: 100%">
           <el-table-column type="index" label="序号" width="60" />

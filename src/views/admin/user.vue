@@ -23,6 +23,21 @@
           <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="username" label="账号" />
           <el-table-column prop="nickname" label="名称" />
+          <!--
+            类型列。
+            【为什么不写 prop="type" 直接用】row.type 是数字（0/1/5…），
+            直接渲染出来是一列裸数字，等于没加。所以用默认插槽过一层 TYPE_LABEL 映射。
+            【?? row.type 的兜底不能删】列表接口按 type__in=(0,1,5) 过滤，
+            正常只会出现 0/1/5；但万一后端以后放开过滤，遇到表里没有的值（如 2/3/4），
+            只写 TYPE_LABEL[row.type] 会渲染成空白，还不如显示原始数字。
+            【本列不引入任何样式】宽度和排版全部交给 Element Plus 默认单元格样式，
+            和相邻几列完全一致；没有 align、没有 class、没有内联 style。
+            宽度 110 是因为「中小学端」是本表里最长的类型名（5 个字），
+            给足宽度避免表头/单元格折行。
+          -->
+          <el-table-column label="类型" width="110">
+            <template #default="{ row }">{{ TYPE_LABEL[row.type] ?? row.type }}</template>
+          </el-table-column>
           <el-table-column prop="leader" label="修改人姓名" />
           <el-table-column prop="tel" label="修改人电话号码" />
           <el-table-column prop="description" show-overflow-tooltip label="其他信息" />
@@ -71,6 +86,17 @@
             <el-option label="组委会账号" :value="2" />
             <el-option label="市州账号" :value="1" />
             <el-option label="学校账号" :value="0" />
+            <!--
+              中小学端账号。
+              【:value 前面那个冒号不能省】它让 5 以**数字**绑定，而不是字符串 '5'。
+              后端 type 是 IntegerField，传 '5' 也存得进去；但前端路由守卫不做类型转换
+              （router/guard.js `user.type !== to.meta.role`），一边 '5' 一边 5 恒不相等，
+              用户会被踢回 /middle 并看到「该账号类型无可用后台」。
+              【为什么是 5 不是 4】5 = 后端 core/models.py 的 TYPE_PRIMARY_SECONDARY，
+              4 = TYPE_PROVINCE（省级，已下线）。数字 4 被省级占过，不复用 ——
+              见 config/roles.js 头部注释。
+            -->
+            <el-option label="中小学账号" :value="5" />
           </el-select>
         </el-form-item>
         <p style="margin:10px">提示：密码为必填项，长度需为 {{ PASSWORD_MIN }} 到 {{ PASSWORD_MAX }} 个字符</p>
@@ -220,6 +246,32 @@ import {
   MSG_PASSWORD_LENGTH,
   checkPasswordInput
 } from '@/config/accountRules'
+
+/**
+ * 账号类型 -> 中文名。只给「账号列表」那一列做显示用，不参与任何判断。
+ *
+ * 【取值依据】后端 apps/core/models.py:76-82 的常量定义，
+ * 以及同目录 migrations/0010_update_type_comments.py 里同步的数据库列注释：
+ *   0=学校 1=市州（只读，报名功能已移出） 2=组委会 3=管理员 4=省级 5=中小学端
+ *
+ * 【为什么 2/3/4 也写进来，明明列表接口看不到它们】
+ * 列表接口的过滤条件是 type__in=(0, 1, 5)，所以这行本该只出现 0/1/5。
+ * 但兜底值一旦渲染出来（见模板里 `?? row.type` 的说明），
+ * 有中文名总比显示裸数字强；而且这三行是"照抄数据库注释"，
+ * 少写反而会让后来的人以为是漏了。属于**只读的展示字典**，改动它不会影响任何逻辑。
+ *
+ * 【为什么不从 config/roles.js 引】那里只有数字常量 ROLE.SCHOOL/CITY/…，
+ * 没有中文名，而且**故意没有 4**（省级已下线）—— 硬引过来会漏掉 4 这一档。
+ * 这里要的是"把可能出现的值都显示成人话"，和 roles.js「谁有权限」的目标不同，故各留一份。
+ */
+const TYPE_LABEL = {
+  0: '学校端',
+  1: '市州端',
+  2: '组委会',
+  3: '管理员',
+  4: '省级',
+  5: '中小学端'
+}
 
 const keyword = ref(null)
 const showInfo = ref(false)
@@ -399,16 +451,65 @@ function download(fileName) {
  * 接口报错仍走原来的分支（若把接口调用一并包进 try，接口错误会被静默吞掉）。
  * submitting 只为防连点，见它的声明处。
  */
+/**
+ * 建号前查重：这个账号名是不是已经被占了。
+ *
+ * 【为什么需要这一步】后端 user_create_admin（apps/api/views.py）**没有** catch
+ * IntegrityError，而 users.username 是 unique —— 撞名会返回 **HTTP 500**。
+ * 前端的 utils/request.js 对 500 执行 `window.location.href = BASE_URL + '500'`，
+ * 那是**整页跳转**：弹窗、已填的其他字段、列表的分页位置全部丢失。
+ * 这里在发 POST 之前先问一次列表接口，撞名就地提示，绕开那条整页跳转的路径。
+ *
+ * 【为什么用列表接口查】管理员能调到的账号类接口里只有它带 keyword 搜索
+ * （/api/admin/user/list）。传 limit: 1000 是尽量一次把命中项取全 ——
+ * 后端 list_page 对 limit 没有上限，只做了 max(1, …) 的下限保护。
+ *
+ * 【为什么拿到结果还要再精确比对一次 username】keyword 走的是 icontains，
+ * 而且同时匹配 username / tel / nickname 三个字段。搜「张三」时返回的行里，
+ * 完全可能只是**电话或名称**含「张三」、账号名并不是它。
+ * 所以必须 `u.username === username` 精确比对，否则会误拦一个本来能建的账号。
+ *
+ * 【为什么出错时放行（fail-open）】网络抖动、响应结构异常等一律 return false，
+ * 让流程落回原来的「直接 POST」。宁可偶尔走到那个 500，
+ * 也不要因为查重这一步自己出问题就**拦住一次合法的建号操作**。
+ *
+ * 【覆盖不到的情况，已知】列表接口的过滤条件是 type__in=(0, 1, 5)，
+ * 所以撞上 type=2/3/4 的存量账号（组委会 / 管理员 / 省级）时查不出来，仍会 500。
+ * 前端拿不到这些账号的清单（/committee/*、/admin/* 都按角色隔离），
+ * 这一条只能靠后端修 —— 方案见文档末尾给后端的那段代码。
+ */
+function isUsernameTaken(username) {
+  if (!username) return Promise.resolve(false)
+  return adminApi.user.list({ keyword: username, limit: 1000, page: 1 })
+    .then(({ data: res }) => {
+      if (res.code !== 0 || !Array.isArray(res.data)) return false
+      return res.data.some((u) => u.username === username)
+    })
+    .catch(() => false)
+}
+
 async function submit() {
   const valid = await ruleFormRef.value.validate().catch(() => false)
   if (!valid) return
 
   submitting.value = true
+
+  // 查重。注意撞名这条分支**必须先把 submitting 复位再 return** ——
+  // 否则用户撞一次名之后，确定按钮会一直停在 loading 态、再也点不动。
+  if (await isUsernameTaken(form.value.username)) {
+    submitting.value = false
+    ElMessage.warning(`账号「${form.value.username}」已存在，请换一个账号名`)
+    return
+  }
+
   adminApi.user.create(form.value).then(({ data: res }) => {
     if (res.code === 0) {
       showInfo.value = false
       form.value = {}
       ElMessage.success('创建成功')
+      // 建完刷一次列表。原实现漏了这一步，要手动点「刷新」才看得到新账号；
+      // 加了「类型」列之后更需要它 —— 否则没法立刻确认建出来的是哪种类型。
+      getData()
     } else {
       ElMessage.warning(res.msg)
     }

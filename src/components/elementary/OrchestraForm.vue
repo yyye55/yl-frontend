@@ -238,11 +238,51 @@
             <p style="font-size: 14px; color: black">
               请各学校在报名时明确指导教师排名顺序，下方署名顺序将作为最终获奖证书指导教师排名顺序的署名依据，不接受后续调整，请各学校在提交前仔细核对。
             </p>
+            <!--
+              【第十二届·第十轮】新增一句提示，说明「教师指挥」这条数据是**自动带进来的**。
+
+              【为什么要加】下面「参展人员」表里填了 身份=教师、角色=指挥 的人之后，
+              指导教师表末尾会自动多出一行灰色的只读行（见 TeacherTable.vue 的 :conductor）。
+              不加说明的话有两条歧义：
+                ① 用户以为自己漏填了 —— 又去指导教师表里手动「添加一行」把同一个人再填一遍，
+                   于是同一张身份证在两张表里各出现一次，提交时报「该身份证已被使用」；
+                ② 用户以为这行也要自己填 —— 其实它只有「署名排序」一列可改。
+              所以这句话放在指导教师表的**正上方**，用户在往下看表格之前先读到。
+
+              【为什么放在这一段之后、照片注之前】
+              上面那段说的是「排名顺序」（名单内容），下面那段（注：）说的是「照片格式」，
+              本次这句说的还是**名单内容**（谁会自动出现在名单里），
+              与上面那段同类，紧跟其后读起来是连着的；照片注继续保持它原来的收尾位置。
+              只新增这一个 <p>，前后两个 <p> 的标签、文案、内联样式一个字没动。
+              样式与上面那段保持一致（font-size:14px; color:black），不引入新的颜色/字号。
+            -->
+            <p style="font-size: 14px; color: black">
+              提示：在下方参展人员表中填写身份为「教师」、角色为「指挥」的人员后，其信息会自动带入上方指导教师表中（该行只有「署名排序」可修改），无需在此重复添加。
+            </p>
             <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：教师照片命名规则以教师姓名+教师身份证号后6位命名，例如：<span style="font-weight: bold">张三123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456</span> 且姓名为 <span style="font-weight: bold">张三</span> 的人员对应。</p>
 
             <!-- 【第十二届·第四轮】@rows-change 只是「子表内容变了」的通知，判定在父页面做
-                 （规则要同时看两张表：指导教师超没超，取决于参展人员里指挥的身份）。 -->
-            <Teacher ref="teacherRef" :showdata="form.teacher" @rows-change="onPeopleChange" />
+                 （规则要同时看两张表：指导教师超没超，取决于参展人员里指挥的身份）。
+                 【第十二届·第五轮】新增两处绑定，都只作用于「教师指挥带入行」：
+                   :conductor         —— 把参展人员里那行「教师+指挥」下发给子表，
+                                         有值时子表末尾多渲染一行只读行（见 TeacherTable.vue）；
+                   @conductor-signature —— 子表里改了带入行的署名排序后回传，
+                                         由父页面写进上面那个对象（子表改 prop 会被 ESLint 拦）。
+                 两处都是纯增量：原有的 ref / :showdata / @rows-change 一字未动。
+                 【第十二届·第十轮】再加一对，只为「编辑页不要把灰行和手填行换个位置」：
+                   :conductor-slot        —— 父页面把上次记下的位置下发给子表（回显时用）；
+                   @conductor-slot-change —— 子表算出的位置变了就回传，写进 form 存起来，
+                                             下次暂存/提交随 payload 的 display_order 发给后端。
+                 同样也是纯增量，原有绑定一个没动。 -->
+            <Teacher
+              ref="teacherRef"
+              :showdata="form.teacher"
+              :conductor="conductorRow"
+              :conductor-slot="form.conductorSlot"
+              @rows-change="onPeopleChange"
+              @conductor-signature="onConductorSignature"
+              @conductor-slot-change="onConductorSlotChange"
+            />
             <div style="font-size: 16px; font-weight: bold">参展人员</div>
             <p style="font-size: 14px;">
               乐团须以学校为单位组建，中小学乐团指挥须为本校在职教师；高校乐团指挥可为本校在职教师或在校学生；乐团成员须为本校在校学生。<br/>
@@ -704,11 +744,69 @@ function makeForm() {
     minute: 0,
     second: 0,
     dinner_reservation: [],
+    /*
+     * 【第十二届·第七轮】两张人员表的数组必须在这里就建出来，不能留 undefined。
+     *
+     * 【为什么】子表挂载时执行的是 PersonTable / TeacherTable 里的
+     *     data.value = props.showdata ? props.showdata : []
+     * 这一句是「共享引用」还是「各拿一份」，全看 props.showdata 有没有值：
+     *   · 有值 → data.value 就是 form.person 本人，子表 push/改下拉 = 父页面同步可见；
+     *   · undefined → 走右边，子表**自己新建**一个数组，从此与 form.person 再无关系。
+     *
+     * 【后果】conductorRow 这个 computed 只认 form.person（见下方），
+     * 新增页原先没有这两个键，于是 form.person 恒为 undefined、
+     * 带入行在新增页上**永远不会出现**（手填和导入都一样）——
+     * 已用真浏览器逐步骤复现（添加一行 → 身份=教师 → 角色=指挥，指导教师表始终 0 行）。
+     *
+     * 【为什么能安全地放在 ...cfg.formDefaults 之前】formDefaults 里目前只有
+     * group / establishment（见本文件三个模块的 cfg），没有这两个键，不会被覆盖；
+     * 即便将来加了，同键也应当以显式声明的这份为准。
+     *
+     * 【为什么是空数组而不是不写】空数组是有值的（truthy），子表会走「共享引用」那条路；
+     * 不写则回到上面那个坑。
+     */
+    person: [],
+    teacher: [],
+    /*
+     * 【第十二届·第十轮】带入行的「进表位置」，null = 还不知道。
+     *
+     * 与上面两个数组同样"必须在这里就建出来"：它是 TeacherTable 的 conductorSlot prop
+     * 的来源，也是 buildDraftPayload 写 display_order 的依据。
+     * 新增页上它恒为 null（要靠子表事件填），编辑页回显时由 restoreDraftPayload 写入。
+     * 不给它一个初值的话，`:conductor-slot="undefined"` 会走 prop 默认值 —— 结果一样，
+     * 但表单的键集合会在第一次事件后才多出来一个，形状不稳定，排查时容易看花眼。
+     */
+    conductorSlot: null,
     ...cfg.formDefaults
   }
 }
 
 const form = ref(makeForm())
+
+/* ------------------------- 教师指挥带入行（第十二届·第五轮） ------------------------- */
+
+/**
+ * 参展人员表里的「教师 + 指挥」那一行，用于指导教师的只读带入行。
+ *
+ * 【判定条件与 personRules.js 完全一致】type=1（教师）且 position=2（指挥）。
+ * 这里刻意用 Number() 转一次再比：position / type 在本项目里有三个来源
+ * （界面下拉是数字、Excel 导入是数字、草稿回填与后端接口回显可能是字符串），
+ * '2' === 2 为假，不转会漏掉整条链路。这个坑 personRules.js:280-285 已经踩过并注释，
+ * 此处沿用同一口径 —— 两处判定必须同源，否则会出现「校验说有指挥、表格里却没有带入行」。
+ *
+ * 【为什么用 find 只取第一个】后端有部分唯一索引 report_person_one_conductor_idx，
+ * 一张报名表最多 1 名有效指挥；真出现 2 条也只可能是脏数据，
+ * 此时 personRules.js 会先报「每张报名表只能有 1 名指挥」，不需要这里再处理。
+ *
+ * 【为什么返回对象引用而不是拷贝】带入行的署名排序要能直接写回这份数据，
+ * 参展人员表改了姓名这里也要立刻跟着变。同一个引用 = 天然双向同步，零成本。
+ *
+ * @returns {object|null} 指挥行对象；没有教师指挥时为 null
+ */
+const conductorRow = computed(() => {
+  const list = form.value.person || []
+  return list.find((p) => Number(p.type) === 1 && Number(p.position) === 2) || null
+})
 
 /* ------------------------- 指定曲目候选（第十二届） ------------------------- */
 
@@ -1375,7 +1473,27 @@ function getMessage() {
       const people = r.person
       if (people.length > 0) {
         people.forEach((p) => {
-          p.person_info = { ...p.person_info, type: p.type, position: p.position }
+          /*
+           * 【第十二届·第五轮】多带一个 signature_order。
+           *
+           * 【为什么必须带】后端 report_dict() 用 model_dict(link) 导出 relationship 行，
+           * 所以 signature_order 一直在接口返回值里（在 p 这一层，不在 p.person_info 里）；
+           * 而表单行只认 person_info 里的字段。这里不搬一次的话：
+           *   编辑已提交的报名 / 草稿恢复 → 表单里读不到署名排序 → 用户点保存 →
+           *   draftPayload.js 发 null → 后端全量 setattr → **署名排序被静默清空**。
+           * 与 p.remark / p.major 那些字段是同一类坑（值在、只是没人搬），
+           * 不是新需求 —— 所以只补一个搬运，不加任何新逻辑。
+           *
+           * 【?? '' 的兜底】后端为 NULL 时给的是 null，而 el-select 的「不填」项
+           * 绑的是空串 ''。统一成 '' 才能让下拉框显示成「不填」而不是空白，
+           * 也让 draftPayload.js 的 intOrNull('') 稳定产出 null（合法值）。
+           */
+          p.person_info = {
+            ...p.person_info,
+            type: p.type,
+            position: p.position,
+            signature_order: p.signature_order ?? ''
+          }
           if (p.type === 1 && p.position === 4) teachers.push(p.person_info)
           else persons.push(p.person_info)
         })
@@ -1722,6 +1840,50 @@ function runQualificationCheck(force) {
 /** ① 填写时：子表行增删、身份 / 角色被改 → 去重提示 */
 function onPeopleChange() {
   scheduleQualificationCheck()
+}
+
+/**
+ * 【第十二届·第五轮】指导教师表的带入行改了署名排序 → 写回参展人员表里的指挥对象。
+ *
+ * 【为什么由父页面来写，而不是子表直接改】conductor 是以 prop 下发到子表的，
+ * 子表直接改它的属性会被 eslint-plugin-vue 的 vue/no-mutating-props 判为违规
+ * （改 prop 的深层属性同样算）。子表只 emit 值，真正的写入留在持有数据这一侧。
+ *
+ * 【为什么不用改完再「同步」一次】conductorRow 是 form.person 里那个对象的
+ * **同一个引用**，不是副本。所以这一行赋值之后：
+ *   · 参展人员表那一行（如果是编辑页回显 / 草稿恢复）读的是同一个对象，自动就是新值；
+ *   · draftPayload.js 的 personToPayload 读的也是它，暂存 / 提交自动带上；
+ *   · 子表的 usedSignatures 是 computed，依赖变了自动重算 → 另一个下拉框的置灰状态跟着变。
+ * 没有任何一处需要「手动同步」。
+ *
+ * 【为什么不需要触发资格类校验】署名排序不参与人数上限的计算
+ * （上限数的是 form.teacher 的行数，而带入行不在里面），
+ * 所以这里**刻意不调** scheduleQualificationCheck() —— 白跑一遍只会多一次无意义的提示比对。
+ *
+ * @param {string|number} val 子表回传的署名排序值：''（不填）/ 1 / 2
+ */
+function onConductorSignature(val) {
+  if (conductorRow.value) conductorRow.value.signature_order = val
+}
+
+/**
+ * 【第十二届·第十轮】指导教师表回传「带入行的进表位置」→ 存进 form，下次暂存/提交带走。
+ *
+ * 【存的是什么】指挥进表那一刻表里有几行手填行（0 起）。它决定灰行显示在第几行，
+ * 也是 payload 里 display_order 的值（见 draftPayload.buildDraftPayload）。
+ *
+ * 【为什么要存到 form 上，而不是现取】子表的这个位置是它的内部状态
+ * （何时 latch、latch 成多少只有它知道），父页面只在提交那一刻调 getData / getCacheData，
+ * 那时再取已经晚了。存进 form 之后，buildDraftPayload 走 getForm() 就能拿到。
+ *
+ * 【不触发任何校验】与 onConductorSignature 同理：位置只是显示顺序，
+ * 不参与人数上限（上限数的是 form.teacher 的行数）、不参与资格类判定，
+ * 所以这里刻意不调 scheduleQualificationCheck()。
+ *
+ * @param {number|null} val 子表给的位置；null = 还没进表 / 指挥没了
+ */
+function onConductorSlotChange(val) {
+  form.value.conductorSlot = val
 }
 
 /** ② 批量导入后：强制提示。导入是明确的用户动作，每次都要给一次反馈 */

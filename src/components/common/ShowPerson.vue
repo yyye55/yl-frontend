@@ -58,6 +58,14 @@
       实测（Playwright，1366×900，60% 弹窗）：可视宽 788px、指导教师表内容宽 970px、
       参展人员表内容宽 1300px —— 与上表推算的 788/870/1300 完全吻合，只多了这 100px。
       两张表都有拖拽横滚，多出的一段拖得到。
+
+      【2026-09-26 再补充 —— 指导教师表又加了「署名排序」列（width=100）】
+      这一列不是这一轮才「新增数据」的，是把接口**一直在返回、此前没显示出来**的
+      signature_order 显示出来（见模板里那一列的注释）。宽度取 100，「师滚」再加 100px：
+        指导教师表 970 → 1070px
+        1366 屏 60%：师滚 182 → 282px    1440 屏 60%：师滚 138 → 238px    1920 屏 60%：0 → 0
+      参展人员表（1300px）**一行没变**，仍是真正的宽度瓶颈，所以 60% 这个结论依然不推翻。
+      两张表都有拖拽横滚，多出来的这一段拖得到 —— 与上面电子照片列那次是同一情况。
     -->
     <el-dialog v-model="dialogTableVisible" title="人员信息" width="60%" append-to-body>
       <!--
@@ -75,6 +83,33 @@
       >
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
         <el-table-column prop="person_info.name" label="姓名" width="100" align="center" header-align="center" />
+        <!--
+          【第十二届·第五轮】新增「署名排序」列，位置在 姓名 与 身份证号 之间 ——
+          与报名表单里指导教师表的那一列**同位置、同表头文字**，
+          用户在两个地方看到的是同一个东西，不用重新找。
+
+          数据从哪来：row.signature_order —— **不需要改任何接口**。
+          本组件的每一行是后端 report_dict() 的产出，它用
+              item = model_dict(link)          （apps/core/services.py:311）
+          导出整个 ReportPerson 关系行，而 signature_order 正是这张表的字段
+          （apps/core/models.py:284，迁移 0011_report_person_signature_order）。
+          model_dict 是「取 _meta.fields 的全部字段名」的通用导出，所以这个键
+          **接口一直在返回**，只是此前没有哪一格 HTML 去读它 —— 与上面电子照片列
+          是同一类情况（见那一列的长注释）。
+
+          宽度 100 与「姓名」「电子照片」两列一致，纯属观感统一；
+          这一列只可能显示 1 / 2 / -，100px 绰绰有余。
+
+          展示用「-」兜底而不是留空：留空与「这一格没数据」在视觉上无法区分，
+          而署名排序「没填」是一个**有意义的状态**（表示该老师不参与署名排位，
+          导出时会排在已填的人之后），显示成「-」比空白更接近它的真实含义。
+          兜底写法的理由（为何先判 row 是否存在）与上面电子照片列一致。
+        -->
+        <el-table-column label="署名排序" width="100" align="center" header-align="center">
+          <template #default="{ row }">
+            {{ (row && row.signature_order) || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="person_info.card" label="身份证号" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.gender" label="性别" align="center" header-align="center" />
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
@@ -223,7 +258,7 @@
  *   `item["person_info"] = model_dict(Person.objects.filter(pk=link.person_id).first())`，
  *   Person 模型确有 name / card / gender / age / school / phone / instrument / head 字段。
  *
- * 【与 dist 的差异（两处，均为适配 Vue 3 或修正明显笔误）】
+ * 【与 dist 的差异（三处）】
  *  1. 列属性用 `prop` 而非 dist 原文的 `property`。
  *     dist 是 Element UI 2.x 写法；`property` 在 Element Plus 中已是废弃别名，
  *     统一改用现行的 `prop`，渲染结果完全一致。
@@ -232,6 +267,12 @@
  *     Vue 3 允许修改「传入对象自身的属性」，但这里改为用局部 ref 计算，
  *     结果数组与原版逐项相同，且不再产生对父组件的隐式副作用。
  *     规范化逻辑保持一致：数组且非空 -> 原样；否则（含空数组、非数组）-> 包成单元素数组。
+ *  3. 【第十二届·第十轮】**分表规则**多认一种行：「身份=教师(1) 且 角色=指挥(2)」
+ *     除了进「参展人员」表，也进上面那张「指导教师」表（dist 只按 position===4 分，
+ *     这个人 position 是 2，于是只在下面那张表出现）。
+ *     这一处是**业务要求**，不是笔误 —— 报名表单里他本来就两张表都在，
+ *     弹窗与它口径不一致会让审核方觉得「有的人没被算成指导老师」。
+ *     详细理由见方法里的 isConductorTeacher / dealWith 注释。
  *
  * 【mounted 空钩子未迁移】原文 mounted(){} 为空实现。
  */
@@ -246,6 +287,28 @@ const dialogTableVisible = ref(false)
 const teacher = ref([])
 const person = ref([])
 
+/**
+ * 【第十二届·第十轮】「教师+指挥」判定 —— 身份是教师(1)、角色是指挥(2)。
+ *
+ * 【为什么要单独判它】dist 原文分表只认 `position === 4`（指导教师），
+ * 而这个人的 position 是 2（指挥），于是他被判进「参展人员」，
+ * 上面那张「指导教师」表里永远看不到他 —— 与报名表单里的展示对不上：
+ * OrchestraForm 把 form.person 全量给参展人员表，**同时**把这一行单独挑出来
+ * 当 :conductor 下发给指导教师表（OrchestraForm.vue:253-257），
+ * 也就是说报名时他本来就同时出现在两张表里。本次只是让弹窗跟上。
+ *
+ * 【为什么用 Number() 而不是 === 1】后端 ReportPerson.type / position 是
+ * IntegerField，但草稿回填、Excel 导入等链路里出现过字符串（'1' === 1 为假）。
+ * 这个坑 personRules.js 与 OrchestraForm.vue:770 都踩过并统一了口径，
+ * 这里沿用同一个写法，避免出现「校验说有指挥、表里却没有这行」。
+ *
+ * @param {object} row 后端 report_dict() 的一个人头行
+ * @returns {boolean} 是不是「教师+指挥」
+ */
+function isConductorTeacher(row) {
+  return Number(row.type) === 1 && Number(row.position) === 2
+}
+
 function dealWith() {
   dialogTableVisible.value = true
 
@@ -256,8 +319,19 @@ function dealWith() {
   teacher.value = []
   person.value = []
   for (let i = 0; i < list.length; i++) {
-    if (list[i] && list[i].position === 4) teacher.value.push(list[i])
-    else person.value.push(list[i])
+    const row = list[i]
+    /*
+     * 【第十二届·第十轮】两个 if 是**并列**的，不是 if/else —— 这一点是有意的。
+     *
+     * 原文是 `position===4 ? 教师表 : 参展人员表`，二选一。
+     * 现在「教师+指挥」要**两张表都在**（口径见上面 isConductorTeacher 的注释），
+     * 所以拆成两条独立规则：
+     *   ① 进指导教师表：position===4 的指导教师，或「教师+指挥」
+     *   ② 进参展人员表：只要不是指导教师(position===4) 就进
+     * 「教师+指挥」在 ① 成立、在 ② 也成立 → 两边都有，与报名表单一致。
+     */
+    if (row && (row.position === 4 || isConductorTeacher(row))) teacher.value.push(row)
+    if (!(row && row.position === 4)) person.value.push(row)
   }
 }
 

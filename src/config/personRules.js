@@ -342,9 +342,28 @@ export function validatePeopleQualification(establishment, group, persons, teach
   // 【与后端的一处刻意不同】后端只在「有指挥」时才查指导教师人数（它的分支全挂在 c_cnt = 1 上），
   // 前端在**无指挥**时也按 2 拦。这是本轮的产品要求（「现在指导教师最多2人」），比后端更严，
   // 不会出现「前端放行、后端打回」。
+  //
+  // 【第十二届·第五轮：口径没变，只换了说法 —— 以及为什么 teacherCount 正好是对的】
+  // 用户确认：教师指挥时的上限仍然是 1，但这个「1」指的是**除指挥外**还能手动填几个。
+  // 表格上看到的是 2 行（带入的指挥行 + 手动 1 行），数据里 position=4 只有 1 行，
+  // 两件事说的是同一个上限，只是数的地方不同。
+  //
+  // teacherCount = (teachers || []).length，而 teachers 就是表单里的 form.teacher、
+  // 也就是 TeacherTable 的 data 数组 —— **带入行不在 data 里**（它是由 :conductor
+  // 这个 prop 单独渲染的，见 TeacherTable.vue 的注释），所以这里天然只数用户手填的行。
+  // 换句话说：「灰行计入名单、不计入这个计数」不是我在这里额外做了一次减法，
+  // 而是带入行从头到尾就没进过要数的那个数组。这一点如果被谁改成把带入行放进 data，
+  // 这里就会立刻多算 1 人、教师指挥时永远超员 —— 是本轮最需要盯住的一处联动。
+  //
+  // 【文案带上了当前人数】用户要求把「当前已填 N 名」写进提示里，
+  // 让用户不用自己去数。两个分支的句式刻意保持对称（都是「除指挥外…最多…（当前已填 N 名）」）。
   const teacherMax = conductor.type === 1 ? 1 : 2
   if (teacherCount > teacherMax) {
-    errors.push(conductor.type === 1 ? '指挥是教师时，指导教师最多1人！' : '指导教师最多2人！')
+    errors.push(
+      conductor.type === 1
+        ? `指挥是教师时，除指挥外最多只能有 1 名指导老师（当前已填 ${teacherCount} 名）`
+        : `除指挥外指导教师最多 2 人（当前已填 ${teacherCount} 名）`
+    )
   }
 
   return { valid: errors.length === 0, errors }

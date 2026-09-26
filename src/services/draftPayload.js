@@ -82,6 +82,24 @@ const NOT_NULLABLE_STRINGS = [
   'choir_name', 'name', 'group', 'establishment', 'contact_name', 'contact_phone'
 ]
 
+/**
+ * 【第十二届·第十轮】是否把「指挥在指导教师表里的位置」随 payload 发给后端。
+ *
+ * 对应的后端字段是 report_person.display_order（迁移 0012）。它是前后端的**配套改动**：
+ *   · 后端没有这一列时，payload 里多这个键会被 _person() 的 PERSON_FIELDS 精确白名单
+ *     判成「person[N] 存在不允许字段」→ **保存草稿直接 400**（不是静默丢弃）。
+ *   · 后端有这一列时，不发就是"不记录位置"，退回改动前的行为（编辑页指挥排最后）。
+ *
+ * 【这个开关存在的唯一理由】给"前端先上、后端还没上"这个窗口留一条一行回滚：
+ * 真遇到保存 400，把这里改成 false 立刻恢复旧行为，不用回滚整个前端。
+ *
+ * 【当前值 true 的依据】后端 `d:/yl-all/yilinbei` 已完成并应用：
+ *   models.py 的 ReportPerson.display_order、迁移 0012、
+ *   report_drafts.py 的 PERSON_FIELDS / _person() / payload_from_report()、
+ *   services.py 的 _display_order()。本地开发库 report_person 表已确认有该列。
+ */
+const SEND_DISPLAY_ORDER = true
+
 const has = (v) => v !== null && v !== undefined && v !== ''
 const str = (v) => (has(v) ? String(v) : '')
 /** 可空字段：空值统一发 null（规范 §十七「空值 → null / ""」） */
@@ -92,6 +110,48 @@ function intOrNull(v) {
   if (!has(v)) return null
   const n = Number(v)
   return Number.isFinite(n) ? Math.trunc(n) : null
+}
+
+/**
+ * 【第十二届·第五轮】署名排序专用归一化：正整数或 null。
+ *
+ * 【为什么不能直接用 intOrNull】intOrNull(0) 会**原样返回 0**，
+ * 而后端 report_drafts._person() 对 signature_order 的校验是 minimum=1 ——
+ * 发 0 会得到「person[0].signature_order 不能小于 1」这样一个用户完全看不懂的 400。
+ * 界面上填不出 0（下拉只有 不填 / 1 / 2），但草稿回填、批量导入、手工改数据都可能带进来。
+ * 这里是发出去之前的最后一道关，成本一行，消掉一整类「暂存莫名 400」。
+ *
+ * 【为什么不写成 v === 1 || v === 2】那等于把「只有两个署名位」这条业务规则
+ * 抄进传输层。后端认的是「≥1 的整数」，这里就照后端认——将来真要加到 3 个署名位，
+ * 改下拉框的选项就够了，这个函数一行都不用动。
+ * 口径与后端 services._signature_order()（宽松路径）一致：≤0 / 非数字 → null。
+ */
+function signatureOrderOrNull(v) {
+  if (!has(v)) return null
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+/**
+ * 【第十二届·第十轮】表内行下标（指挥在指导教师表里的位置）归一化：非负整数原样，其余一律 null。
+ *
+ * 【与上面 signatureOrderOrNull 的唯一区别】**0 是合法值**（下标从 0 起，
+ * 0 = 指挥排第 1 行），所以最后那道判断是 `>= 0` 而不是 `> 0`。
+ *
+ * 【为什么不能直接写 Number(v)】`Number(null)` 与 `Number('')` 都是 0 ——
+ * 一个"没填"会被悄悄变成"排第 1 行"，这是本次最容易踩的坑。
+ * （`Number(undefined)` 是 NaN，会被 isInteger 挡掉，但 null / '' 挡不住。）
+ * 所以必须先显式排掉 null / undefined / ''。
+ *
+ * 【这里没有用 has()，但并不是因为 has() 会把 0 判成"没有"】
+ * has() 见第 103 行，是 `v !== null && v !== undefined && v !== ''` —— **has(0) 为真**，
+ * 用它同样正确。这里写三个显式比较，只是为了让"0 是合法值、'' 不是"这件事
+ * 在字面上看得见，不被 has() 这个抽象盖住。两种写法等价，别以为其中一个是必须的。
+ */
+function displayOrderOrNull(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 0 ? n : null
 }
 
 /** 取文件列表里第一个的 id；没有则 null。只取 ID，绝不带二进制/路径/凭证（规范 §十八） */
@@ -136,7 +196,32 @@ function personToPayload(row) {
     remark: nullStr(r.remark),
     // 枚举用整数，未选为 null（§十七）。注意 el-option 的 :value 本来就是 0/1/2 数字。
     type: has(r.type) ? Number(r.type) : null,
-    position: has(r.position) ? Number(r.position) : null
+    position: has(r.position) ? Number(r.position) : null,
+    /*
+     * 【第十二届·第五轮】署名排序。
+     *
+     * 【为什么后端已经准备好了】apps/core/report_drafts.py 的 PERSON_FIELDS 里
+     * **已经有** "signature_order"（第 52 行），所以多带这个键**不会**触发
+     * 「person[0] 存在不允许字段」的 400 —— 这一点是逐行确认过的，不是推测。
+     * store_people() 也会把它写进 report_person.signature_order（services.py:238-239）。
+     *
+     * 【为什么必须是归一化函数，不能直接发原值】
+     * 后端 _person() 对它的校验是 _integer(value, ..., required=False, minimum=1)：
+     *   · 不填（对象里是 '' / undefined）→ null    ✅ 后端接受
+     *   · 填了 1 / 2（数字）             → 1 / 2   ✅ 后端接受
+     *   · 填了字符串 '1'                 → 1       ✅（后端只认 int，不认 str）
+     *   · 填了 0 / 负数                  → 必须归成 null，否则被判「不能小于 1」→ 400 ❌
+     * 这里用 signatureOrderOrNull 而不是通用的 intOrNull，正是因为 intOrNull(0) 会返回 0。
+     * 另外 TeacherTable.vue 里那个下拉框的「不填」项绑的是空串 '' 而不是 0 ——
+     * 两处是配套的，改任何一处都要同时看另一处。
+     *
+     * 【为什么对参展人员行也要带上】正常的带队行、队员行这个键恒为 null，看起来是多余的。
+     * 但**指挥**恰恰是参展人员行（type=1, position=2），而「谁占第一指导老师署名位」
+     * 现在由这个字段决定 —— 所以指挥那条 person 项必须带上它。
+     * 而 buildDraftPayload 对教师表与参展人员表用的是同一个 personToPayload，
+     * 无法只对其中一张表生效，故两边都带（对另一边的实际效果就是恒为 null，无副作用）。
+     */
+    signature_order: signatureOrderOrNull(r.signature_order)
   }
 }
 
@@ -160,7 +245,18 @@ function payloadToPerson(row) {
     other: r.other ?? '',
     remark: r.remark ?? '',
     type: has(r.type) ? Number(r.type) : undefined,
-    position: has(r.position) ? Number(r.position) : undefined
+    position: has(r.position) ? Number(r.position) : undefined,
+    /*
+     * 【第十二届·第五轮】署名排序，与上面 personToPayload 的同名字段成对 ——
+     * 只 build 不 restore 的话，form 里永远是 undefined，下一次 build 仍旧发 null，
+     * 等于没修（与上面 major / other / remark 三条注释讲的是同一件事）。
+     *
+     * 【空值统一成 '' 而不是 undefined】表单里这个值的消费者是 el-select，
+     * 它的「不填」选项绑的是空串 ''；给 null / undefined 虽然也能显示成 placeholder，
+     * 但「已选中不填」和「还没碰过」两种状态在下拉框里长得一样、内部值却不同，
+     * 排查问题时容易误判。统一成 '' 让表单里的状态是确定的。
+     */
+    signature_order: r.signature_order ?? ''
   }
 }
 
@@ -214,6 +310,37 @@ export function buildDraftPayload({ form, fileList, fileList1 }) {
     dinner_reservation: Array.isArray(f.dinner_reservation) ? f.dinner_reservation : [],
     // 教师在前、人员在后 —— 与 OrchestraForm.onSubmit 拼 allPeople 的顺序一致
     person: [...teachers.map(personToPayload), ...students.map(personToPayload)]
+  }
+
+  /*
+   * 【第十二届·第十轮】给「教师+指挥」那一行回填 display_order（他进表时的行下标）。
+   *
+   * 【为什么单独在这里补，而不是写进 personToPayload】
+   * 这个值对**整张表里只有一行**有意义（教师指挥），其余行发 null 只是噪声；
+   * 而且它不属于那一行人员本身，属于"那一行在指导教师表里的位置"，
+   * 来源是 form.conductorSlot（由 TeacherTable 通过 conductor-slot-change 事件同步过来）。
+   * 另外 personToPayload 是被 `students.map(personToPayload)` 直接当回调用的，
+   * map 会把下标当第二个实参传进去 —— 给它加参数会**静默收到一个下标**，故不动它的签名。
+   *
+   * 【为什么由 form.conductorSlot 为空就整个不发】为空 = 父组件不知道位置
+   * （新增页还没进表 / 老草稿没有这个字段）→ 什么都不发，后端那一列保持原样，
+   * 下次点编辑仍按默认的"排最后"处理，行为与改动前一致。
+   *
+   * 【为什么 break】后端有部分唯一索引 report_person_one_conductor_idx，
+   * 一张报名表最多 1 名有效指挥；真出现 2 条也是脏数据，不在这里处理。
+   */
+  if (SEND_DISPLAY_ORDER) {
+    const slot = displayOrderOrNull(f.conductorSlot)
+    if (slot !== null) {
+      for (let i = 0; i < students.length; i++) {
+        const row = students[i] || {}
+        // 与 TeacherTable / OrchestraForm 的「教师+指挥」判定同源（Number 转换，见 personRules.js）
+        if (Number(row.type) === 1 && Number(row.position) === 2) {
+          payload.person[teachers.length + i].display_order = slot
+          break
+        }
+      }
+    }
   }
 
   // 服务端字段原样送回（理由见 ECHO_KEYS）。循环写保证「忘了加进 payload 字面量」
@@ -283,13 +410,40 @@ export function restoreDraftPayload(payload, baseForm) {
   const people = Array.isArray(p.person) ? p.person : []
   const students = []
   const teachers = []
+  /*
+   * 【第十二届·第十轮】顺带把「指挥在指导教师表里的位置」读回来，交给 form.conductorSlot。
+   *
+   * 这个位置是后端 report_person.display_order（迁移 0012），buildDraftPayload 写上去的。
+   * 它决定编辑页上灰行和手填行的先后 —— 不读回来的话，TeacherTable 只能退化到
+   * "指挥排最后"，于是用户手点出来的「灰行1 / 手填2」进一次编辑就翻成「灰行2 / 手填1」。
+   *
+   * 【为什么在这里读、而不是塞进 payloadToPerson】
+   * 它是**表位置**、不是那一行人员本身的属性：塞进 payloadToPerson 会让 form.person 里
+   * 多一个没有消费者的键，下次 personToPayload 还要再判断一次要不要带。
+   * 在这里读一次、交给 form.conductorSlot（TeacherTable 的 prop 来源）更直接。
+   *
+   * 【初值 null 而不是 undefined】null 表示"这次没有这个信息"，
+   * TeacherTable 的 computed 用 `props.conductorSlot ?? latch` 判断，
+   * null 会正确地走它自己的 latch（与改动前一致）。
+   */
+  let conductorSlot = null
   people.forEach((row) => {
     const item = payloadToPerson(row)
-    if (item.type === 1 && item.position === 4) teachers.push(item)
-    else students.push(item)
+    if (item.type === 1 && item.position === 4) {
+      teachers.push(item)
+    } else {
+      // 「教师+指挥」（type=1 且 position=2）—— 与 TeacherTable / OrchestraForm 同源判定。
+      // displayOrderOrNull 保证只有非负整数才被采纳，null / 老草稿的缺字段都归 null。
+      if (item.type === 1 && item.position === 2) {
+        const slot = displayOrderOrNull(row && row.display_order)
+        if (slot !== null) conductorSlot = slot
+      }
+      students.push(item)
+    }
   })
   form.person = students
   form.teacher = teachers
+  form.conductorSlot = conductorSlot
 
   // 4) 文件：payload 里只有 ID（规范 §十八），没有文件名/地址
   return {

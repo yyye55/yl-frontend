@@ -451,9 +451,23 @@ function remove(index) {
 
 /** dist: upAvatar(...) / flush() —— upAvatar 已搬到 usePhotoUpload，这里只剩 flush */
 
-/** dist: flush(){ this.data=[] } */
+/**
+ * dist: flush(){ this.data=[] }
+ *
+ * 【第十二届·第七轮】改成原地清空，**不要**写回 `data.value = []`。
+ *
+ * 【为什么】`data.value` 正常情况下就是父页面传下来的 form.person（同一个数组引用，
+ * 见 onMounted 的 `data.value = props.showdata ? props.showdata : []`）。
+ * 赋一个 `[]` 上去是「换掉整个引用」，不是「清空里面的东西」：
+ *   · 子表 data.value → 新空数组，表格看着是清了；
+ *   · 父页面 form.person → 还是旧数组，一条没少。
+ * 于是指导教师的「带入行」是 computed 自 form.person 的，点完清空**不会跟着消失**
+ * —— 表格已空、带入行还杵在那儿。splice 原地删则父子两边同时清空。
+ *
+ * 【长度为什么现取】空数组时 splice(0, 0) 是 no-op，不报错、不需要额外判空。
+ */
 function flush() {
-  data.value = []
+  data.value.splice(0, data.value.length)
 }
 
 /** dist: check(){ ... Message.error("参演人员名单第"+(e+1)+"行"+t.msg) ... } —— 与 TeacherTable 同构 */
@@ -609,7 +623,18 @@ function importExcel(file) {
         if (item.head && item.card) oldHeads[item.card] = item.head
       })
 
-      data.value = []
+      /*
+       * 【第十二届·第七轮】原地清空，**不要**写回 `data.value = []`。
+       *
+       * 理由与 flush() 完全相同（`data.value` 就是父页面的 form.person，赋值 = 换引用），
+       * 但这里的表现更隐蔽、更容易被误判成「功能没做」：
+       *   · 导入重建后，子表 data.value 指向新数组，参展人员表里**看得见**导入的人；
+       *   · 父页面 form.person 仍是导入前那份，指导教师的带入行 computed 拿不到指挥
+       *     → 表格里明明有「教师 + 指挥」，指导教师表却一条带入行都不出。
+       * 已用真浏览器复现：导入前 form.person=[原有同学]，导入后表格 2 行、
+       * form.person 依旧只有 [原有同学]，带入行 0 行。
+       */
+      data.value.splice(0, data.value.length)
       for (let i = 1; i < sheet.length; i++) {
         const row = {
           name: sheet[i].name,

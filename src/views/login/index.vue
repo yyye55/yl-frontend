@@ -80,11 +80,23 @@ const loginFormRules = {
 
 const INITIAL_PASSWORD = "scylb@2026"
 
+/**
+ * user.type -> 登录成功后跳哪个首页
+ *
+ * 【注意这是一张独立的表】views/middle/index.vue 里还有一张同名同内容的
+ * ROLE_HOME（两处没抽公共，历史上就是各写各的）。新增端时**两处都要加**，
+ * 只加一处的表现不一样：
+ *   · 只加这里 —— 登录那一刻跳得对，但一旦走到 /middle（例如角色不符被守卫转发过来），
+ *     会被判 !target 清掉登录态；
+ *   · 只加 /middle —— 登录后直接弹「该账号类型无可用后台」。
+ * 两者都会让人以为是登录接口的问题。
+ */
 const ROLE_HOME = {
   3: "/admin",
   2: "/committee",
   1: "/city",
-  0: "/school"
+  0: "/school",
+  5: "/primary"
 }
 
 /**

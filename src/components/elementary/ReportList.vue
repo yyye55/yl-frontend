@@ -272,6 +272,8 @@ import { Search } from '@element-plus/icons-vue'
 
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
+// 中小学端（type=5）。第三个端，只换接口前缀
+import { primaryApi } from '@/api/primary'
 import { useTabs } from '@/composables/useTabs'
 import { usePermission } from '@/composables/usePermission'
 
@@ -280,7 +282,7 @@ import Status from '@/components/common/Status.vue'
 import Remark from '@/components/common/Remark.vue'
 import ShowContent from '@/components/common/ShowContent.vue'
 
-const MODULES = { city: cityApi, school: schoolApi }
+const MODULES = { city: cityApi, school: schoolApi, primary: primaryApi }
 
 /* =========================================================================
  * 逐路由变体表
@@ -308,6 +310,25 @@ const VARIANTS = {
     title: '报名汇总', api: 'school',
     columns: 'II', actionWidth: 500,
     editPath: (id) => `/school/elementary/edit/${id}`, editLabel: '报名修改'
+  },
+  /*
+   * 中小学端（type=5，第十二届新增，dist 里没有）。
+   *
+   * 【为什么整条照抄 /city/elementary/list】两边看的是同一批数据（中小学的报名），
+   * 列集合、筛选条件、操作列宽度都一样。唯一的区别是数据源和「编辑」跳到哪。
+   *
+   * 【group 字段为什么也不写】与 city/school 的 elementary 变体一致：
+   * getData 不发 group 参数，所以本端列表查的是该账号下的**全部**报名，
+   * 而不是按组别过滤 —— 小学组、中学组两条都会出现在同一页里。
+   *
+   * 【editPath 必须指向 /primary/...】ReportList 的「编辑」按钮用 openWindow(editPath(id))
+   * 开新窗口。若这里仍写 /city/elementary/edit/:id，中小学端用户点编辑会打开市州端的页面，
+   * 而后端对 type=5 的账号在 /api/city/* 上会返 403 —— 表现是「点编辑跳出个空白/报错的窗口」。
+   */
+  '/primary/elementary/list': {
+    title: '报名汇总', api: 'primary',
+    columns: 'II', actionWidth: 500,
+    editPath: (id) => `/primary/elementary/edit/${id}`, editLabel: '报名修改'
   }
 }
 

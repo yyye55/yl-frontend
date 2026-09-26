@@ -58,8 +58,17 @@ import axios from 'axios'
 import { HOST } from '@/utils/request'
 import { getToken } from '@/utils/auth'
 
-/** scope → URL 段。只认这两个值，写错立刻抛，不静默拼出一个错地址 */
-const SCOPE_SEGMENT = { school: 'school', city: 'city' }
+/**
+ * scope → URL 段。只认这三个值，写错立刻抛，不静默拼出一个错地址。
+ *
+ * 【2026-09-24 新增 primary】中小学端（type=5）上线，报名走 /api/primary/*，
+ * 草稿这 6 条接口也在这个前缀下（后端需把 register_draft_routes 也挂到 /api/primary，
+ * 否则只有草稿相关功能会坏、其它功能看着正常，排查时容易找错方向）。
+ * 这里若不加 primary，OrchestraForm 一进页面调 drafts 就会抛
+ * 「未知 scope：primary」—— 这是**故意**的：宁可当场炸，也不要拼出
+ * /api/undefined/report/drafts 这种错地址，然后让人去后端日志里找一个不存在的 404。
+ */
+const SCOPE_SEGMENT = { school: 'school', city: 'city', primary: 'primary' }
 
 /**
  * 路径集中在这一张表里。
@@ -74,7 +83,7 @@ const PATHS = {
 
 function prefixOf(scope) {
   const seg = SCOPE_SEGMENT[scope]
-  if (!seg) throw new Error(`[reportDraft] 未知 scope：${scope}（只允许 school / city）`)
+  if (!seg) throw new Error(`[reportDraft] 未知 scope：${scope}（只允许 school / city / primary）`)
   return seg
 }
 

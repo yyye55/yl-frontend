@@ -138,6 +138,35 @@ export const LAYOUT_MENUS = {
     ]
   },
 
+  /* ---------- 中小学 (type=5) ---------- */
+  /**
+   * 【与 school 块的关系】菜单文字、图标、分组线、配色全部照抄 school。
+   * 需求原话是「导航栏、侧边栏、底栏都跟高校端一样」，所以这里**不引入任何差异**
+   * ——包括 activeTextColor 也用高校端那个粉色 #db3399。
+   *
+   * 【为什么「赛事报名」不带 requires】
+   * requires 是给「被降级为只读」的市州端用的（city 那块写的是 requires: 'reportCreate'，
+   * 判定见文件末尾 MENU_REQUIREMENTS）。中小学端是要报名的端，
+   * 加上会被判成不可见 —— 菜单里直接少一项，而路由又是通的，很难查。
+   * 与 school 一致，不加。
+   *
+   * 【key 必须叫 primary】Sidebar 用 resolveLayoutKey(route.path) 取路径首段来查这张表
+   * （见本文件末尾），/primary/... 的首段就是 'primary'。key 若对不上，
+   * 侧边栏整块渲染不出来（不报错，就是空的）。
+   */
+  primary: {
+    title: YILINBEI_TITLE,
+    activeTextColor: '#db3399',
+    keepAlive: true,
+    items: [
+      { index: '/primary/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
+      { type: 'line', text: '—— 网上报名 ——' },
+      { index: '/primary/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag' },
+      { type: 'line', text: '—— 报名信息 ——' },
+      { index: '/primary/elementary/list', text: '报名汇总', label: '报名汇总', icon: 'el-icon-help' }
+    ]
+  },
+
   /* ---------- 在线展演 (无角色限制) ---------- */
   online: {
     title: XIBU_TITLE,

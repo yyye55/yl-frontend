@@ -6,6 +6,15 @@
  * - 5 个 layout：admin / committee / city / school / online（省级端已下线）
  * - 中转路由：/ 与 /middle，根据 user.type 重定向
  *
+ * 【第十二届增补：中小学端 /primary（type=5）】
+ *   /primary/index、/primary/elementary/{create, edit/:id, list}
+ * 这是**新增的端**，不在 dist 里 —— 上面「37 个路由 / 5 个 layout」是 dist 的情况，
+ * 本端落地后总数各 +4 / +1。它与 /school 逐条对照着写（差异见下方 /primary 块的注释），
+ * 报名规则与市州端一致（管乐团/铜管乐团 × 小学组/中学组），因为两者都是「中小学」。
+ * 配套改动：config/menus.js 加 primary 菜单、config/roles.js 加 ROLE.PRIMARY、
+ * views/login 与 views/middle 的 ROLE_HOME 各加一行 —— 四处缺一不可，
+ * 少任何一处都会表现为「登录后弹『该账号类型无可用后台』或被踢回登录页」。
+ *
  * 【第十二届：教师组路由已摘除（8 条），文件保留】
  *   /city/teacher/{create, edit/:id, list}
  *   /school/teacher/{create, edit/:id, list}
@@ -157,6 +166,33 @@ const routes = [
       // { path: 'teacher/create',   name: '/school/teacher/create',   component: () => import('@/views/school/teacher-create.vue'), meta: { title: '教师组-新增' } },
       // { path: 'teacher/edit/:id', name: '/school/teacher/edit/:id', component: () => import('@/views/school/teacher-edit.vue'),   meta: { title: '教师组-编辑' } },
       // { path: 'teacher/list',     name: '/school/teacher/list',     component: () => import('@/views/school/teacher-list.vue'),   meta: { title: '教师组-列表', icon: 'Document' } }
+    ]
+  },
+
+  // ============ 中小学 (type=5) ============
+  /**
+   * 【与学校端（/school）的关系】逐条对照着写的，差异只有三处：
+   *   1. meta.role 是 5（学校端 0）；
+   *   2. component 指向 @/views/primary/ 下的文件（是各自的薄壳页，
+   *      不是复用 school 的壳子 —— 壳子里写死的 variant 字符串不同）；
+   *   3. 下面的 title 文案写「中小学组」，学校端写「大学组」。
+   *
+   * 【叶子为什么**不带** reportWrite】reportWrite 是给「被降级为只读」的市州端
+   * 用的（见上面 /city 块的说明，guard.js 按 meta.reportWrite + isViewOnlyScope 拦人）。
+   * 中小学端是**要报名**的端，加上这个 meta 会把用户自己的报名页拦掉。
+   * 与学校端（同样不带）保持一致。
+   */
+  {
+    path: '/primary',
+    name: '/primary',
+    component: MainLayout,
+    redirect: '/primary/index',
+    meta: { requiresAuth: true, role: 5, title: '中小学后台' },
+    children: [
+      { path: 'index',                     name: '/primary/index',               component: () => import('@/views/primary/index.vue'),          meta: { title: '首页', icon: 'House' } },
+      { path: 'elementary/create',         name: '/primary/elementary/create',   component: () => import('@/views/primary/elementary-create.vue'), meta: { title: '中小学组-新增' } },
+      { path: 'elementary/edit/:id',       name: '/primary/elementary/edit/:id', component: () => import('@/views/primary/elementary-edit.vue'),   meta: { title: '中小学组-编辑' } },
+      { path: 'elementary/list',           name: '/primary/elementary/list',     component: () => import('@/views/primary/elementary-list.vue'),   meta: { title: '中小学组-列表', icon: 'Document' } }
     ]
   },
 

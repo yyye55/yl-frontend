@@ -542,6 +542,8 @@ import { UploadFilled } from '@element-plus/icons-vue'
 
 import { cityApi } from '@/api/city'
 import { schoolApi } from '@/api/school'
+// 中小学端（type=5）。与 city/school 并列的第三个端，只换接口前缀，契约一致
+import { primaryApi } from '@/api/primary'
 import { fileApi } from '@/api/misc'
 // 【第十二届改造】上传改走阿里云 OSS 直传，不再使用七牛
 import { uploadToOss } from '@/services/ossUpload'
@@ -576,8 +578,16 @@ const props = defineProps({
   variant: { type: String, required: true }
 })
 
-/** dist 里两个作用域各自一个 api 模块；dist 通过 this.$api.<scope>.report.* 访问 */
-const MODULES = { city: cityApi, school: schoolApi }
+/**
+ * scope 名 -> api 模块。
+ *
+ * dist 里两个作用域各自一个 api 模块（dist 通过 this.$api.<scope>.report.* 访问）；
+ * primary 是本项目新增的第三个（dist 里没有，属于第十二届后加的端）。
+ * 键名必须与下面 VARIANTS 里 api.create / api.getById / api.update 写的字符串一致 ——
+ * 对不上时 MODULES[cfg.api.create] 是 undefined，报错会发生在调用那一刻（读 .report 时），
+ * 而不是这里，排查时先看这里。
+ */
+const MODULES = { city: cityApi, school: schoolApi, primary: primaryApi }
 
 /* =========================================================================
  * 逐路由变体表 —— 本组件的唯一事实来源，每一项都对应 dist 原文
@@ -623,6 +633,47 @@ const VARIANTS = {
     establishmentOptions: ['管乐团'],
     groupOptions: ['大学组'],
     formDefaults: {}
+  },
+
+  /* ================= 中小学端（type=5，第十二届新增，dist 里没有） =================
+   *
+   * 【为什么这两条能整段照抄 city 那两条】
+   * 中小学端要报的就是「中小学」—— 管乐团/铜管乐团 × 小学组/中学组，
+   * 与市州端是同一批选项、同一套规则。所以这里除了 api 作用域和提交后跳转，
+   * 其余字段与 /city/elementary/* **逐字相同**，不是"差不多"。
+   *
+   * 【为什么只改这两处就够了，业务规则不用碰】
+   * 人数上下限（管乐团 35~65、铜管乐团 20~45）、打击乐 ≤8、展示时长
+   * （管乐团 小学组 12 分 / 中学组 15 分；铜管乐团 均 10 分）、
+   * 「中小学乐团指挥须为本校在职教师」这些判定，全部收在 src/config/personRules.js 里，
+   * 且判据是 **组别（level）** 而不是"哪个端" —— 见该文件第 336 行：
+   *     if (rules && conductor.type === 0 && rules.level !== '大学组')
+   * 只要 groupOptions 给的是小学组/中学组，这套规则就自动生效。
+   * 反过来说：**如果把这里的 groupOptions 改成 '大学组'，会连带这些规则一起变**，
+   * 因为它们是靠组别判的。
+   *
+   * 【限报额度为什么也不在这里判】见 src/api/reportDraft.js 第 203 行 ——
+   * 「前端不自己判额度（判了也会和后端漂移），一律以后端为准、只负责把 msg 显示对」。
+   * 中小学端因此没有任何额度相关的代码，只需后端在第 4 个端上返回
+   * REPORT_QUOTA_EXCEEDED，前端已有的映射会把文案显示出来。
+   */
+  /* ---------------- 新增（Create III）：中小学端 ---------------- */
+  '/primary/elementary/create': {
+    mode: 'create', title: '赛事报名',
+    api: { create: 'primary' },                       // -> MODULES.primary.report.create
+    establishmentOptions: ['管乐团', '铜管乐团'],       // 与 city 逐字相同
+    groupOptions: ['小学组', '中学组'],                 // 与 city 逐字相同
+    formDefaults: {},                                  // 与 city 相同：不预填，让用户自己选
+    redirect: { path: '/primary/elementary/list', label: '报名汇总' }
+  },
+  /* ---------------- 编辑（Edit III）：中小学端 ---------------- */
+  '/primary/elementary/edit/:id': {
+    mode: 'edit', title: '报名修改',
+    api: { getById: 'primary', update: 'primary' },    // 读详情与提交修改都走 primary
+    establishmentOptions: ['管乐团', '铜管乐团'],       // 与 city 逐字相同
+    groupOptions: ['小学组', '中学组'],                 // 与 city 逐字相同
+    formDefaults: {}
+    // 没有 redirect：编辑页提交成功后按原有逻辑只弹提示、不跳转（与 city edit 一致）
   }
 }
 

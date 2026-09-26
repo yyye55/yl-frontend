@@ -24,11 +24,23 @@ import { useUserStore } from '@/store/modules/user'
 const router = useRouter()
 const userStore = useUserStore()
 
+/**
+ * user.type -> 该角色的首页
+ *
+ * 【为什么 4 缺席】type=4 是省级，后端已下线，前端没有它的路由。
+ * 查不到 target 时下面会走「清登录态 + 提示」分支，这是**预期**行为。
+ *
+ * 【为什么必须加 5】这张表和 views/login/index.vue 里那张是**两份**（没抽公共）。
+ * 少加任何一个，该角色的用户登录后都会落到 !target 分支 —— 表现是
+ * 「已经登录成功了，却被清掉登录态、报『该账号类型无可用后台』、回到登录页」，
+ * 看起来像密码错，实际是这里漏了一行。
+ */
 const ROLE_HOME = {
   3: '/admin',
   2: '/committee',
   1: '/city',
-  0: '/school'
+  0: '/school',
+  5: '/primary'
 }
 
 onMounted(() => {

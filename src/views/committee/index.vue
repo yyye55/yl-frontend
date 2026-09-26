@@ -38,6 +38,26 @@
         <template #default="{ row }">{{ row.data && row.data[3] }}</template>
       </el-table-column>
     </el-table>
+
+    <!-- 【第十二届新增】乐团类别一览，位置：紧跟「报名一览」下面，本页最末 -->
+    <p class="title">乐团类别一览</p>
+    <el-table :data="establishmentData" style="width:100%">
+      <!-- 乐团类型列：插槽写法与上面「报名一览」的类型列保持一致；
+           宽度 280 = 本页老表类型列的宽度，两张表左边缘对齐。 -->
+      <el-table-column label="乐团类型" width="280">
+        <template #default="{ row }">
+          <span>{{ row.name }}</span>
+        </template>
+      </el-table-column>
+      <!-- 4 个数字列直接 prop 绑定扁平字段 total/data1/data2/data3。
+           注意：不要照抄老表那种读 row.data[0] 的插槽写法 —— 本接口返回的是扁平结构，
+           row.data 是 undefined，照抄会整列空白，而且控制台不报错。 -->
+      <el-table-column prop="total" label="合计" />
+      <el-table-column prop="data1" label="驳回" />
+      <el-table-column prop="data2" label="待审核" />
+      <el-table-column prop="data3" label="组委会通过" />
+      <!-- 故意不写 align / header-align：全局 CSS 已让所有 el-table 的表头与内容居中 -->
+    </el-table>
   </div>
 </template>
 
@@ -103,7 +123,23 @@ function getData() {
   })
 }
 
+// ── 【第十二届新增】乐团类别一览的数据源 ────────────────────────────
+// 与上面的 tableData 完全并列的独立 ref：两者互不读写，一张表拿不到数据不影响另一张。
+const establishmentData = ref([])
+
+function getEstablishment() {
+  // 与上面 getData() 同样的静默失败策略：只在 code===0 时写入，失败不弹提示。
+  committeeApi.index.getIndexEstablishment().then(({ data: res }) => {
+    // ⚠ 必须写 res.data.data（双层嵌套），原因见 admin/index.vue 里同位置的长注释：
+    //   本接口后端是 success("获取成功！", {"data": …})，success() 自己再包一层 code/msg/data，
+    //   所以真正的数组在 res.data.data。写成 res.data 会拿到对象 → 表格「暂无数据」且不报错。
+    if (res.code === 0) establishmentData.value = res.data.data
+  })
+}
+
 onMounted(getData)
+// 两个 onMounted 各自注册、依次执行 → 两个接口并行发出，谁先回来谁先上屏，新表不拖慢老表
+onMounted(getEstablishment)
 </script>
 
 <style lang="scss" scoped>

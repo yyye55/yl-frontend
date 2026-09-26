@@ -27,7 +27,11 @@ export const adminApi = {
     download: ()       => request.get(HOST + '/api/admin/user/export', { responseType: 'blob' })
   },
   index: {
-    getIndexTotal: () => request.get(HOST + '/api/admin/index/total')
+    getIndexTotal: () => request.get(HOST + '/api/admin/index/total'),
+    // 【第十二届新增】首页「乐团类别一览」：按乐团类型（管乐团 / 铜管乐团）分组统计。
+    // 方法名与接口路径 /index/establishment 一致，也与后端模型字段 Report.establishment 同名；
+    // 不叫 type/group —— 这两个词在本项目里已分别被 Report.type、person.type、Report.group 占用。
+    getIndexEstablishment: () => request.get(HOST + '/api/admin/index/establishment')
   },
   log: {
     list: (params) => request.get(HOST + '/api/admin/log/list', { params })

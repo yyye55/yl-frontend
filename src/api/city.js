@@ -20,6 +20,9 @@ export const cityApi = {
   },
   index: {
     getIndexTotal:   () => request.get(HOST + '/api/city/index/total'),
-    getIndexPercent: () => request.get(HOST + '/api/city/index/percent')
+    getIndexPercent: () => request.get(HOST + '/api/city/index/percent'),
+    // 【第十二届新增】市州端只统计本账号报送的报名，过滤由后端做；
+    // 路径写法与另两端一致，只有前缀不同。
+    getIndexEstablishment: () => request.get(HOST + '/api/city/index/establishment')
   }
 }

@@ -38,7 +38,9 @@ export const committeeApi = {
     download: ()       => request.get(HOST + '/api/committee/user/export', { responseType: 'blob' })
   },
   index: {
-    getIndexTotal: () => request.get(HOST + '/api/committee/index/total')
+    getIndexTotal: () => request.get(HOST + '/api/committee/index/total'),
+    // 【第十二届新增】同 admin.js，只换权限前缀。组委会与管理员看到的是同一份全国数据。
+    getIndexEstablishment: () => request.get(HOST + '/api/committee/index/establishment')
   },
   // 【新增·组委会整组导出】原 dist 里组委会页面借 communal.exportGroupData
   // （GET /api/export/data）做整组导出；后端为修 P1-2 跨校数据泄漏给那条接口加了

@@ -22,12 +22,37 @@
       </div>
     </div>
 
+    <!-- 【第十二届新增·仅标题】给下面这张老表补一个标题。
+         老表原本没有标题（.title 样式在本页 <style scoped> 里已经存在，只是模板没用过），
+         不补的话，下面新增的「乐团类别一览」有标题、它没有，两张表叠在一起分不出谁是谁。
+         纯新增一行，不碰表格本身；删掉这一行不影响任何东西。 -->
+    <p class="title">报名一览</p>
     <el-table :data="data" style="width:100%">
       <el-table-column header-align="center" align="center" prop="name" label="类型" width="180" />
       <el-table-column header-align="center" align="center" prop="total" label="合计" />
       <el-table-column header-align="center" align="center" prop="data1" label="驳回" />
       <el-table-column header-align="center" align="center" prop="data2" label="待审核" />
       <el-table-column header-align="center" align="center" prop="data3" label="组委会通过" />
+    </el-table>
+
+    <!-- 【第十二届新增】乐团类别一览，位置：老表下面、上传弹窗组件之前 -->
+    <p class="title">乐团类别一览</p>
+    <el-table :data="establishmentData" style="width:100%">
+      <!-- 乐团类型列：插槽写法与上面老表的类型列保持一致；
+           宽度 180 = 本页老表类型列的宽度，两张表左边缘对齐。 -->
+      <el-table-column label="乐团类型" width="180">
+        <template #default="{ row }">
+          <span>{{ row.name }}</span>
+        </template>
+      </el-table-column>
+      <!-- 4 个数字列直接 prop 绑定扁平字段 total/data1/data2/data3（本接口没有拆数组的问题）。
+           注意：不要照抄上面老表直接 prop="total" 却读 res.data.data 的组合 —— 那是老接口的结构。 -->
+      <el-table-column prop="total" label="合计" />
+      <el-table-column prop="data1" label="驳回" />
+      <el-table-column prop="data2" label="待审核" />
+      <el-table-column prop="data3" label="组委会通过" />
+      <!-- 老表写了 align="center"（dist 原样），本表故意不写：
+           全局 CSS（styles/index.css:74）已让所有 el-table 居中，再写一遍是重复。 -->
     </el-table>
 
     <UploadScanDialog
@@ -126,6 +151,22 @@ function getTotal() {
   })
 }
 
+// ── 【第十二届新增】乐团类别一览的数据源 ────────────────────────────
+// ⚠ 变量名必须是 establishmentData —— 本页上面已经有一个叫 data 的 ref（装老表数据），
+//   新变量若也叫 data 会直接编译报错（重复声明）。
+const establishmentData = ref([])
+
+function getEstablishment() {
+  // 与上面 getTotal() 同样的静默失败策略：只在 code===0 时写入，失败不弹提示。
+  cityApi.index.getIndexEstablishment().then(({ data: res }) => {
+    // ⚠ 这里同样是 res.data.data，但原因和上面 getTotal() 不一样，别互相"简化"：
+    //   · 老接口 /city/index/total 是 {success, data, limit} 三个字段装在 data 里；
+    //   · 新接口是 success("获取成功！", {"data": …})，data 里只有一个 data 字段。
+    //   两者恰好都落在 res.data.data，但换成 res.data 都会拿到对象 → 表格「暂无数据」且不报错。
+    if (res.code === 0) establishmentData.value = res.data.data
+  })
+}
+
 /**
  * dist: exportReport(e){ MessageBox.confirm("此操作需在所在单位账号所有数据都已报送完毕后操作, 确认操作?","提示",{confirmButtonText:"确定",cancelButtonText:"取消",type:"warning"}).then(()=>{ $api.communal.exportReportData().then(t=>{ this.downloadPdfFile(t.data,e) }) }).catch(()=>{}) }
  *
@@ -155,6 +196,8 @@ function exportReport() {
 }
 
 onMounted(getTotal)
+// 两个 onMounted 各自注册、依次执行 → 两个接口并行发出，谁先回来谁先上屏，新表不拖慢老表
+onMounted(getEstablishment)
 </script>
 
 <style lang="scss" scoped>

@@ -19,6 +19,16 @@
     <div class="content">
       <div class="bg-list">
         <p class="title">账号列表</p>
+
+        <!--
+          【本仓库新增，dist 无】重置密码的默认口径提示，与组委会端 /committee/user 同一句话。
+          与组委会端不同的是：那边这句是「提醒操作者去填这个值」（后端当时不套用默认密码），
+          这边这句现在**就是系统行为** —— user_update_admin 无条件重置为 DEFAULT_PASSWORD。
+          值本身来自 src/config/defaultPassword.js，别在这里写死字面量：
+          提示里显示的口令必须与实际生效的是同一个，否则用户拿着提示语登不进去。
+        -->
+        <p style="margin:10px;">提示：重置密码后恢复为默认密码：<b>{{ DEFAULT_PASSWORD }}</b></p>
+
         <el-table :data="data" border style="width:100%">
           <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="username" label="账号" />
@@ -275,24 +285,31 @@
  *   前端这边只堵最粗的一条：给「添加账号」的确定按钮加 :loading 防连点
  *   （连点两次 = 发两次 POST = 第二次必然撞 unique）。
  *
- * 【本次修复：重置密码的空输入被当成「重置成功」】
- *  后端 user_update_admin 改密码的条件是 `if data.get("password")`，空串是 falsy，
- *  于是密码没改、接口却返回 success()，前端只能看到 code 0 —— 页面提示「重置成功」，
- *  密码其实纹丝不动；而 `'   '`（纯空格）是 truthy，会真的把密码改成一串空格。
- *  本次给 prompt 加 inputValidator（空串与纯空格都拦，红字 + 确定按钮不关弹窗，
- *  走 EP 原生行为）并顺带把 inputType 设成 'password'（EP 默认 'text'，原本明文显示）。
- *  细节与源码依据见 resetPassword() 上方注释。
+ * 【本次变更：重置密码 = 重置为默认密码，弹窗从「输入新密码」改成「确认」】
  *
- * 【保留的原文瑕疵 —— 已按本次决定修正其中一处】
- *  rules 中 password 的提示文案原本写的是「长度在 2 到 32 个字符」，与实际区间不符。
- *  接线前这条规则永远不跑，错话没人看见；接线后它会真的弹给用户
- *  （输 3 位密码被提示「长度在 2 到 32」而卡住），故当时把文案改成了「长度在 6 到 32 个字符」。
+ *  1) 后端不再接受调用方指定的新密码。user_update_admin 现在是
+ *     `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
+ *     （yilinbei hou/apps/api/views.py:543，常量在同文件 :521）——
+ *     请求体里只要出现 password 这个键，**值被忽略**，一律重置为 scylb@2026。
+ *     于是原先那个「请输入新密码」的输入框只会骗人：填什么都进不了库。
+ *     现改为 ElMessageBox.confirm('是否重置为默认密码？')，没有输入框。
+ *     随之删掉的还有 inputValidator / inputType:'password' —— 没有输入框可校验了。
  *
- * 【本次变更：数字收敛到 src/config/accountRules.js】
- *  上面那次只改了文案，区间还是本页自己写死的 6-32，与登录页、自助改密各说各话。
- *  现在账号 3-20、密码 6-20 全站一份常量，本页的 rules 与「重置密码」的 inputValidator
- *  都改成引用它。另外「添加用户」弹窗里那句「如果输入密码，则会更新密码，不输入，则不会改变密码」
- *  是从「修改信息」弹窗复制来的 —— 添加账号的密码是必填，照这句话不填会被拒，已改为如实说明。
+ *  2) 表格上方新增提示语「重置密码后恢复为默认密码：…」，与组委会端 /committee/user 同一句话。
+ *     注意这条提示的性质变了：它现在是**如实的系统行为**，不再是「提醒操作者自己填那个值」的约定。
+ *
+ *  3) 默认口令收敛到 src/config/defaultPassword.js（原先 login/index.vue 里另有一份硬编码）。
+ *     后端那份在 apps/api/views.py:521，改一处要连它一起改。
+ *
+ *  4) 「修改用户」弹窗里的密码框已删除 —— 它与「重置密码」走同一个接口
+ *     （PUT /api/admin/user/，见 adminApi.user.update），留着的话，
+ *     管理员输入 abc123456 实际生效的是默认密码，属新引入的静默陷阱。
+ *     改密码此后只剩「重置密码」一个入口，语义唯一。详见模板里那段注释。
+ *
+ *  【上一轮的两处改动仍然有效，别回退】
+ *   · rules / editRules 接线（补 ruleFormRef / ruleEditFormRef 并真的调 validate()）；
+ *   · 账号 3-20、密码 6-20 全站收敛到 src/config/accountRules.js，
+ *     本页 rules 的文案与「添加用户」弹窗里的那句提示都引用它。
  */
 
 import { ref, reactive } from 'vue'
@@ -300,14 +317,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { adminApi } from '@/api'
 import { downloadExcelFile } from '@/utils/excel'
+import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
 import {
   ACCOUNT_MIN,
   ACCOUNT_MAX,
   MSG_ACCOUNT_LENGTH,
   PASSWORD_MIN,
   PASSWORD_MAX,
-  MSG_PASSWORD_LENGTH,
-  checkPasswordInput
+  MSG_PASSWORD_LENGTH
 } from '@/config/accountRules'
 
 /**
@@ -449,43 +466,30 @@ function onTypeChange(target) {
 /**
  * 【本次修复：空输入被当成「重置成功」】
  *
- * 【症状】弹窗里什么都不输（或只打空格）就点「确定」，页面提示「重置成功」，
- * 但密码根本没变 —— 而且列表还会刷一次，看起来完全正常。
+ * 【为什么从 prompt 改成 confirm】
+ * 这一处历史上是 ElMessageBox.prompt('请输入新密码')，让操作者把口令打进去。
+ * 后端现在不再接受调用方指定的新密码：user_update_admin 里
+ * `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
+ * （yilinbei hou/apps/api/views.py:543）—— 带不带值、带什么值都一样。
+ * 于是输入框成了一个纯骗人的控件：填进去的任何东西都被丢弃，用户按自己填的去登录必然失败。
+ * 换成 confirm 后，弹窗里问的就是将要发生的事，不再有可填的地方。
  *
- * 【原因】后端 user_update_admin（apps/api/views.py，以函数名定位）改密码的条件是
- * `if data.get("password")`：空串是 falsy，这一句不成立，于是密码字段被跳过、
- * 接口仍然返回 success() → 前端只能看到 code 0。
+ * 【随之删掉的东西】prompt 时代的 inputValidator（checkPasswordInput，
+ * 拦空串 / 纯空格 / 长度越界）与 inputType:'password' 都没有存在意义了，
+ * 一并删除；checkPasswordInput 因此失去全部调用方，已从 src/config/accountRules.js 移除。
+ * 上面那些校验原本防的是「空输入被当成重置成功」—— 那个问题现在从根上没有了，
+ * 因为请求体里的 password 由本函数写死成 DEFAULT_PASSWORD。
  *
- * 【为什么连纯空格也要挡】`'   '` 是 truthy，它会**穿过**上面那个判断，
- * set_password('   ') 会把密码真的改成一串空格 —— 只判空串挡不住它。
- *
- * 【为什么用 inputValidator 而不是在 .then 里手写判断】
- * 查看本机 element-plus@2.14.6 的 message-box 源码：
- *   handleAction()  第 187 行 `if (props.boxType === 'prompt' && action === 'confirm' && !validate()) return`
- *   validate()      第 200-214 行：inputValidator 返回字符串即作为红字提示，且不放行
- * 即「校验不过 → 确定按钮点了也不关弹窗、输入框下方出红字」是 EP 原生行为，
- * 不用自己写；且校验不过时 promise 既不 resolve 也不 reject，
- * 下面那个 `.catch(() => ElMessage '取消输入')` 不会被误触发。
- *
- * 【inputType: 'password' 是本次一并加的】EP 的 prompt 默认 inputType 是 'text'，
- * 新密码原本是明文显示在屏幕上的。
- *
- * 【本次变更：长度也一并按统一口径拦（原先只拦空串与纯空格）】
- * 原先不判长度，管理员可以把密码重置成 `a` 这种 1 位 —— 接口照样返回成功，
- * 而用户拿着它去登录会被前端拦下（或干脆记不住），管理员侧看不到任何异常。
- * 现在改用 src/config/accountRules.js 的 checkPasswordInput，与「添加账号」「自助改密」
- * 同一组数（6-20），不再是这一处说了算。
+ * 【password 为什么仍然发真值】见 src/config/defaultPassword.js 头部：
+ * 不依赖后端「值被忽略」这条约定，万一后端退回旧写法，发真值的行为完全一致。
  */
 function resetPassword(id) {
-  ElMessageBox.prompt('请输入新密码', '重置密码', {
+  ElMessageBox.confirm('是否重置为默认密码？', '重置密码', {
     confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    // 空串 / 纯空格 / 长度越界都拦下，口径见 src/config/accountRules.js
-    inputValidator: checkPasswordInput,
-    inputType: 'password'
+    cancelButtonText: '取消'
   })
-    .then(({ value }) => {
-      adminApi.user.update({ id, password: value }).then(({ data: res }) => {
+    .then(() => {
+      adminApi.user.update({ id, password: DEFAULT_PASSWORD }).then(({ data: res }) => {
         if (res.code === 0) {
           ElMessage.success('重置成功')
           getData()
@@ -495,14 +499,20 @@ function resetPassword(id) {
       })
     })
     .catch(() => {
-      ElMessage({ type: 'info', message: '取消输入' })
+      // confirm 的取消/关闭都走这里（reject 'cancel' / 'close'），不再有「取消输入」这回事
+      ElMessage({ type: 'info', message: '已取消' })
     })
 }
 
 /**
- * 【本次修复】同 submit()，提交前先过 editRules（账号 / 名称）。
- * editRules 里没有 password 规则，所以「输入密码才改密码、不输入不改」的原行为不变。
+ * 同 submit()，提交前先过 editRules（账号 / 名称）。
  * 这里不加 loading：PUT 幂等，连点第二次结果相同，不会像 create 那样撞唯一约束。
+ *
+ * 【本次变更】原注释里那句「editRules 里没有 password 规则，所以输入密码才改密码」已失效 ——
+ * 弹窗里的密码输入框整个删掉了（原因见模板中那段注释），editForm 里不会再出现 password 键，
+ * 这条 PUT 也就永远走不到 user_update_admin 的重置分支。
+ * 注意 editForm 是整行深拷贝（见 modify()），而 user_dict 不回传 password，
+ * 所以「不漏传」是靠数据形状保证的，不是靠这里挑字段。
  */
 async function editSubmit() {
   const valid = await ruleEditFormRef.value.validate().catch(() => false)

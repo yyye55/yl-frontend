@@ -48,6 +48,7 @@ import { ref, reactive, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { login as apiLogin } from "@/api/auth"
+import { DEFAULT_PASSWORD } from "@/config/defaultPassword"
 import { setToken, setUser } from "@/utils/auth"
 import { useUserStore } from "@/store/modules/user"
 
@@ -78,7 +79,12 @@ const loginFormRules = {
   password: [{ required: true, message: "请输入密码", trigger: "blur" }]
 }
 
-const INITIAL_PASSWORD = "scylb@2026"
+/**
+ * 初始/默认口令 —— 值来自 src/config/defaultPassword.js，不要在这里写死字面量。
+ * 它必须与「重置密码」实际写进库里的那个口令一致（后端 apps/api/views.py:521
+ * RESET_PASSWORD_DEFAULT），否则下面那条提醒永远不弹，且不会报任何错。
+ */
+const INITIAL_PASSWORD = DEFAULT_PASSWORD
 
 /**
  * user.type -> 登录成功后跳哪个首页

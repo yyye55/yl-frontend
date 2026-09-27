@@ -2,10 +2,41 @@
 
 - 对接前端：`src/views/admin/user.vue`（管理员端 `/admin/user`）、`src/views/committee/user.vue`（组委会端 `/committee/user`）
 - 后端基线：`ea12de8`
-- **结论先说**：这个功能**不需要后端新增或修改任何接口**。前端用的全是现有契约。
-  有 **2 处校验缺口**建议补上（第三节）—— 都属于"把已经约定好的规则补进接口层"，**不阻塞前端上线**。
-  另有 **2 条顺带发现的相邻问题**（第七节），不属于本需求，仅供你们判断。
-- **阅读顺序**：只想知道要改什么 → 看**第三节**和**第八节**。想了解全貌 → 从头看。
+- **结论先说**：这个功能**不需要后端新增或修改任何接口**，前端用的全是现有契约。
+  **需要动的代码只有 2 处，都在 `apps/api/views.py` 一个文件里**（第三节）：
+  - **改动一（必做）**：`user_update_admin` 缺 `parent_id` 校验。因为 `parent_id` 是
+    `db_constraint=False` 的外键，**数据库层没有约束兜底**，接口校验是唯一一道防线（见第一节）。
+  - **改动二**：`user_create_admin` 的类型判断 + `committee` 赋值顺序。修一条不变量缺口。
+  - **两处都不阻塞前端上线**，另有 **2 条顺带发现的相邻问题**（第七节），仅供你们判断。
+- **阅读顺序**：只想知道要改什么 → 看**第零节**、**第三节**和**第八节**。想了解全貌 → 从头看。
+
+---
+
+## 零、后端要改的文件：**只有一个**
+
+**`apps/api/views.py`** —— 就这一个文件，不用碰任何其它文件。
+
+下面是完整的审计：**整个后端所有能写 `users.parent_id` 的地方**，一条不漏。
+
+| # | 位置 | 函数 | 能不能写 `parent_id` | 要改吗 |
+|---|---|---|---|---|
+| 1 | `apps/api/views.py:551` | `user_update_admin`（管理员/组委会改用户） | ✅ 白名单里有 | **要改**（第三节·改动一） |
+| 2 | `apps/api/views.py:564` | `user_create_admin`（管理员/组委会建用户） | ✅ `values["parent_id"]` | **要改**（第三节·改动二） |
+| 3 | `apps/api/views.py:319` | `user_update`（**用户自助改资料**） | ❌ 白名单只有 `username / nickname / description / tel / leader` | 不用动 |
+| 4 | `apps/api/management/commands/import_laravel_data.py:23` | 一次性数据导入脚本 | ✅ 但只在导 Laravel 老数据时跑 | 不用动 |
+
+**第 3 条特别说明**：这是"用户改自己资料"的接口。它的白名单里**没有** `parent_id`，
+所以一个中小学账号**没有办法把自己的归属改到别的市州**（那样等于自选数据范围）。
+这是一个**已经做对了**的地方，不要动它，也不要在第 1 条的改动里"顺手统一"把它加进去。
+
+**其它相关但不用改的文件**：
+
+| 文件 | 为什么不用改 |
+|---|---|
+| `apps/core/services.py:63`（`user_dict`） | 已经返回 `parent_id` 了。**特意不要动**，理由见第四节（9 处调用方） |
+| `apps/core/services.py:69`（`subordinate_school_ids`） | 数据范围的消费方，逻辑正确，不用改 |
+| `apps/core/models.py:96`（`parent` 字段） | 字段定义已够用，不用迁移。但**必须了解它的三个特性**，见第一节 |
+| 迁移文件 | **不要新建 migration** —— 本需求不动 schema |
 
 ---
 
@@ -32,6 +63,22 @@ def subordinate_school_ids(city_user):
 | 中小学账号（type=5） | 指向所属**市州账号（type=1）** 的 id |
 | 其它类型（0 / 1 / 2 / 3） | 无业务含义 |
 | `0` 或 `NULL` | 都表示"没有归属" |
+
+### 这个字段的三个特性（**改代码前必须知道**）
+
+它在模型里**不是普通整数字段，是一个自引用外键**（`apps/core/models.py:96`）：
+
+```python
+parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.DO_NOTHING,
+                           db_column="parent_id", related_name="children", db_constraint=False)
+```
+
+| 特性 | 后果 |
+|---|---|
+| **`db_constraint=False`** | **数据库层没有外键约束** —— 一个不存在的 id 能真的写进表里，数据库不会拦。所以**接口层的校验是唯一的一道防线**，这也是第三节改动一必须做的根本原因 |
+| **`null=True, blank=True`** | 列可以为 `NULL`。但既有代码的"没有归属"写法是 `values["parent_id"] = 0`（`:566`），所以库里**两种"没有归属"并存**（`0` 和 `NULL`）。校验时两种都要当作"空"放过，见第三节 |
+| **`on_delete=models.DO_NOTHING`** | 删账号**不会**级联清理。加上 `user_delete_admin` 用的是软删除（`.update(deleted_at=...)`），所以删掉市州后下属中小学的 `parent_id` **一定**会悬空 —— 这是第七节 7.1 的根因 |
+| **`related_name="children"`** | 反向查询现成可用：`city_user.children.all()` / `.count()`。7.1 若要做"删除前提示该市州下还有 N 个中小学账号"，直接用这个，不用自己写查询 |
 
 > ⚠️ **这不是一个纯展示字段。** `parent_id` 是市州端数据范围的**唯一来源**。把一所中小学的归属从 A 市改到 B 市，等于 **A 市从此看不到它、B 市能看到了**。前端在两个弹窗的下拉下面都加了一行提示：
 > 「归属决定该市州端能看到哪些中小学账号的报名，请谨慎修改。」
@@ -121,6 +168,11 @@ def user_update_admin(request):
 **注意与前端的行为约定**：前端「清空归属」时**不会发 `parent_id` 这个键**（`JSON.stringify` 丢弃值为 `undefined` 的键）。
 所以 `if "parent_id" in data` 为假 → 保持原值不变。这是**有意的**：用户没碰这个字段时，数据库里的原值（`0` 或 `NULL`）原样保留，前端不制造无谓的写入。
 
+**helper 里"清空"那一支为什么写 `0` 而不是 `NULL`**：与 `user_create_admin` 的既有写法一致
+（`:566` 的 `values["parent_id"] = 0`）。两种值对 `subordinate_school_ids()` 的效果相同
+（它按 `parent_id=市州id` 过滤，`0` 和 `NULL` 都不匹配），所以这个选择不影响数据范围，
+只是跟既有约定对齐、别在一个库里造出第三种"空"。
+
 ---
 
 ### 改动二 · `user_create_admin`（`apps/api/views.py:564`）：加类型校验 + 调整 `committee` 顺序
@@ -157,7 +209,13 @@ def user_create_admin(request, committee=False):
 
 > ⚠️ **第 2 条是现在就存在的 bug，不是假设。** `register_user_routes("/committee", 2)`（`:632`）把 `user_create_admin(request, committee=True)` 暴露给了组委会端。虽然前端组委会页目前没有「添加账号」按钮，但**接口是通的**，直接打就能复现。
 >
-> 一个 type=0 的账号挂在某市州名下，会让那个市州端**多看到本不该看到的报名**（因为 `subordinate_school_ids()` 只按 `parent_id` + `type=5` 过滤，脏数据会以另一种方式扭曲范围）。
+> **后果有多大（如实说，不夸大）**：`subordinate_school_ids()` 的过滤条件是
+> `parent_id=<市州id>` **AND** `type=5`（`apps/core/services.py:73`），所以这个 `type=0` 的账号
+> **不会被算进任何市州的数据范围** —— **眼下不构成越权**。
+>
+> 真正的危害是**破坏了「只有 type=5 才有 parent_id」这条不变量**：库里多出一条语义上说不通的数据。
+> 而且它是个**潜伏的陷阱** —— `user_update_admin` 允许改 `type`（`:555` 的白名单里有），
+> 哪天有人把这条账号的 type 改成 5，它会**静默地**进入那个市州的可见范围，排查起来很难往这上面想。
 
 **建议改法**：把 `if committee:` 提到 parent 校验**之前**，再加类型判断。
 
@@ -249,11 +307,15 @@ apps/core/services.py:350 / 368
 |---|---|---|
 | 1 | `PUT /api/admin/user/`，`parent_id` 指向一个不存在的 id（如 99999） | 返回「上级账号不存在」，**不写库** |
 | 2 | `PUT /api/admin/user/`，`parent_id` 指向一个 type=0 的学校账号 | 返回「上级账号必须是市州账号」，**不写库** |
-| 3 | `PUT /api/admin/user/`，`parent_id: null`（或整个键不传） | 通过，且**原值不被改动** |
+| 3a | `PUT /api/admin/user/`，**整个 `parent_id` 键都不传** | 通过，且**原值完全不动**。← 前端「清空归属」走的就是这条（`JSON.stringify` 会丢掉值为 `undefined` 的键） |
+| 3b | `PUT /api/admin/user/`，显式传 `parent_id: null` 或 `parent_id: 0` | 通过，**写成 `0`**。前端不会走这条，是给直连接口用的；写 `0` 与 create 的约定一致 |
 | 4 | `POST /api/committee/user/`，带 `type: 5` + 合法 `parent_id` | 返回「只有中小学账号可以设置所属市州」→ 因为 committee 会强制 type=0，**必须被拒** |
 | 5 | `POST /api/admin/user/`，`type: 0` + 合法 `parent_id` | 返回「只有中小学账号可以设置所属市州」 |
 | 6 | `POST /api/admin/user/`，`type: 5` + 合法 `parent_id` | 创建成功，`parent_id` 落库 |
 | 7 | `POST /api/admin/user/`，`type: 5` + 不带 `parent_id` | 创建成功，`parent_id = 0`（与现状一致，**不能变成必填**） |
+
+**第 3a 和 3b 一定要分开测**：它们的结果不一样。"键不传"是**保持原值**，"显式传空"是**写成 0**。
+前端只会走 3a；把 3b 写成"原值不动"是错的 —— `if "parent_id" in data` 为真就会进 helper。
 
 第 7 条要特别注意：**「所属市州」前端没有设为必填**，后端也不能设成必填 —— 现存账号大多没有归属。
 
@@ -307,24 +369,37 @@ rows = [["账号", "名称", "密码", "修改人姓名", "修改人联系方式
 
 ### 本需求需要改的（第三节）
 
+> **要改的文件只有一个：`apps/api/views.py`。** 完整审计见第零节。
+
 | # | 改动 | 位置 | 阻塞前端吗 |
 |---|---|---|---|
 | 1 | `user_update_admin` 补 `parent_id` 校验 | `apps/api/views.py:551` | ❌ 不阻塞 |
 | 2 | `user_create_admin` 加类型校验 + `committee` 顺序前置 | `apps/api/views.py:564` | ❌ 不阻塞 |
-| 3 | **不要**改 `user_dict` | — | ❌ 只是提醒 |
+| 3 | **不要**改 `user_dict` | `apps/core/services.py:63` | ❌ 只是提醒 |
+| 4 | **不要**给自助改资料加 `parent_id` | `apps/api/views.py:319` | ❌ 只是提醒 |
 
-**两处前端都已经在 UI 层挡住了，所以现在就能用。** 补上只是把守备下沉到接口层，防止绕过界面直接调接口。
+**两处前端都已经在 UI 层挡住了，所以现在就能用**（改动一：前端下拉里只有真实市州账号可选；
+改动二：组委会页没有「添加账号」按钮，管理员端的下拉只在 `type===5` 时才渲染）。
+补上不是为了救前端 —— 改动一是把守备下沉到接口层（防绕过界面直接调接口，且数据库层没有 FK 约束兜底），
+改动二是修一条不变量缺口（前端本来也碰不到，但接口是通的）。
 
 ### 顺带发现、需要你们判断的（第七节）
 
 | # | 问题 | 位置 | 与本需求的关系 |
 |---|---|---|---|
-| 4 | 删市州账号后下属中小学 `parent_id` 悬空 | `apps/api/views.py:586` | 既有缺口，非本次引入 |
-| 5 | 导出 Excel 不含「所属市州」列 | `apps/api/views.py:596` | 可选，前端不依赖 |
+| 5 | 删市州账号后下属中小学 `parent_id` 悬空 | `apps/api/views.py:586` | 既有缺口，非本次引入 |
+| 6 | 导出 Excel 不含「所属市州」列 | `apps/api/views.py:596` | 可选，前端不依赖 |
 
 ---
 
 ## 九、一句话总结
 
 **前端已经能用了，后端一行不改也能跑。**
-第 1、2 条是补守备（防直连接口）；第 4、5 条是顺带发现，你们自行判断。
+
+- **第 1、2 条**（第三节）是要动的代码，都在 `apps/api/views.py` 一个文件里，各是一个小函数：
+  - 改动一：给 `user_update_admin` 补 `parent_id` 校验。**必做** —— 因为 `db_constraint=False`，
+    数据库层没有外键约束，接口校验是**唯一**一道防线。
+  - 改动二：给 `user_create_admin` 加类型判断 + 把 `if committee:` 提前。修一条不变量缺口，
+    眼下不构成越权，但留着是个潜伏陷阱。
+- **第 3、4 条**是**不要动**的地方（`user_dict` 有 9 处调用方；自助改资料接口的白名单是对的）。
+- **第 5、6 条**是顺带发现，你们自行判断要不要处理。

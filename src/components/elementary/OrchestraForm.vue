@@ -295,6 +295,17 @@
               @rows-change="onPeopleChange"
               @imported="onPersonImported"
             />
+
+            <!--
+              【本仓库新增，dist 无】用餐预约
+              位置：参展人员表格之后、下方红色报名须知之前。
+              标题与上方「参展人员」同款；「备注」是表格外的提示，不占表格列。
+              组件本身无 props / 无 emit —— 这 6 个输入框只是渲染出来，不参与提交，
+              也不写暂存草稿。详见 MealTable.vue 文件头。
+            -->
+            <div style="font-size: 16px; font-weight: bold">用餐预约</div>
+            <p style="color: black; margin: 10px 0">备注：如果需在成都理工大学食堂购票用餐，请备注时间并在对应位置写上就餐人数</p>
+            <Meal />
           </div>
         </div>
 
@@ -610,6 +621,8 @@ import { useDraftSession } from '@/composables/useDraftSession'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
+// 【本仓库新增，dist 无】用餐预约表格，见该文件头（仅渲染 UI，不接接口、不参与提交）
+import Meal from './MealTable.vue'
 import FileCover from '@/components/common/FileCover.vue'
 import HaveToRead from '@/components/common/HaveToRead.vue'
 

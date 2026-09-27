@@ -12,7 +12,10 @@
     序号 / 名称 / 账号 / 修改人姓名 / 修改人联系方式 / 其他信息 / 操作(重置密码)
 
   API:
-    - list:    GET  /api/committee/user/list   → 过滤 type ∈ {0, 4}（学校、省级）
+    - list:    GET  /api/committee/user/list   → 过滤 type ∈ {0, 1, 5}
+                                                 （学校端 / 市州端 / 中小学端）
+                                                 可再带 ?type= 在范围内收窄；
+                                                 传 2/3/4 返回空表，不会越权
     - update:  PUT  /api/committee/user/        body { id, password } → 仅当 password 非空时改密码
     - export:  GET  /api/committee/user/export  → Blob xlsx（committee 看到所有 user，admin 只看到 type=0）
                                                  后端会写 log (write_log action_type=6)
@@ -55,6 +58,24 @@
         </template>
       </el-input>
 
+      <!--
+        类型筛选。与 admin/user.vue 那页是同一个东西，选项、取值、注释口径都一致。
+        【选项为什么只有 0/1/5 三个】后端 user_list 先卡死展示范围 type__in=(0,1,5)，
+        再把 type 作为 AND 条件叠加上去。所以传 2/3/4 一定返回空表 ——
+        下拉里摆组委会(2)/管理员(3)/省级(4)，等于给用户一个必然筛不出东西的按钮。
+        【:value 前面那个冒号不能省】绑数字 0/1/5，不是字符串。
+        后端拿到的是字符串，但它做了 int() 转换，所以数字字符串都筛得对。
+        【"全部类型"绑空串】与 ref 初值 '' 保持同一种值；空串属于"没选"，
+        getData 里会整个 key 都不发出去。
+        【宽度写在 <style> 里】与相邻的 .el-input 同一套写法，不写内联 style。
+      -->
+      <el-select v-model="filterType" placeholder="全部类型" @change="onFilterTypeChange">
+        <el-option label="全部类型" :value="''" />
+        <el-option label="学校端" :value="0" />
+        <el-option label="市州端" :value="1" />
+        <el-option label="中小学端" :value="5" />
+      </el-select>
+
       <el-button
         type="primary"
         @click="reflush"
@@ -85,6 +106,26 @@
           <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="nickname" label="名称" />
           <el-table-column prop="username" label="账号" />
+          <!--
+            类型列。与 admin/user.vue 那页是同一列。
+            【数据从哪来】列表接口 GET /api/committee/user/list 与 /api/admin/user/list
+            在后端是**同一个 user_list 函数**，走同一个 user_dict
+            （apps/core/services.py:59-63 里返回了 "type": user.type）——
+            所以行数据里本来就有 type，不需要额外请求、不需要改接口、不需要改后端。
+            【为什么不写 prop="type" 直接用】row.type 是数字（0/1/5…），
+            直接渲染出来是一列裸数字，等于没加。所以用默认插槽过一层 TYPE_LABEL 映射。
+            字典来自 src/config/accountTypes.js，与管理员端共用一份。
+            【?? row.type 的兜底不能删】列表接口按 type__in=(0,1,5) 过滤，
+            正常只会出现 0/1/5；万一后端以后放开过滤，遇到表里没有的值（如 2/3/4），
+            只写 TYPE_LABEL[row.type] 会渲染成空白，还不如显示原始数字。
+            【本列不引入任何样式】宽度和排版全部交给 Element Plus 默认单元格样式，
+            和相邻几列完全一致；没有 align、没有 class、没有内联 style。
+            宽度 110 是因为「中小学端」是本表里最长的类型名（5 个字），
+            给足宽度避免表头/单元格折行 —— 与 admin/user.vue 取同一个值。
+          -->
+          <el-table-column label="类型" width="110">
+            <template #default="{ row }">{{ TYPE_LABEL[row.type] ?? row.type }}</template>
+          </el-table-column>
           <el-table-column prop="leader" label="修改人姓名" />
           <el-table-column prop="tel" label="修改人联系方式" />
           <el-table-column prop="description" label="其他信息" show-overflow-tooltip />
@@ -128,8 +169,23 @@ import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
 import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
+// 账号类型 -> 中文名。字典本体与管理员端 /admin/user 共用同一份，
+// 说明（取值依据、为什么含 2/3/4、为什么不放 roles.js）全部在 src/config/accountTypes.js。
+// 别把字典抄回本文件 —— 两份副本漏改一处，那一页的类型列会渲染成空白。
+import { TYPE_LABEL } from '@/config/accountTypes'
 
 const keyword = ref(null)
+
+/**
+ * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
+ * 【初值为什么是 ''】与下拉里「全部类型」那一项的 :value="''" 同一种值，
+ * 免得出现 null 与 '' 两种"空"并存，判断时漏掉一种。
+ * 【名字为什么带 filter 前缀】与 admin/user.vue 同步 —— 那边有一个同名的
+ * onTypeChange 冲突（弹窗里「可报两支」勾选框用的），两页统一加 filter 前缀，
+ * 函数名一致，将来改一处时好对照。
+ */
+const filterType = ref('')
+
 const page = ref(1)
 const limit = ref(10)
 const total = ref(0)
@@ -147,6 +203,20 @@ const exporting = ref(false)
 function handleSizeChange(size) {
   page.value = 1
   limit.value = size
+  getData()
+}
+
+/**
+ * 切换类型筛选：先回到第 1 页再查。
+ * 【为什么必须把 page 归 1】后端 list_page 对超出范围的页码按 Laravel 语义返回
+ * **空数组**（apps/core/services.py 特意没用 Django 的 Paginator.get_page）。
+ * 停在第 5 页时切到只剩 2 页数据的类型，你会看到一张空表，
+ * 很容易误判成「这个类型一个账号都没有」。
+ * 注意：搜索框 keyword 走的是 @change="getData"，**不重置 page**（原文如此），
+ * 这里不跟着学。与 admin/user.vue 的同名函数保持一致。
+ */
+function onFilterTypeChange() {
+  page.value = 1
   getData()
 }
 
@@ -168,11 +238,15 @@ function handleCurrentChange(current) {
  *     })
  *   }
  *
- * 后端 apps/api/views.py user_list(committee=True) 的过滤：
- *   qs = qs.filter(type__in=(0, 4))   ← 仅列出学校(0) 和省级(4) 用户
+ * 后端 apps/api/views.py user_list 的展示范围（admin 与 committee 走同一个函数）：
+ *   qs = User.objects.filter(type__in=(0, 1, User.TYPE_PRIMARY_SECONDARY))
+ *   ← 学校端(0) / 市州端(1) / 中小学端(5)
+ * 【这段以前写的是 (0, 4)，早就不对了】0/4 是更早的版本（学校 + 省级），
+ * 后来改成 0/1/5 而注释没跟上；`user_list(committee=True)` 那个签名也是
+ * 另一条分支上的旧写法，当前 master 上是 user_list(request)。
  * 注意：dist 传的 parent_id: true 在后端 list_page 中**没有任何作用**（被忽略），
  * 但 axios 仍会把 true 作为查询参数发出去（"parent_id=true"）。
- * 这是 dist 的死字段，本项目保留以保证请求完全一致。
+ * 这是 dist 的死字段，本项目保留以保证请求完全一致 —— 别把它和下面新加的 type 混起来。
  */
 function getData() {
   const params = {
@@ -181,6 +255,23 @@ function getData() {
     keyword: keyword.value,
     parent_id: true  // 【dist 原样】后端忽略，但 dist 原文确实发了这个参数
   }
+
+  // ── 类型筛选：只有选了具体类型才把 type 塞进请求 ──────────────────────
+  // 【为什么不能写 if (filterType.value)】0（学校端）在 JS 里是 falsy。
+  //   那样一选「学校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
+  //   用户报障时只会说「学校端筛不出来」，很难往这上面想。必须显式判空。
+  // 【没选时为什么整个 key 都不发】后端 user_list 读的是 request.GET.get("type")，
+  //   它对空串是安全的（`account_type not in (None, "")`），所以传 '' 也不会错。
+  //   这里仍然不发，是为了不依赖后端那一句实现 —— 后端哪天真改成「按 key 是否存在」
+  //   来判断，前端不用跟着动。
+  // 【后端怎么用这个值】先卡死展示范围 type__in=(0,1,5)，再 filter(type=int(值))，
+  //   两个条件是 AND。所以传 2/3/4 只会得到空表，越不了权。
+  // 【和 keyword 的关系也是 AND】后端几个条件都是 .filter() 叠加，
+  //   「选市州端 + 搜张三」= 只在市州端账号里搜张三，不是并集。
+  if (filterType.value !== '' && filterType.value !== null && filterType.value !== undefined) {
+    params.type = filterType.value
+  }
+
   committeeApi.user.list(params).then((res) => {
     const body = res && res.data
     if (!body) {
@@ -335,6 +426,13 @@ onMounted(() => {
 
 .options > .el-input {
   width: 220px !important;
+}
+
+/* 类型下拉：与相邻的搜索框排成一档。
+   高度不用管 —— 两个组件都是默认 size，el-input 与 el-select 默认高度一致，
+   上面那条 align-items: center 负责垂直对齐。 */
+.options > .el-select {
+  width: 160px !important;
 }
 
 .content {

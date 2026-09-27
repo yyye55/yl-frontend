@@ -11,6 +11,38 @@
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
+      <!--
+        类型筛选。
+        【选项为什么只有 0/1/5 三个】后端 user_list 先卡死展示范围
+        type__in=(0,1,5)（学校端 / 市州端 / 中小学端），再把 type 作为 AND 条件叠加上去
+        （apps/api/views.py 的 user_list）。所以传 2/3/4 一定返回空表 ——
+        下拉里摆组委会(2)/管理员(3)/省级(4)，等于给用户一个必然筛不出东西的按钮，
+        他筛出空表只会当成 bug 报上来。干脆不给选项。
+        【:value 前面那个冒号不能省】绑的是数字 0/1/5，不是字符串 '0'/'1'/'5'，
+        与「添加账号」弹窗里选类型的写法一致（理由见那里）。
+        后端拿到的是字符串，但它做了 int() 转换，所以这里数字字符串都筛得对。
+        【"全部类型"绑空串】与 ref 初值 '' 保持同一种值，不会出现 null 和 '' 两种空值并存；
+        空串属于"没选"，getData 里会整个 key 都不发出去。
+        【宽度写在 <style> 里】不在标签上写 style="width:..."，
+        与相邻的 .el-input 同一套写法。
+        【为什么名字都带 filter —— 不叫 type / onTypeChange】本页已经有一个
+        onTypeChange（在「添加用户」弹窗里给「可报两支」勾选框做联动，形参是一个对象）。
+        重名会直接撞上：el-select 的 @change 传进来的是**选中的值**（0/1/5/''），
+        而那个函数里有一句 `target.can_report_twice = false` —— 往数字上写属性，
+        严格模式（ES module 恒为严格模式）必抛 TypeError（三种取值都验过）。
+        症状不是白屏：Vue 3 把事件处理器包在 callWithAsyncErrorHandling 里，
+        错误被 handleError 接住、走默认的 console.error（本项目 main.js 没配
+        app.config.errorHandler），所以页面照常渲染 —— 只是 @change 里那句
+        getData() 永远走不到，表现为「点了下拉列表没反应」。
+        这比白屏更难查：用户会以为没点中，反复点几次然后放弃。
+        同理 `type` 这个变量名也太泛，加 filter 前缀与业务里的 form.type / row.type 分开。
+      -->
+      <el-select v-model="filterType" placeholder="全部类型" @change="onFilterTypeChange">
+        <el-option label="全部类型" :value="''" />
+        <el-option label="学校端" :value="0" />
+        <el-option label="市州端" :value="1" />
+        <el-option label="中小学端" :value="5" />
+      </el-select>
       <el-button type="primary" @click="reflush"> 刷新 </el-button>
       <el-button type="primary" @click="add"> 添加账号 </el-button>
       <el-button type="primary" @click="download('账号列表')"> 导出所有账号 </el-button>
@@ -254,8 +286,10 @@
  *  1. 表格列全部对不上后端：旧版读 realName / school / phone / createdAt，
  *     而 apps/core/services.py 的 user_dict 只返回 id/username/nickname/description/tel/leader/type/parent_id，
  *     四个列恒为空白。
- *  2. 筛选条件对不上后端：旧版传 username，后端 user_list 只认 keyword；
- *     后端也不支持按 type 过滤（旧版的「角色」下拉是无效的）。
+ *  2. 筛选条件对不上后端：旧版传 username，后端 user_list 只认 keyword。
+ *     旧版的「角色」下拉在当时确实是无效的 —— 那时后端还不支持按 type 过滤。
+ *     【已不是现状】后端后来给 user_list 加了 type 参数（值只能在展示范围 0/1/5 内），
+ *     本页搜索栏那个「类型」下拉就是接它，见 getData 与 onFilterTypeChange。
  *  3. 分页参数错误：旧版传 size，后端 list_page 读的是 limit，导致每页条数恒为默认 10。
  *  4. 删除功能是伪造的：旧版 onDelete 调用 admin.user.update({...row, deleted:true})，
  *     而后端 user_update_admin 只读取 username/nickname/description/tel/leader/type/parent_id，
@@ -326,34 +360,21 @@ import {
   PASSWORD_MAX,
   MSG_PASSWORD_LENGTH
 } from '@/config/accountRules'
-
-/**
- * 账号类型 -> 中文名。只给「账号列表」那一列做显示用，不参与任何判断。
- *
- * 【取值依据】后端 apps/core/models.py:76-82 的常量定义，
- * 以及同目录 migrations/0010_update_type_comments.py 里同步的数据库列注释：
- *   0=学校 1=市州（只读，报名功能已移出） 2=组委会 3=管理员 4=省级 5=中小学端
- *
- * 【为什么 2/3/4 也写进来，明明列表接口看不到它们】
- * 列表接口的过滤条件是 type__in=(0, 1, 5)，所以这行本该只出现 0/1/5。
- * 但兜底值一旦渲染出来（见模板里 `?? row.type` 的说明），
- * 有中文名总比显示裸数字强；而且这三行是"照抄数据库注释"，
- * 少写反而会让后来的人以为是漏了。属于**只读的展示字典**，改动它不会影响任何逻辑。
- *
- * 【为什么不从 config/roles.js 引】那里只有数字常量 ROLE.SCHOOL/CITY/…，
- * 没有中文名，而且**故意没有 4**（省级已下线）—— 硬引过来会漏掉 4 这一档。
- * 这里要的是"把可能出现的值都显示成人话"，和 roles.js「谁有权限」的目标不同，故各留一份。
- */
-const TYPE_LABEL = {
-  0: '学校端',
-  1: '市州端',
-  2: '组委会',
-  3: '管理员',
-  4: '省级',
-  5: '中小学端'
-}
+// 账号类型 -> 中文名。字典本体与组委会端 /committee/user 共用同一份，
+// 说明（取值依据、为什么含 2/3/4、为什么不放 roles.js）全部在 src/config/accountTypes.js。
+// 别把字典抄回本文件 —— 两份副本漏改一处，那一页的类型列会渲染成空白。
+import { TYPE_LABEL } from '@/config/accountTypes'
 
 const keyword = ref(null)
+
+/**
+ * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
+ * 【初值为什么是 '' 而不是 null】与下拉里「全部类型」那一项的 :value="''" 保持同一种值，
+ * 免得出现 null 与 '' 两种"空"并存，判断时漏掉一种。
+ * 【名字为什么带 filter 前缀】见模板里那段说明 —— 本页已有一个 onTypeChange。
+ */
+const filterType = ref('')
+
 const showInfo = ref(false)
 const showEditInfo = ref(false)
 const page = ref(1)
@@ -411,6 +432,24 @@ const editRules = {
 
 function getData() {
   const params = { page: page.value, limit: limit.value, keyword: keyword.value }
+
+  // ── 类型筛选：只有选了具体类型才把 type 塞进请求 ──────────────────────
+  // 【为什么不能写 if (filterType.value)】0（学校端）在 JS 里是 falsy。
+  //   那样一选「学校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
+  //   用户报障时只会说「学校端筛不出来」，很难往这上面想。必须显式判空。
+  // 【没选时为什么整个 key 都不发】后端 user_list 读的是 request.GET.get("type")，
+  //   它对空串是安全的（`account_type not in (None, "")`），所以传 '' 也不会错。
+  //   这里仍然不发，是为了不依赖后端那一句实现 —— 后端哪天真改成「按 key 是否存在」
+  //   来判断，前端不用跟着动。
+  // 【后端怎么用这个值】先卡死展示范围 type__in=(0,1,5)，再 filter(type=int(值))，
+  //   两个条件是 AND。所以传 2/3/4 只会得到空表，越不了权
+  //   （apps/api/views.py 的 user_list，以及它上面那条"不能借 type 越权"的注释）。
+  // 【和 keyword 的关系也是 AND】后端三个条件都是 .filter() 叠加，
+  //   「选学校端 + 搜张三」= 只在学校端账号里搜张三，不是并集。
+  if (filterType.value !== '' && filterType.value !== null && filterType.value !== undefined) {
+    params.type = filterType.value
+  }
+
   adminApi.user.list(params).then(({ data: res }) => {
     if (res.code === 0) {
       total.value = res.count
@@ -419,6 +458,20 @@ function getData() {
       ElMessage.error(res.msg)
     }
   })
+}
+
+/**
+ * 切换类型筛选：先回到第 1 页再查。
+ * 【为什么必须把 page 归 1】后端 list_page 对超出范围的页码按 Laravel 语义返回
+ * **空数组**（apps/core/services.py 特意没用 Django 的 Paginator.get_page）。
+ * 停在第 5 页时切到只剩 2 页数据的类型，你会看到一张空表，
+ * 很容易误判成「这个类型一个账号都没有」。
+ * 注意：搜索框 keyword 走的是 @change="getData"，**不重置 page**（原文如此），
+ * 这里不跟着学。
+ */
+function onFilterTypeChange() {
+  page.value = 1
+  getData()
 }
 
 // 注意：与 /admin/scan 的 reflush 不同，这里的原文实现不重置 page
@@ -665,6 +718,13 @@ getData()
 
   > .el-input {
     width: 220px !important;
+  }
+
+  /* 类型下拉：与相邻的搜索框排成一档。
+     高度不用管 —— 两个组件都是默认 size，el-input 与 el-select 默认高度一致，
+     上面那条 align-items: center 负责垂直对齐。 */
+  > .el-select {
+    width: 160px !important;
   }
 }
 

@@ -1,7 +1,12 @@
 <template>
   <div v-if="user">
     <el-dialog v-model="showInfo" title="修改信息" width="40%">
-      <p style="margin:10px;">提示：首次登录后请及时修改密码。修改信息后，修改的账号需要重新登录。</p>
+      <!--
+        【本次变更】原为「提示：首次登录后请及时修改密码。修改信息后，修改的账号需要重新登录。」
+        前半句已删除：本弹窗内不再能设置自选密码，只剩「重置为默认密码」，
+        「请及时修改密码」在这里已无对应操作（详见 resetPassword() 上方注释）。
+      -->
+      <p style="margin:10px;">提示：修改信息后，修改的账号需要重新登录。</p>
 
       <el-form
         ref="ruleForm"
@@ -24,14 +29,21 @@
         <el-form-item label="修改人联系方式" prop="tel">
           <el-input v-model="form.tel" />
         </el-form-item>
-        <el-form-item label="新密码" prop="password">
-          <el-input v-model="form.password" type="password" />
-        </el-form-item>
-        <el-form-item label="确认密码">
-          <el-input v-model="form.password1" type="password" />
+        <!--
+          【本次变更】原先这里是「新密码」+「确认密码」两个输入框，现已删除，
+          换成下面这个不带输入框的「重置密码」按钮 —— 与 admin/user.vue、committee/user.vue 三处口径一致。
+          【为什么不是"少了一个功能"】密码不再由使用者决定：本按钮发出去的 password 恒为
+          DEFAULT_PASSWORD，点确定 = 把本账号密码恢复成默认口令。
+          走的是同一个 PUT /api/user，后端 user_update 是 `if data.get("password"): set_password(...)`，
+          发什么就设成什么，所以这一处**不需要后端改动**（不像管理员那两处要后端改白名单逻辑）。
+        -->
+        <el-form-item label="密码">
+          <el-button @click="resetPassword">重置密码</el-button>
         </el-form-item>
 
-        <p style="margin:10px;">提示：如果输入密码，则会更新密码，不输入，则不会改变密码。</p>
+        <p style="margin:10px;">
+          提示：点「重置密码」后，本账号密码将恢复为默认密码：<b>{{ DEFAULT_PASSWORD }}</b>，重置后需重新登录。
+        </p>
         <p style="margin:10px;">其他信息：（可以填写一些关于账号的介绍）</p>
         <el-input
           v-model="form.description"
@@ -58,6 +70,39 @@
  *
  * 【可信度：A】逐项照搬 dist/chunk-40286ec0 中的 ModifyUserInfo 组件（name: "ModifyUserInfo"）。
  *
+ * ==========================================================================
+ * 【本次变更 · 密码：两个输入框 → 一个「重置密码」按钮，并且是本仓库改动最集中的一处】
+ *
+ * 模板里原先是「新密码」+「确认密码」两个输入框，选填，留空即不改密码。
+ * 现改为一个不带输入框的「重置密码」按钮：点击 → 确认框「是否重置为默认密码？」→
+ * 发 PUT /api/user，password 恒为 DEFAULT_PASSWORD（src/config/defaultPassword.js）。
+ *
+ * 【为什么密码不再由使用者决定】管理员端/组委会端的重置密码已统一为"恢复默认口令"，
+ *   本弹窗若仍允许自选密码，就等于留了一条绕过口径的后门。
+ *   （另一种做法是彻底删掉改密能力、让用户去找管理员重置，本次未采用 ——
+ *   本按钮走的就是普通用户自己的 PUT /api/user，不需要动后端。）
+ *
+ * 【与管理员/组委会那两处的关键差异】这一处**不需要后端配合**。
+ *   /admin/user、/committee/user 走后端 user_update_admin，那里被改成了
+ *   `if "password" in data: set_password(RESET_PASSWORD_DEFAULT)`（发什么都重置为默认）；
+ *   而 PUT /api/user 走 user_update，仍是 `if data.get("password"): set_password(data["password"])`
+ *   —— 发什么就设成什么。所以这里发默认口令，效果就是"重置为默认密码"，今天即可生效。
+ *
+ * 【连带删除的东西】form.password / form.password1、rules.password（含 6-20 长度口径）、
+ *   「两次密码不一致」判断、提交载荷里那个条件性的 password、fillForm 里清空密码的两行、
+ *   以及 accountRules.js 的 import。密码框没了，"输入密码才改密码"这整套语义也就不存在了。
+ *
+ * 【顺带删掉的两句文案】
+ *   ① 弹窗顶部「首次登录后请及时修改密码。」—— 本弹窗内已不能设置自选密码，这句没有对应操作；
+ *   ② 表单里「如果输入密码，则会更新密码，不输入，则不会改变密码。」—— 输入框已不存在。
+ *   两条都换成了如实描述新行为的提示。
+ *
+ * 【⚠️ 留给他人的一个已知后果】改完这一处之后，全站再没有任何界面能设置**自选**密码：
+ *   密码只有两个来源 —— 管理员「添加账号」时填的初始密码，以及各处「重置密码」写死的默认口令。
+ *   受影响的还有登录页那条「密码为初始密码，请登录系统后在右上角的[修改信息]中修改密码」——
+ *   用户照做只会把它重置回同一个默认口令，该提醒已失去意义。本次未动登录页，需要时另行决定。
+ * ==========================================================================
+ *
  * 原文关键逻辑：
  *   data(){ return { showInfo:false, form:{}, rules:{
  *     nickname:[{required:true,message:"请输入名称",trigger:"blur"},{min:2,max:20,message:"长度在 2 到 20 个字符",trigger:"blur"}],
@@ -74,15 +119,15 @@
  *       0===e.code ? (this.showInfo=!1, ElMessage.success("修改成功")) : ElMessage.warning(e.msg) })
  *   }
  *
- * 【文案出入说明 —— 本次已修正】
+ * 【文案出入说明 —— 本次已修正】（password 那半句已随输入框一并作废，见上一节）
  *  leader 原提示语写「长度在 2 到 10 个字符」，但规则其实是 2-20；
  *  password 原提示语写「长度在 8 到 10 个字符」，规则其实是 8-20。属原版笔误。
- *  本次只改文案，让它与实际区间一致（规则数值本身见下一条，password 已并入统一口径）。
+ *  本次只改文案，让它与实际区间一致。
  *
- * 【本次变更：password 并入统一口径】
- *  原先这里是 8-20，而「添加账号」是 6-32、登录页是 5-15 —— 管理员按 6 位建的密码，
- *  用户想自己改成同一个值会被这里拒（min:8）。现在改用 src/config/accountRules.js
- *  的 6-20，与其余写入入口一致。仍为选填：留空 = 不改密码。
+ * 【历史：password 曾并入统一口径】（该规则现已删除，保留记录以免被当成漏写补回来）
+ *  这里一度是 8-20，而「添加账号」6-32、登录页 5-15 —— 管理员按 6 位建的密码，
+ *  用户想自己改成同一个值会被这里拒（min:8）。后来改用 src/config/accountRules.js 的 6-20，
+ *  与其余写入入口一致。现在整个 rules.password 连同输入框一起删除了。
  *
  * 【Vue 3 差异说明】dist 是 `this.form = this.user`（同一个对象引用，靠 $set 补字段）。
  * 这里改为按白名单拷贝，避免直接改写 props 传入的 user 对象。
@@ -105,8 +150,9 @@
  *   本项目早已是拷贝，不存在这个约束，因此不再置空。
  *
  * 【问题 3：rules 是死代码】原 submit 从不调 validate()，nickname/leader/tel 的
- *   必填与长度规则全部不生效。对策：恢复校验（两次密码一致这条仍需手写判断，
- *   因为 password1 没有 prop，进不了 rules）。
+ *   必填与长度规则全部不生效。对策：恢复校验。
+ *   （原文后半句「两次密码一致这条仍需手写判断，因为 password1 没有 prop」已作废 ——
+ *   两个密码框连同那条手写判断一并删除，见文件头【本次变更 · 密码】。）
  *
  * 【问题 4：保存成功后 store 不更新 → 已由「强制退出重新登录」取代】
  *   dist 里顶栏昵称取自 userStore，而保存成功后没人写 store，昵称纹丝不动、刷新也不变。
@@ -124,7 +170,9 @@
  *   保存成功 → POST /api/logout（后端删掉该 token）→ 清本地 → 关标签页 → 1 秒后跳登录。
  *   范围是「任何保存」：只改昵称也会登出 —— 与文案字面「修改信息后」一致。
  *   【注意】即使 logout 接口失败也必须继续退出：保存已经成功，
- *   「需重新登录」这个承诺不能因为一个清理接口失败而失效（submit() 里单独 catch）。
+ *   「需重新登录」这个承诺不能因为一个清理接口失败而失效（该 catch 在 forceRelogin() 里）。
+ *   【本次变更】这段流程原先内联在 submit() 中，现抽成 forceRelogin()，供
+ *   submit() 与 resetPassword() 共用 —— 重置密码同样必须登出，理由见 forceRelogin()。
  *
  * 【本次明确不做的事】
  *   - footer 里的两个 size="mini" 已移除：Element Plus 不认 "mini"、每次渲染都会告警，
@@ -136,9 +184,9 @@
 
 import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { userApi } from '@/api'
-import { PASSWORD_MIN, PASSWORD_MAX, MSG_PASSWORD_LENGTH } from '@/config/accountRules'
+import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
 import { showApiError } from '@/utils/request'
 import { useUserStore } from '@/store/modules/user'
 import { useTabsStore } from '@/store/modules/tabs'
@@ -162,8 +210,10 @@ const ruleForm = ref(null)
  * 表单里要读写的那几个字段
  *
  * 【来源】后端 PUT /api/user 认的字段（apps/api/views.py 的 user_update）：
- *   username / nickname / description / tel / leader，外加条件性的 id 与 password。
+ *   username / nickname / description / tel / leader，外加单独传的 id。
  *   接口返回的 type / parent_id 不在此列。
+ *   【password 为什么不在这里】它已不属于"表单里可编辑的字段"——
+ *   由 resetPassword() 单独发一次请求，不走本数组、也不随 submit() 提交。
  *
  * 【为什么显式声明而不用 reactive({}) 靠 v-model 动态加字段】
  *   字段名原本要在三处各写一遍（校验规则、提交载荷、接口回填），漏一处就是静默 Bug
@@ -177,9 +227,7 @@ const form = reactive({
   nickname: '',
   leader: '',
   tel: '',
-  description: '',
-  password: '',
-  password1: ''
+  description: ''
 })
 
 /**
@@ -202,10 +250,6 @@ const rules = {
     { required: true, message: '请输入负责人名称', trigger: 'blur' },
     { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
   ],
-  password: [
-    { required: false },
-    { min: PASSWORD_MIN, max: PASSWORD_MAX, message: MSG_PASSWORD_LENGTH, trigger: 'blur' }
-  ],
   tel: [{ required: true, message: '电话号码必填', trigger: 'blur' }]
 }
 
@@ -220,8 +264,9 @@ const rules = {
  * 直接返回 code 1「无该用户修改权限！」。后端 user_dict 已把 None 归一成 ""，
  * 这里再挡一次是防止接口将来改成直接回传 null。
  *
- * 【为什么密码恒清空】接口不返回密码；且"不输入则不改密码"要求每次打开都是空的，
- * 绝不能让上一次输入的密码留在框里被再次提交。
+ * 【本次变更】原先这里还有 `form.password = ''` / `form.password1 = ''` 两行，
+ * 理由是"接口不返回密码，不输入则不改密码，所以每次打开都要清空"。
+ * 两个密码字段已随输入框一起删除，密码改由「重置密码」按钮单独触发，故这两行删除。
  */
 function fillForm(source) {
   if (!source) return
@@ -230,8 +275,6 @@ function fillForm(source) {
     const value = source[key]
     if (value !== undefined && value !== null) form[key] = value
   }
-  form.password = ''
-  form.password1 = ''
 }
 
 /**
@@ -322,11 +365,6 @@ async function submit() {
   if (submitting.value) return
   if (!ruleForm.value) return
 
-  // password1 没有 prop，进不了 rules，这条只能在业务里判（与 dist 一致）
-  if (form.password !== '' && form.password !== form.password1) {
-    return ElMessage.error('两次密码不一致')
-  }
-
   try {
     await ruleForm.value.validate()
   } catch (_) {
@@ -334,12 +372,12 @@ async function submit() {
     return
   }
 
-  // 只挑后端白名单里的字段；password 为空时整条不发 —— 与弹窗里
-  // 「如果输入密码，则会更新密码，不输入，则不会改变密码」的文案对齐
-  // （后端是 `if data.get("password")`，发空串也不会改密码，这里更显式）
+  // 只挑后端白名单里的字段。
+  // 【本次变更】原先这里还有一个 `if (form.password !== '') payload.password = ...`，
+  // 与「两次密码不一致」的判重。密码输入框已删除，本请求不再携带 password ——
+  // 后端 user_update 是 `if data.get("password")`，不带该键即不动密码，正是这里要的语义。
   const payload = { id: form.id }
   for (const key of USER_FIELDS) payload[key] = form[key]
-  if (form.password !== '') payload.password = form.password
 
   submitting.value = true
   try {
@@ -357,53 +395,7 @@ async function submit() {
     // 先关弹窗：watch 的守卫在 showInfo 为 false 时放行
     showInfo.value = false
     ElMessage.success('修改成功，请重新登录')
-
-    /**
-     * 【第十二届·新】保存成功 → 强制退出重新登录
-     *
-     * 【为什么要做】弹窗里那句「修改信息后，修改的账号需要重新登录」原先只是文案：
-     * 后端 user_update 只调 set_password，不会使既有 PersonalAccessToken 失效，用户不会被踢出。
-     * 现按业务要求把行为补齐 —— 范围是「任何保存」，只改昵称也会登出（与文案字面一致）。
-     *
-     * 【为什么走 apiLogout 而不是只清本地】只清 localStorage 的话，后端那条 token 依然有效
-     * （即便这次改过密码）。apiLogout()（POST /api/logout）会让后端删掉该 token，
-     * 与顶栏「退出登录」（Header.vue:69）走的是同一条链路。
-     *
-     * 【为什么单独 try/catch】外层 catch 会调 showApiError(err, '修改失败')，
-     * 而这里保存**已经成功**，绝不能再报「修改失败」。
-     * 且 logout 失败也必须继续退出：「需重新登录」这个承诺不能因为一个清理接口失败而失效。
-     *
-     * 【原实现已删除】保存成功后 userStore.setUser(...) 合并更新。
-     * 它在本仓库存在的理由是「问题 4：保存成功后 store 不更新」；现在保存成功即登出，
-     * 而下面 clearAllMsg() 会 localStorage.clear()，那段合并写进去立刻被抹掉，已无读取方。
-     * （弹窗打开期间那次 store 同步也已随「打开时拉取最新信息」整段删除。）
-     *
-     * 【为什么下面还要 userStore.logout()】见紧挨着它的那段注释 —— 登出必须连内存态一起清。
-     */
-    try {
-      await apiLogout()
-    } catch (_) {
-      /* 忽略：下面照常清本地并跳登录 */
-    }
-    clearAllMsg() // utils/auth.js:54 = localStorage.clear()，token 与 user 一起清
-    tabsStore.clearAllTabs()
-
-    /**
-     * 【为什么还要清一次 store】clearAllMsg() 只动 localStorage，而 userStore 是启动时
-     * 把 localStorage 读进内存的副本（store/modules/user.js:13-16），三处内存状态
-     * （token / user / getters）不会跟着变。当前它的读取方都在路由守卫之后
-     * （守卫读 localStorage，MainLayout 由守卫放行才挂载），所以这一行**不是在修可见 Bug**，
-     * 而是把"登出即清干净"这条语义补齐，免得 store 里长期挂着过期 user 等将来被误用。
-     * 语义与 utils/auth.js:74 的 logout() 一致。
-     */
-    userStore.logout()
-
-    /**
-     * 【为什么延时 1 秒】照 request.js gotoLogin() 的节奏：先让用户看清提示再跳，
-     * 否则「修改成功，请重新登录」还没读完页面就切走了。
-     * （ElMessage 渲染在 body 上，即使不延时也不会因跳路由而消失，这里只是为了可读性。）
-     */
-    setTimeout(() => router.push('/login'), 1000)
+    await forceRelogin()
   } catch (err) {
     /**
      * 【为什么这里也要 catch】改造前这个 PUT 没有 catch：一旦走到拦截器的 default 分支
@@ -412,6 +404,121 @@ async function submit() {
      * 返回 null（拦截器已提示或已跳转），不会重复弹提示，只对静默状态码弹一句可读文案。
      */
     showApiError(err, '修改失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+/**
+ * 【第十二届·新】强制退出重新登录 —— submit() 与 resetPassword() 共用这一份
+ *
+ * 【为什么要做】弹窗里那句「修改信息后，修改的账号需要重新登录」原先只是文案：
+ * 后端 user_update 只调 set_password，不会使既有 PersonalAccessToken 失效，用户不会被踢出。
+ * 现按业务要求把行为补齐 —— 范围是「任何保存」，只改昵称也会登出（与文案字面一致）。
+ * 「重置密码」同样要走它：重置完不登出的话，用户会拿着一个已经公开写在页面上的
+ * 默认口令继续用旧 token 操作，且下次登录才会看到「密码为初始密码」那条提醒。
+ *
+ * 【为什么走 apiLogout 而不是只清本地】只清 localStorage 的话，后端那条 token 依然有效
+ * （即便这次改过密码）。apiLogout()（POST /api/logout）会让后端删掉该 token，
+ * 与顶栏「退出登录」（Header.vue:69）走的是同一条链路。
+ *
+ * 【为什么单独 try/catch】调用方的 catch 会调 showApiError(err, '修改失败')，
+ * 而此时保存**已经成功**，绝不能再报「修改失败」。
+ * 且 logout 失败也必须继续退出：「需重新登录」这个承诺不能因为一个清理接口失败而失效。
+ *
+ * 【原实现已删除】保存成功后 userStore.setUser(...) 合并更新。
+ * 它在本仓库存在的理由是「问题 4：保存成功后 store 不更新」；现在保存成功即登出，
+ * 而下面 clearAllMsg() 会 localStorage.clear()，那段合并写进去立刻被抹掉，已无读取方。
+ * （弹窗打开期间那次 store 同步也已随「打开时拉取最新信息」整段删除。）
+ *
+ * 【为什么下面还要 userStore.logout()】见紧挨着它的那段注释 —— 登出必须连内存态一起清。
+ *
+ * 【为什么必须 await】（调用方原先是内联写的，没这个问题）新调用方 resetPassword()
+ * 是 async 函数，若这里不 await，它的 finally 会在登出流程跑完前就把 submitting 放回 false。
+ */
+async function forceRelogin() {
+  try {
+    await apiLogout()
+  } catch (_) {
+    /* 忽略：下面照常清本地并跳登录 */
+  }
+  clearAllMsg() // utils/auth.js:54 = localStorage.clear()，token 与 user 一起清
+  tabsStore.clearAllTabs()
+
+  /**
+   * 【为什么还要清一次 store】clearAllMsg() 只动 localStorage，而 userStore 是启动时
+   * 把 localStorage 读进内存的副本（store/modules/user.js:13-16），三处内存状态
+   * （token / user / getters）不会跟着变。当前它的读取方都在路由守卫之后
+   * （守卫读 localStorage，MainLayout 由守卫放行才挂载），所以这一行**不是在修可见 Bug**，
+   * 而是把"登出即清干净"这条语义补齐，免得 store 里长期挂着过期 user 等将来被误用。
+   * 语义与 utils/auth.js:74 的 logout() 一致。
+   */
+  userStore.logout()
+
+  /**
+   * 【为什么延时 1 秒】照 request.js gotoLogin() 的节奏：先让用户看清提示再跳，
+   * 否则「修改成功，请重新登录」还没读完页面就切走了。
+   * （ElMessage 渲染在 body 上，即使不延时也不会因跳路由而消失，这里只是为了可读性。）
+   */
+  setTimeout(() => router.push('/login'), 1000)
+}
+
+/**
+ * 「重置密码」—— 确认框，把本账号密码恢复为默认口令
+ *
+ * 【与管理员/组委会那两处的区别 —— 这一处不需要后端配合】
+ *   /admin/user、/committee/user 的重置走 user_update_admin，后端把逻辑改成了
+ *   `if "password" in data: set_password(RESET_PASSWORD_DEFAULT)`（值被忽略），
+ *   所以那两处必须等后端上线。
+ *   而这里是 PUT /api/user（user_update），后端仍是 `if data.get("password"): set_password(data["password"])`
+ *   —— 发什么就设成什么。我们发 DEFAULT_PASSWORD，效果就是"重置为默认密码"，今天就能生效。
+ *
+ * 【为什么从"两个输入框"改成"一个按钮"】密码不再由使用者决定，一律是默认口令。
+ *   留着输入框只会骗人：无论填什么，最终生效的都是 scylb@2026
+ *   （这与 admin/user.vue 里删掉的那个「修改用户」密码框是同一类静默陷阱）。
+ *   随之删除的还有 form.password / form.password1 / rules.password / 「两次密码不一致」判断，
+ *   以及提交载荷里那个条件性的 password。
+ *
+ * 【为什么重置后也要强制重新登录】见 forceRelogin() 的注释第一段。
+ *   另外登录页有一条「密码为初始密码」的提醒，登出后用户会立刻看到它。
+ *
+ * 【为什么确认框和请求分成两段写（而不是 .then().catch()）】
+ *   若把 PUT 写在 .then() 里，紧跟着的 .catch() 会**同时**接住"用户点了取消"和
+ *   "PUT 请求失败"两种情况，后者会被误报成「已取消」。
+ *   所以：confirm 单独 try/catch（只为吃掉取消），请求放在它后面单独处理。
+ */
+async function resetPassword() {
+  if (submitting.value) return
+
+  try {
+    await ElMessageBox.confirm('是否重置为默认密码？', '重置密码', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+  } catch (_) {
+    // 取消 / 右上角关闭都会 reject（'cancel' / 'close'），这不是错误
+    ElMessage({ type: 'info', message: '已取消' })
+    return
+  }
+
+  submitting.value = true
+  try {
+    const { data: res } = await userApi.updateUserInfo({
+      id: form.id,
+      password: DEFAULT_PASSWORD
+    })
+
+    if (res.code !== 0) {
+      // 业务失败只提示、不关弹窗（例如后端返回「无该用户修改权限！」）
+      ElMessage.warning(res.msg)
+      return
+    }
+
+    showInfo.value = false
+    ElMessage.success('重置成功，请重新登录')
+    await forceRelogin()
+  } catch (err) {
+    showApiError(err, '重置失败')
   } finally {
     submitting.value = false
   }

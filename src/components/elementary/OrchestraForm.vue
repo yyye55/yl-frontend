@@ -12,12 +12,22 @@
       element-loading-text="正在提交，请勿关闭页面……"
       class="my-form"
     >
+      <!--
+        label-width 为什么是 140px 而不是 120px：
+        本表单最长的标签是「乐团集体电子照片」8 个字。el-form-item__label 默认
+        字号 14px、padding-right 12px，装下它需要 8×14+12 = 124px —— 120px 差 4px，
+        于是第 8 个字「片」被挤到第二行。
+        ⚠️ 这里用**表单级**宽度而不是按 ProgramForm 那样给单个 item 覆盖 label-width：
+        本表单是清一色两列（span=12），而那一行并排的是「乐团集体电子照片」与
+        「曲目视频」两个外观相同的拖拽上传框 —— 只加宽左边那个，两个框的内容起点
+        会差 20px，比折行更显眼。表单级改法让所有行一起平移，行间对齐不受影响。
+      -->
       <el-form
         ref="formRef"
         :model="form"
         label-position="left"
         :rules="rules"
-        label-width="120px"
+        label-width="140px"
       >
         <div class="bg1">
           <p style="font-size: 14px; color: black; margin: 0 0 10px">

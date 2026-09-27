@@ -1,6 +1,18 @@
 <template>
   <div class="container">
-    <div class="options">
+    <!--
+      【@change 为什么在这里，而不在下面那个 el-upload 上】
+      el-upload 把 `onChange` 声明成了 prop（element-plus upload.mjs 里
+      `onChange: { type: Function, default: NOOP }`），写在组件上的 @change 会被
+      当成那个 prop 消化掉，**不会**有原生监听挂到根元素上；而 EP 内部只在「文件状态
+      变化」时调用它 —— 选中空文件夹时 uploadFiles 在 `if (files.length === 0) return`
+      就返回了，一次状态变化都没有，那个 prop 从头到尾不会被调用。
+      原生 change 事件**本身是触发的**（只是被 EP 吞了），而它会冒泡，所以挂在
+      这个普通 div 上就能收到，用来补「文件夹里没有照片」那条提示。
+      三个文件 input（Excel 导入 / 批量照片 / 隐藏的单张）里只有批量照片那个开了
+      目录选择，处理函数按 webkitdirectory 认人（见 onFileInputChange）。
+    -->
+    <div class="options" @change="onFileInputChange">
       <!--
         dist 原文（模块 db6d 渲染函数）：
 
@@ -45,15 +57,43 @@
         <el-button style="color: #1890ff" type="text" @click="add">添加一行</el-button>
         <el-button style="color: #1890ff" type="text" @click="flush">清空</el-button>
 
+        <!--
+          【文件夹上传】本控件加了 directory —— Element Plus 的原生属性
+          （upload.d.ts 的 `directory?: boolean`，注释即 "whether to support
+          uploading directory"），它最终落成内层 input 上的 webkitdirectory，
+          于是点击后弹出的不再是「选择文件」，而是「选择文件夹」。
+
+          【一次能拿到什么】webkitdirectory 会让浏览器把所选文件夹**及其所有子文件夹**
+          里的文件递归塞进 input.files。用户不必再 Ctrl+A 框选，对着一个文件夹点两下即可。
+          子文件夹的结构不影响结果：照片归属只看**照片自己的文件名**。
+
+          【为什么 before-upload 从 beforeUpload 换成 beforeUploadBatch】两个理由：
+          ① accept="image/jpeg" 在选文件夹模式下会被浏览器忽略（选文件夹时无法按类型
+             过滤），文件夹里的 .xlsx / .txt / .DS_Store / Thumbs.db 会**全部**进来并
+             逐个触发 before-upload；共用的 beforeUpload 会为它们连着弹十几条红字。
+             beforeUploadBatch 把这类杂项静默滤掉（只计数，最后在汇总里报个数）。
+          ② 更关键的一条：beforeUploadBatch 把「文件名匹配到哪一行」从上传**之后**
+             提到了**之前** —— 不合格的文件一个请求都不发，也不再留下孤儿文件。
+             详见该函数上方的注释（含手机原图被误判成教师照片那个毛病的根治）。
+          保留 accept 是给不支持 webkitdirectory 的老浏览器兜底。
+        -->
         <el-upload
           style="display: inline-block"
           :http-request="uploadFileBatch"
-          :before-upload="beforeUpload"
+          :before-upload="beforeUploadBatch"
+          directory
           multiple
           accept="image/jpeg"
           :show-file-list="false"
         >
-          <el-button style="color: #1890ff" type="text">批量上传照片</el-button>
+          <!--
+            【文案说明了「文件夹」】点了这个按钮弹出的是「选择文件夹」对话框，
+            不再是「选择文件」。文案明说，用户才不会以为是控件坏了 —— 这是加
+            directory 之后唯一需要跟着改的对外文字，没有别的连带影响。
+            顺带把「一次选一个文件夹、照片按文件名自动分发到各行」的意思点出来，
+            否则用户会以为还要逐张指定是谁的。
+          -->
+          <el-button style="color: #1890ff" type="text">批量上传照片文件夹</el-button>
         </el-upload>
 
         <el-upload
@@ -294,11 +334,13 @@
  *    注意本组件的体积上限比后端规则更严（这里 100KB，后端 image 规则是 1MB），
  *    前面那道 beforeUpload 是主闸，biz: image 只作兜底。
  *
- * 【dist 已知缺陷（按原样保留，未顺手修复）】
+ * 【dist 已知缺陷（默认按原样保留，逐条注明处理结果）】
  *   a. `upAvatar(e){ event.preventDefault(), this.Arrayindex=e, this.$refs.uploadAvatar.click() }`
  *      —— 引用的是**全局 window.event**（浏览器非标准但普遍存在），而不是形参；
  *      dist 模板里传进 upAvatar 的其实是行下标 index，本来也拿不到事件对象。
- *      保留原样（含 `event.preventDefault()` 这一句），只加此标注。
+ *      【第十四轮·已修】upAvatar 本体在 @/composables/usePhotoUpload，
+ *      修法与破例的两条判据（零收益 + 有风险）写在该文件头的「dist 已知缺陷的处理记录」a。
+ *      本文件不再有"含此缺陷"的引用。
  *   b. importExcel 第一个循环里遗留了 `console.log(t[e])`（每次导入都会把每行打印到控制台）。
  *      属于 dist 遗留的调试输出，按原样保留。
  *   c. importExcel 用 `e.name.split(".")[1]` 取扩展名：文件名含多个点时会取错段。
@@ -339,8 +381,18 @@ import { useDragScroll } from '@/composables/useDragScroll'
    beforeUploadSingle / uploadFileSingle / upAvatar）已搬到共用模块，
    与指导教师表用同一份实现 —— 体积上限、命名规则、OSS 通道都不再有第二份副本。
    批量上传（uploadFileBatch）留在本文件：它写的是本表自己的 data，
-   且「一文件匹配多行」的算法只有参展人员表用得上。 */
-import { usePhotoUpload, parsePhotoName } from '@/composables/usePhotoUpload'
+   且「一文件匹配多行」的算法只有参展人员表用得上。
+
+   【本轮改造】多引入两个导出，都是**新增**、不改共用模块里任何既有导出：
+     · checkPhotoBasic  —— 体积/格式的「不弹提示」版，供批量汇总收集结论（原 beforeUpload 仍照旧使用）
+     · matchPhotoToRows —— 「算每行期望名再全等比较」的匹配算法，把匹配从上传后提到上传前
+   parsePhotoName 不再由本文件使用：批量路径改走 matchPhotoToRows 之后，
+   「先按正则猜是学生还是教师」这一步被彻底去掉了（见 beforeUploadBatch 的说明）。 */
+import {
+  usePhotoUpload,
+  checkPhotoBasic,
+  matchPhotoToRows
+} from '@/composables/usePhotoUpload'
 
 // 12 列下限合计 1376px，1366/1440 乃至 1600/1680 屏都放不下，只能横向滚。
 // 横向滚动条贴在表格最下方、又只有十几像素高，很难拉 —— 于是支持按住空白处直接拖。
@@ -378,20 +430,43 @@ const BASE = import.meta.env.BASE_URL
 /*
  * 【第十二届·第三轮】单张上传的全部零件改从共用模块取：
  *   uploadTrigger —— 改名成 uploadAvatar，模板里 ref="uploadAvatar" 一字不用改
- *   upAvatar      —— 「上传照片」按钮的点击处理（原样，含 window.event 那个 dist 缺陷）
- *   beforeUpload  —— 批量路径绑它
+ *   upAvatar      —— 「上传照片」按钮的点击处理（第十四轮已收口那个 window.event 裸引用，
+ *                    判据见该文件头「dist 已知缺陷的处理记录」a）
  *   beforeUploadSingle / uploadFileSingle —— 单张路径绑它们
  * 传进去的回调负责回答「第 i 行是哪个对象」，公共模块不认识本表的数据结构。
  * 原文件里那个模块级 `let Arrayindex` 随之删除：它的作用域收进这个组件实例
  * （dist 原版是 this.Arrayindex，即实例属性，这样反而更贴近 dist）。
+ *
+ * 【本轮改造】不再解构 beforeUpload：批量路径已改为直接调 checkPhotoBasic +
+ * matchPhotoToRows（见 beforeUploadBatch）—— 本表的判据升级成了"全等于某一行的
+ * 期望文件名"，比它那条宽松正则更严更准，所以本表不再需要直接绑它。
+ *
+ * 【更正一句曾经写错的话】这里原来写的是「那条宽松命名正则只服务于教师表」。
+ * 不准确：TeacherTable.vue 也**不**直接绑 beforeUpload（它的注释里写着"本表不用
+ * beforeUpload，那是批量上传照片的基础闸，而批量按钮在参展人员表"）。实际是
+ * **两张表都不再直接绑它**，而它并没有变成死代码 —— beforeUploadSingle 内部第一句
+ * 就是 `if (!beforeUpload(file)) return false`，所以体积/格式/命名正则这三条
+ * 仍然在**两条单张路径上**照常生效（也正是靠它，"格式就不合法"的文件才会在
+ * 单张路径上报出与批量同口径的提示）。
  */
 const {
   uploadTrigger: uploadAvatar,
   upAvatar,
-  beforeUpload,
   beforeUploadSingle,
   uploadFileSingle
-} = usePhotoUpload((i) => data.value[i])
+} = usePhotoUpload(
+  (i) => data.value[i],
+  /* 【第二个入参】`() => data.value` 让单张上传在**传完之后**能按文件名重新确认
+     「该写哪一行」，修掉「上传那两秒里用户删了一行 → 照片写到别人头上」。
+     【两表都传了】TeacherTable.vue 在第十四轮补上了同一个回调，两表自此对称
+     （改前只有本表有这层保护，同一个坑教师表照旧会踩）。
+     公共模块仍把这个参数写成**可选**：不传，resolvePhotoTarget 就短路回
+     `getRowAt(fallbackIndex)`，与改动前**逐字相同** —— 将来新增的表若不想要
+     这层保护，不传即可，不会受本次修复的任何影响。
+     那两个 getter 指向的是同一个数组和同一批元素（都是 data.value 的响应式代理），
+     所以 resolvePhotoTarget 里用 rows[命中下标] 与 getRowAt(下标) 拿到的是同一个对象。 */
+  () => data.value
+)
 
 /*
  * 【第十二届·第十三轮】与 TeacherTable.vue 同款、同日修的兜底（那条改动的完整因果链
@@ -697,6 +772,303 @@ function getPosition(position) {
   }
 }
 
+/* ═══════════════════ 批量上传照片：整批收集器 ═══════════════════
+   el-upload 的 before-upload 是**逐个文件**调用的；同一批文件在**同一个 tick** 内
+   依次进来（已核对 element-plus 的 uploadFiles：一个同步 for 循环，循环体里没有 await）。
+   所以「本批结束了」这件事没有官方事件可用，用 setTimeout(…, 0) 在下一个宏任务里收口 ——
+   那时整批的结论已经收集齐了。
+
+   计数口径：只统计「进了 el-upload 的文件」，分三类，
+     accepted 通过全部校验、已交给上传
+     rejected 被拦下（体积 / 格式 / 匹配不上），要逐条列给用户
+     ignored  明显不是照片的杂项（.DS_Store / Thumbs.db / .xlsx / .txt…），只报个数
+   三者之和就是本次选中的文件数，所以汇总里能报出「本次共 N 个文件」。 */
+let batchAccepted = 0
+let batchRejected = []
+let batchIgnored = 0
+/* 收口的定时器句柄。刻意「先清再设」：即便将来 element-plus 改成异步调用 before-upload，
+   也只会把收口推迟到最后一个文件之后，不会重复弹多条。 */
+let batchFlushTimer = null
+
+/* ─────────── 第二批收集器：**上传阶段**的失败（网络 / OSS / 落库） ───────────
+   【为什么校验的汇总覆盖不了它】上面的收集器在 before-upload 期间就收口了，
+   而那时一个字节都还没发出去；上传的成败要等网络回来才知道，是**几秒之后**的事。
+   于是它单独一组计数、单独一次收口。
+
+   【不做的后果】批量 50 张遇到断网，.catch 会逐张弹 —— 50 条「上传失败：网络中断」
+   糊满屏幕。这与改造前"校验错误刷屏"是同一个毛病，只是发生在后半段。
+
+   计数口径：
+     batchUploading  还在飞的张数（`before-upload` 放行一张就 +1，成功或失败都 -1）
+     batchUploadFailed 已经失败的那些，等最后一张落地后一次性报出来 */
+let batchUploading = 0
+let batchUploadFailed = []
+/* 覆盖重传的行号（1 起，给用户看的）。**为什么也要收**：重传一整个文件夹时
+   每一行都已经有照片了，逐张弹「第 N 行 xxx 的照片已替换」同样是几十条刷屏 ——
+   它与「上传失败」是同一个毛病的两种表现，所以一起攒、一起报。 */
+let batchUploadReplaced = []
+/* 同样「先清再设」。用下标里最后一个完成的那张来触发收口 —— 不必知道整批有几张。 */
+let batchSettleTimer = null
+
+/**
+ * 多行提示用的 class —— 配合文件末尾那段**非 scoped** 的 CSS，让汇总文案里的 \n 真正换行。
+ * 【为什么不能写在 scoped 块里】ElMessage 的节点由 Element Plus 挂到 document.body 下，
+ * 已经不在本组件的 DOM 子树里，scoped 生成的 [data-v-xxx] 选择器匹配不到它。
+ * 这与 ProgramForm / OrchestraForm 里 qual-error-toast 的处理方式完全一致。
+ */
+const PHOTO_BATCH_TOAST_CLASS = 'photo-batch-toast'
+
+/** 安排一次收口（先清再设，保证同一批只收口一次） */
+function scheduleBatchFlush() {
+  if (batchFlushTimer) clearTimeout(batchFlushTimer)
+  batchFlushTimer = setTimeout(flushBatchSummary, 0)
+}
+
+/** 记一个被拦下的文件：原因要展示给用户，所以逐条留着 */
+function rejectInBatch(file, reason) {
+  batchRejected.push({ name: file.name, reason })
+  scheduleBatchFlush()
+}
+
+/**
+ * 把本批的结论合成**一条**提示 —— 这是「不再刷屏」的实现点。
+ *
+ * 【改造前】每个文件各自 ElMessage.error 一次：50 个不合格 = 50 条红字同时堆叠，
+ * 每条停留 3 秒且内容各不相同（Element Plus 默认 grouping:false、不限条数），
+ * 屏幕被铺满，用户既看不清也来不及看。
+ * 【改造后】无论多少个文件被拦，都只有这一条。
+ *
+ * 【全绿时也给一句】批量上传没有任何进度反馈，点完按钮若一个字都不冒，用户会以为
+ * 没点到；给一条 success 是最低成本的确认。
+ *
+ * 【最多列 3 条】提示太长会超出屏幕高度、也没人读；剩下的用"另有 N 个"带过，
+ * 关键信息（数量 + 原因种类）已经给到了。
+ */
+function flushBatchSummary() {
+  batchFlushTimer = null
+
+  const accepted = batchAccepted
+  const ignored = batchIgnored
+  const rejected = batchRejected
+  // 【先复位再组装】下面会 return 或弹提示，复位放晚了会污染下一批的计数
+  batchAccepted = 0
+  batchIgnored = 0
+  batchRejected = []
+
+  const total = accepted + ignored + rejected.length
+  // 空文件夹走不到这里（一个文件都没进 el-upload，before-upload 一次都不调），只是兜底
+  if (total === 0) return
+
+  // 全绿：只报一句，够确认"点了有反应"就行
+  if (rejected.length === 0 && ignored === 0) {
+    return ElMessage.success(`已开始上传 ${accepted} 张照片`)
+  }
+
+  const lines = [`本次共 ${total} 个文件，${accepted} 张已开始上传`]
+  rejected.slice(0, 3).forEach((r) => lines.push(`· ${r.name} —— ${r.reason}`))
+  if (rejected.length > 3) lines.push(`· …另有 ${rejected.length - 3} 个文件未通过校验`)
+  if (ignored > 0) lines.push(`· 另有 ${ignored} 个非照片文件已跳过（如 .DS_Store、.xlsx）`)
+
+  ElMessage.warning({
+    message: lines.join('\n'),
+    customClass: PHOTO_BATCH_TOAST_CLASS,
+    duration: 8000, // 比默认 3 秒长：多行内容需要时间读
+    showClose: true // 给一个手动关掉的出口，不挡着看表格
+  })
+}
+
+/**
+ * 一张照片的**上传阶段**结束了（成功或失败都会走到这里）。
+ *
+ * 【为什么要 -1 到 0 才算完】上传是并发的，无法预知"最后一张"是哪一张，
+ * 所以用一个计数器：放行时 +1，落地时 -1，归零即整批结束。
+ * 失败的原因先攒着，等到 0 才一次性报 —— 这就是「不再逐张弹」的实现点。
+ *
+ * 【为什么记账放在 .finally 之外、由调用方调】见 uploadFileBatch 的说明：
+ * 那里用 .finally() 保证**成功、失败、代码抛异常**三条路径都恰好调一次，
+ * 计数不会漏减也不会双减（漏减 = 汇总永远不出；双减 = 提前出、数量不对）。
+ */
+function settleUpload() {
+  batchUploading -= 1
+  if (batchUploading > 0) return
+
+  /* 归零。同样「先清再设」—— 若同一刻有多张同时落地，
+     后到的那次会把定时器重置，最终只在 0 毫秒后收一次口。 */
+  if (batchSettleTimer) clearTimeout(batchSettleTimer)
+  batchSettleTimer = setTimeout(flushUploadSettle, 0)
+}
+
+/**
+ * 把本批**上传阶段**的结果合成提示（失败 + 覆盖重传）。
+ *
+ * 【与上面 flushBatchSummary 的关系】那条报的是「哪些文件没通过校验、根本没开始传」，
+ * 这条报的是「已经开传的那些结果如何」。两条互斥、不重复：
+ * 一条消息里的名字，不会在另一条里再出现。
+ *
+ * 【全成功且没有覆盖时一声不吭】校验那条已经报过「已开始上传 N 张照片」了，
+ * 成功再报一遍是噪音 —— 所以这里没有"值得说的事"就直接返回。
+ *
+ * 【为什么失败用 error、覆盖用 success】两件事性质相反，混在一条里会让人以为
+ * 覆盖也是错的。分成两条最坏情况也只有 2 条，不会刷屏。
+ */
+function flushUploadSettle() {
+  batchSettleTimer = null
+
+  const failed = batchUploadFailed
+  const replaced = batchUploadReplaced
+  // 先复位再组装，理由同 flushBatchSummary
+  batchUploadFailed = []
+  batchUploadReplaced = []
+
+  if (failed.length === 0 && replaced.length === 0) return
+
+  /* 有失败 → 一条 error。覆盖重传不再单独弹，只在末尾带一句数量，
+     否则一次重传几十张又是几十条。 */
+  if (failed.length > 0) {
+    const lines = [`有 ${failed.length} 张照片上传失败`]
+    // 与校验汇总同一个节流口径：最多列 3 条，剩下的报个数。太多没人读、也超出屏高。
+    failed.slice(0, 3).forEach((r) => lines.push(`· ${r.name} —— ${r.reason}`))
+    if (failed.length > 3) lines.push(`· …另有 ${failed.length - 3} 张失败，请重试`)
+    if (replaced.length > 0) lines.push(`· 另有 ${replaced.length} 张是覆盖重传，已替换原照片`)
+
+    return ElMessage.error({
+      message: lines.join('\n'),
+      // 复用同一个 class：非 scoped 的换行样式是通用的，不必再加一条 CSS
+      customClass: PHOTO_BATCH_TOAST_CLASS,
+      // 报错比警告更要紧，给更长的停留时间
+      duration: 10000,
+      showClose: true
+    })
+  }
+
+  /* 没有失败、只有覆盖 → 一条 success。
+     这件事必须让用户看见：重传整个文件夹时可能**覆盖掉别人已有的照片**，
+     一声不吭的话他没机会发现传错了。行号最多列 3 个，60 人的队伍全列会把提示撑爆。 */
+  const shown = replaced.slice(0, 3).join('、')
+  /* 「行」字只能出现一次，所以它放在 tail 里、不在模板里 —— 否则 >3 时会拼成
+     「第 1、2、3 等 50 行 行」。（这个重复是拿真值跑出来才看见的，不是推理出来的。） */
+  const tail = replaced.length > 3 ? ` 等 ${replaced.length} 行` : ' 行'
+  ElMessage.success({
+    message: `已覆盖重传 ${replaced.length} 张照片（第 ${shown}${tail}）`,
+    customClass: PHOTO_BATCH_TOAST_CLASS,
+    duration: 8000,
+    showClose: true
+  })
+}
+
+/** 照片扩展名白名单（只用于把"明显不是照片"的杂项挡在门外，见 beforeUploadBatch ①） */
+const PHOTO_EXT = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'webp']
+
+/**
+ * 【批量上传照片】的前置校验 —— el-upload 对**每个**选中的文件调一次，
+ * 返回 false 就把该文件丢掉（不发请求、不落库）。
+ *
+ * 【本轮改造的核心：把「匹配」从上传后提到上传前】
+ *   老流程：文件名 ──宽松正则猜类别──▶ [上传 + 落库] ──再按 card/name 找人──▶ 报错
+ *   新流程：文件名 ──与每一行的期望名全等比较──▶ 命中唯一一行 ──▶ [上传 + 落库]
+ *                                          └─ 0 个 / ≥2 个 ──▶ 在这里就拦下
+ *
+ * 一步之差，四个毛病一起没了：
+ *   · `IMG_20240927_113045.jpg` 不再被误判成教师照片 —— 它不会全等于任何一行的
+ *     期望名，报错文案准确，而且**不会被上传**（老流程里它会被传上去再报
+ *     「未找到匹配的教师」）
+ *   · 「表里没这个人」不再产生孤儿文件 —— 上传前就知道了，一个请求都不发
+ *   · 「身份证后6位重复」「该行身份证没填」同样在上传前拦下
+ *   · 与单张路径用的是同一份匹配算法（matchPhotoToRows），口径不会再漂移
+ *
+ * 【为什么不能改共用的 beforeUpload】usePhotoUpload.js 里那个 beforeUpload 是
+ * 参演人员表与指导教师表**共用的一份实现**（该文件头说明了理由：100KB / JPG /
+ * 命名规则「改一次要两张表同时生效」）。教师表没开文件夹上传，也没有按行匹配的能力，
+ * 那边维持原样就好。所以这一层只包在本文件里。
+ *
+ * @param {File} file el-upload 逐个递进来的原始文件（不是 uploadFile 包装对象）
+ * @returns {boolean} true = 放行去上传；false = 丢弃
+ */
+function beforeUploadBatch(file) {
+  /* ① 杂项过滤：文件夹里的 .DS_Store / Thumbs.db / .xlsx / .txt 等。
+     加了 directory 之后 accept="image/jpeg" 会被浏览器忽略（选文件夹时无法按类型
+     过滤），这些杂项会全部进来。
+     处理方式是「静默丢弃 + 只计数」：它们不是"错误"，弹红字反而让人以为出问题了；
+     但完全不提又让人怀疑"是不是压根没读到"。折中 —— 汇总里报一个数。
+     【判据：宁可漏放、不可错杀】只要**有可能是照片**就放进去让基础闸给准确结论：
+       · 123456.JPG    → type 是 image/jpeg  → 放行
+       · IMG_1234.HEIC → type 是 image/heic  → 放行 → 由基础闸报「照片格式只能是JPG」。
+         **必须让用户看到**：静默跳掉的话，用户会以为 HEIC 已经传上去了
+       · 报名表.xlsx    → 非 image/*，扩展名不在白名单 → 跳过
+       · .DS_Store     → type 是空串，扩展名不在白名单 → 跳过 */
+  const dot = file.name.lastIndexOf('.')
+  const ext = dot === -1 ? '' : file.name.substring(dot + 1).toLowerCase()
+  const isImageMime = !!file.type && file.type.indexOf('image/') === 0
+  if (!isImageMime && !PHOTO_EXT.includes(ext)) {
+    batchIgnored += 1
+    scheduleBatchFlush()
+    return false
+  }
+
+  /* ② 基础闸：体积 + 格式。用共用模块里的 checkPhotoBasic —— 规则只有一份，
+     区别只是它不弹提示、把结论交回给我们统一汇总。 */
+  const basic = checkPhotoBasic(file)
+  if (!basic.ok) {
+    rejectInBatch(file, basic.reason)
+    return false
+  }
+
+  /* ③ 匹配闸：文件名必须**全等**于某一行的期望文件名。
+     这一步以前在上传落库之后才做，是误判和孤儿文件的共同来源，现在提到这里。 */
+  const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
+  const m = matchPhotoToRows(nameNoExt, data.value)
+
+  if (m.status === 'none') {
+    // 报错时把"表里期望的文件名"举几个例子 —— 比一句"未找到匹配"有用得多。
+    // 最多举 3 个：60 人的队伍全列出来会把提示撑爆。
+    const sample = m.expected.slice(0, 3).join('、')
+    const hint = m.expected.length
+      ? `表里期望的文件名如：${sample}${m.expected.length > 3 ? ' 等' : ''}`
+      : '名单里还没有填好身份证号'
+    rejectInBatch(file, `文件名对不上任何人（${hint}）`)
+    return false
+  }
+
+  if (m.status === 'multi') {
+    rejectInBatch(
+      file,
+      `有 ${m.hits.length} 行都匹配到（第 ${m.hits.map((i) => i + 1).join('、')} 行），请改用「上传照片」按行单独上传`
+    )
+    return false
+  }
+
+  // ④ 通过 —— 交给 el-upload 走 :http-request="uploadFileBatch"
+  batchAccepted += 1
+  scheduleBatchFlush()
+  return true
+}
+
+/**
+ * 【空文件夹提示】挂在模板里 <div class="options"> 上的原生 change 监听。
+ *
+ * 【为什么不能挂在 el-upload 上】el-upload 把 `onChange` 声明成了 **prop**
+ * （element-plus upload.mjs 的 `onChange: { type: Function, default: NOOP }`），
+ * 所以写在组件上的 @change 会被当成那个 prop 消化掉，**不会**有原生监听挂到根元素上；
+ * 而 EP 内部只在「文件状态变化」时调用它 —— 空文件夹时 uploadFiles 在
+ * `if (files.length === 0) return` 就返回了，一次状态变化都没有，那个 prop
+ * 从头到尾不会被调用。结论：靠 el-upload 的 @change 拿不到"选了空文件夹"这个事实
+ * （但这个原生 change 事件**是触发的**，只是被 EP 吞了，所以从祖先上监听能收到）。
+ *
+ * 【怎么认出是哪一个 input】.options 里有三个文件 input（Excel 导入、批量照片、
+ * 隐藏的单张上传），只有「批量上传照片」那个开了目录选择，所以用 webkitdirectory 判别。
+ * 属性与 DOM 属性两种写法都判，是因为 Vue 在浏览器认识这个属性时把它设成 DOM 属性
+ * （此时 hasAttribute 可能为 false），不认识时退化成设 HTML 属性。
+ *
+ * 【触发时机】空文件夹 → 只有这一条提示；非空 → 直接返回，走上面的正常批量流程。
+ */
+function onFileInputChange(e) {
+  const input = e.target
+  if (!input || input.type !== 'file') return
+  if (input.webkitdirectory !== true && !input.hasAttribute('webkitdirectory')) return
+  if (input.files && input.files.length > 0) return
+  ElMessage.warning('文件夹里没有找到照片，请确认选中的文件夹里有照片')
+}
+
 /*
  * 【第十二届改造·第二轮】上传通道由七牛直传换成阿里云 OSS（biz: image）。
  * 原来是 `:on-success` 回调 uploadSuccess / uploadSuccessBatch，现在改为
@@ -714,14 +1086,35 @@ function getPosition(position) {
 
 /**
  * dist 原文见 git 历史：uploadSuccessBatch(e,t){ n.filename=t.name, ... }
- * 匹配规则（【第十二届】已由 dist 的「前 6 位=身份证后6位 且 剩余=姓名」改为师生两套）：
- *   - 学生照片：去扩展名后整段是 6 位数字 = 身份证后 6 位，且该行身份为「学生」
- *   - 教师照片：去扩展名后尾部 6 位 = 身份证后 6 位、前面 = 姓名，
- *               且该行身份为「教师」、姓名一致
- *   两种命名都不是的（如 7 位纯数字）报「文件名格式错误」，不猜。
+ *
+ * 【本轮改造】匹配改走 matchPhotoToRows —— 与上传前那道校验用的是**同一个函数**，
+ * 于是这里只剩「上传 → 落库 → 写字」三件事，匹配规则不再有第二份实现，不会漂移。
+ *
+ * 【为什么落库之后还要再匹配一次】上传是异步的，从"选中文件夹"到"这一张传完"之间，
+ * 用户完全可能改了表（删行、改身份证、改身份）。以**此刻**的表为准，才不会把照片
+ * 写到一行已经变了意思的行上。
+ * 正常情况下这一步必然命中唯一一行 —— 上传前的 beforeUploadBatch 已经确认过它唯一；
+ * 走到 none / multi 只可能是上传期间表被改动了，按"匹配失败"如实报告，不猜。
+ *
+ * 【本轮新增：不再逐张弹】以前这里是逐张 ElMessage.error / success ——
+ * 批量 50 张遇到断网就是 50 条红字，重传一整个文件夹就是 50 条绿字，
+ * 与"校验错误刷屏"是同一个毛病，只是发生在后半段。现在改成：
+ * 失败 push 进 batchUploadFailed、覆盖 push 进 batchUploadReplaced，
+ * 由 settleUpload 在**最后一张落地后**各合成一条（见 flushUploadSettle）。
+ *
+ * 【.finally(settleUpload) 为什么必须放最后】它保证「传成功、传失败、代码抛异常」
+ * 三条路径都恰好调一次 settleUpload：少调 = 计数减不到 0、汇总永远不出；
+ * 多调 = 提前归零、条数不对。
+ * 配套的一处必要改动：里面那个 fileApi.saveFileInfo(...) 前面**补了 return**。
+ * 原因是原来没 return，内层 Promise 游离在链外 —— 它在 .finally 跑完之后才结束，
+ * 计数会提前归零；而且它 reject 时外层的 .catch 根本收不到，属于静默失败。
  */
 function uploadFileBatch(options) {
   const file = options.file
+
+  // 放行一张就 +1，与下面的 .finally 里的 -1 成对（before-upload 通过 ⇒ 这里必被调用）
+  batchUploading += 1
+
   uploadToOss({ file, biz: 'image' })
     .then(({ url }) => {
       const info = {}
@@ -730,56 +1123,49 @@ function uploadFileBatch(options) {
       info.size = file.size
       info.url = url
 
-      fileApi.saveFileInfo(info).then(({ data: body }) => {
-        if (body.code === 0) {
-          // 【第十二届】师生两套命名：学生 = 身份证后6位；教师 = 姓名 + 身份证后6位
-          const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
-          const parsed = parsePhotoName(nameNoExt)
-          if (!parsed) {
-            // beforeUpload 已经拦过一次格式；这里留一道，防有人改绑定时漏掉
-            ElMessage.error('文件名格式错误：' + file.name)
-            return
-          }
-          const { cardTail, personName } = parsed
+      // 【return 不能省】把内层链交给外层：这样它的失败会走到下面的 .catch，
+      // 也会被 .finally 正确等待（理由见函数头上那一段）。
+      return fileApi.saveFileInfo(info).then(({ data: body }) => {
+        /* 落库失败。以前这里是 ElMessage.error('文件上传失败') 逐张弹；
+           改成 throw 交给统一的 .catch 收进汇总 —— 文案不变，只是不再刷屏。 */
+        if (body.code !== 0) throw new Error('文件上传失败（落库未通过）')
 
-          // 【第十二届】收集全部命中再判，而不是 findIndex 取第一个：后 6 位重复时
-          // 原来会静默把照片写到第一行并报成功，第二个人看起来是「没传上」。
-          const hits = []
-          data.value.forEach((item, i) => {
-            if (!item.card) return
-            const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-            if (tail !== cardTail) return
-            // 学生照片只看身份证后6位、要求该行身份是「学生」；教师照片还要姓名一致
-            const matched = personName ? item.type === 1 && item.name === personName : item.type === 0
-            if (matched) hits.push(i)
-          })
+        const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
+        const m = matchPhotoToRows(nameNoExt, data.value)
 
-          if (hits.length === 0) {
-            ElMessage.error((personName ? '未找到匹配的教师：' : '未找到匹配的学生：') + file.name)
-          } else if (hits.length > 1) {
-            ElMessage.error(
-              '无法唯一匹配：' + file.name + ' —— 本表身份证号后6位为 ' + cardTail + ' 的有 ' +
-                hits.length + ' 人（第 ' + hits.map((i) => i + 1).join('、') +
-                ' 行），请改用「上传照片」按行单独传'
-            )
-          } else {
-            const target = data.value[hits[0]]
-            // 【第十二届】重传覆盖是正常路径（换照片），但要让「覆盖了别人」变得可见
-            if (target.head) {
-              ElMessage.success(
-                '第 ' + (hits[0] + 1) + ' 行' + (target.name ? ' ' + target.name : '') + ' 的照片已替换'
-              )
-            }
-            target.head = info.url
-          }
-        } else {
-          ElMessage.error('文件上传失败')
+        /* 唯一命中才写。走到这里说明表在上传期间被改动了：
+           报出来、**不写**（写进"大概是对的那行"就是传错人，比不写更糟）。 */
+        if (m.status !== 'ok') {
+          throw new Error(
+            m.status === 'multi'
+              ? '已上传但表里有多行与它同名，请改用「上传照片」按行单独上传'
+              : '已上传但表里没有与它对应的行了（可能被删除或改过姓名/身份证）'
+          )
         }
+
+        const i = m.hits[0]
+        const target = data.value[i]
+        /* 【为什么 target 一定存在】i 是 matchPhotoToRows 对**同一个** data.value
+           同步遍历得出的下标，两条语句之间没有 await，数组不可能变。 */
+        /* 重传覆盖是正常路径（换照片），但要让「覆盖了别人」变得可见 ——
+           以前这里逐张 ElMessage.success，重传整个文件夹就是几十条；
+           现在只记下行号（1 起，给用户看的），由 flushUploadSettle 合成一条。 */
+        if (target.head) batchUploadReplaced.push(i + 1)
+        target.head = info.url
       })
     })
     .catch((err) => {
-      if (!err.shown) ElMessage.error(err.message || '文件上传失败')
+      /* 只记账，不弹。err.shown === true 表示"这条错误已经被全局拦截器弹过了"，
+         那种情况下连账都不用记（用户已经看到过一次，再汇总一遍是重复）。
+         本仓库 img 走的是后端代传通道（无拦截器），所以实际几乎总是 shown:false。 */
+      if (err && err.shown) return
+      batchUploadFailed.push({
+        name: file.name,
+        reason: (err && err.message) || '文件上传失败'
+      })
     })
+    // 无论成功、失败还是抛异常，都恰好结算一次（见函数头对该顺序的说明）
+    .finally(settleUpload)
 }
 
 /* 【第十二届改造·第二轮】getQiniuToken() 已删除。
@@ -906,5 +1292,22 @@ defineExpose({ getData, getCacheData })
    所以必须把 el-button 自带的相邻 margin-left:8px 清掉，否则会变成 8+8=16px。 */
 .import-bar > .el-button {
   margin-left: 0;
+}
+</style>
+
+<!--
+  批量上传照片「整批汇总」提示的换行样式。
+  【为什么故意不加 scoped】ElMessage 的节点由 Element Plus 挂到 document.body 下，
+  已经不在本组件的 DOM 子树里，scoped 生成的 [data-v-xxx] 选择器匹配不到它。
+  不加 scoped 但把选择器限定在这个专属类名下，作用范围就只有这条提示本身，
+  不会波及页面上的其他元素（这与 ProgramForm / OrchestraForm 里 qual-error-toast
+  那段完全同名同类，是仓库里已有的做法）。
+  【white-space: pre-line】汇总文案是用 \n 拼的多行，HTML 默认会把 \n 渲染成空格，
+  pre-line 保留换行、同时折叠多余空格，正是需要的效果。
+-->
+<style lang="scss">
+.photo-batch-toast .el-message__content {
+  white-space: pre-line;
+  line-height: 1.7; // 多条时给点行距，否则挤成一坨看不清是几条
 }
 </style>

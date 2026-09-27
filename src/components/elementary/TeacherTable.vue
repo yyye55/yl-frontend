@@ -424,9 +424,21 @@ const data = ref([])
  *   beforeUploadSingle → 文件选中后的校验（体积/格式/文件名是否对上这一行的人）
  *   uploadFileSingle   → 通过校验后真正上传，成功后把 url 写回该行的 head
  * 传进去的回调回答「第 i 行是哪个对象」—— 公共模块不认识本表的数据结构。
+ *
+ * 【第十二届·第十四轮】补第二个回调 `() => data.value`，与参展人员表同款。
+ * 它让「照片写完该写哪一行」在**上传完成之后**能按文件名重新确认一次：
+ * 原来只记点击时的下标，而上传要经过 2 次网络往返（OSS 代传 + 落库），
+ * 这期间用户若删掉上面一行，data.value[下标] 就已经是**另一个人**了。
+ * 本表的行对象同样有 card / name / type（add() 推的是 {type:1, position:4}），
+ * 所以 matchPhotoToRows 在本表上算出的期望名与 beforeUploadSingle 完全一致 ——
+ * 表格没变动时新旧取法是同一行，只有「表被改动」的异常路径会变好。
+ * 两表的行为自此完全对称（改前只有参展人员表有这个保护）。
  */
 const { uploadTrigger: uploadAvatar, upAvatar, beforeUploadSingle, uploadFileSingle } =
-  usePhotoUpload((i) => data.value[i])
+  usePhotoUpload(
+    (i) => data.value[i],
+    () => data.value
+  )
 
 /*
  * 【第十二届·第十三轮】给 watch 补上 `? : []` 兜底 —— 修一个会打断编辑页整份回填的既有崩溃。

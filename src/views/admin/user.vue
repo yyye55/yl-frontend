@@ -48,6 +48,22 @@
           <el-table-column label="类型" width="110">
             <template #default="{ row }">{{ TYPE_LABEL[row.type] ?? row.type }}</template>
           </el-table-column>
+          <!--
+            「可报两支」列（本次新增），紧跟在「类型」列后面。
+            【数据从哪来】列表接口 GET /api/admin/user/list 走的是后端的 user_dict
+            （apps/api/views.py:533），而 user_dict 里就有 can_report_twice
+            （apps/core/services.py:62）—— 所以行数据里本来就有，不需要额外请求。
+            【为什么 type!==5 要显示「—」而不是「否」】特许只对中小学端有意义，
+            给学校端 / 市州端写「否」会让人以为"它本来可以，只是没给"，
+            显示破折号表达的是"此项与它无关"。
+            【宽度 90】表头「可报两支」4 个字 + 单元格「是/否」1 个字，
+            90 足够不折行；不写 align，与相邻列统一用 Element Plus 默认左对齐。
+          -->
+          <el-table-column label="可报两支" width="90">
+            <template #default="{ row }">
+              {{ row.type === 5 ? (row.can_report_twice ? '是' : '否') : '—' }}
+            </template>
+          </el-table-column>
           <el-table-column prop="leader" label="修改人姓名" />
           <el-table-column prop="tel" label="修改人电话号码" />
           <el-table-column prop="description" show-overflow-tooltip label="其他信息" />
@@ -109,6 +125,21 @@
             <el-option label="中小学账号" :value="5" />
           </el-select>
         </el-form-item>
+        <!--
+          「可报两支」特许勾选框（本次新增）。
+          【为什么只在 type===5 时显示】后端把这份特许只发给中小学合并办学的学校
+          （apps/core/report_drafts.py 的 ACCOUNT_QUOTA_SCOPES 同时含高校端与中小学端，
+          但高校端表单的组别下拉只有「大学组」一项，第二支必然撞组别唯一、根本报不出来，
+          勾了也没有意义）。所以约束在前端这一层：不是中小学账号就不给这个开关。
+          【@change 必须挂】见下面 onTypeChange 的说明——类型改掉时要顺手把勾选清掉。
+          【label 后面的小字】用独立的一行说明，不塞进 label 里，避免 label 过长挤坏 inline 布局。
+        -->
+        <el-form-item v-if="form.type === 5" label="可报两支">
+          <div class="quota-box">
+            <el-checkbox v-model="form.can_report_twice" @change="onTypeChange(form)">允许报送两支队伍（合并办学学校）</el-checkbox>
+            <p class="quota-tip">仅合并办学学校适用；两支队伍须为不同组别（小学组、中学组各一支）。</p>
+          </div>
+        </el-form-item>
         <p style="margin:10px">提示：密码为必填项，长度需为 {{ PASSWORD_MIN }} 到 {{ PASSWORD_MAX }} 个字符</p>
         <p style="margin:10px">其他信息：（可以填写一些关于账号的介绍）</p>
         <el-input
@@ -141,15 +172,41 @@
         <el-form-item label="名称" prop="nickname">
           <el-input v-model="editForm.nickname" />
         </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="editForm.password" type="password" />
+        </el-form-item>
         <!--
-          【本次删除】原先这里有一个「密码」输入框（dist 原文就有）。
-          它与「重置密码」走的是同一个接口 PUT /api/admin/user/，而后端现在只要请求体里
-          出现 password 键就无条件重置为默认密码（yilinbei hou/apps/api/views.py:543），
-          输入的值被忽略 —— 管理员在这里填 abc123456、界面上提示「修改成功」，
-          该账号的密码实际变成 scylb@2026，管理员再把这个值转告用户，用户登不进去。
-          属静默失败，故整个 el-form-item 删除；改密码此后只走表格里的「重置密码」。
-          连带地，editRules 里本来就没有 password 规则，那边无需改动。
+          与「添加用户」弹窗同一件事，位置按决定接在「密码」后面。
+          本弹窗**不显示类型**，v-if 判的是 editForm.type —— 它由 modify(row)
+          从列表行深拷贝而来，行数据里就带 type（user_dict 总带），所以判得准。
+
+          【这里为什么没有 @change —— 因为本弹窗改不了类型，不是漏了】
+          本弹窗的字段只有「账号 / 名称 / 密码」三个（照搬 dist 原文的设计，
+          见文件头还原的 editSubmit：整个 editForm 直接发出）。没有「类型选择」，
+          也就做不出"把 type=5 改成别的类型"这个动作，@change 无从触发，
+          所以「添加用户」那边那个 onTypeChange 的防护在这里用不上。
+
+          ⚠️ 将来若给本弹窗加上「类型选择」，必须一并做两件事：
+            1) 给这个复选框补 @change="onTypeChange(editForm)"
+               —— 否则把 type=5 改成别的类型时，editForm.can_report_twice 会
+                  留着 true 被整个对象发出去，静默写库（同一个坑见「添加用户」
+                  弹窗 onTypeChange 的说明）。
+            2) 提示"改类型后该账号需重新登录" —— router/guard.js:52 是
+               `user.type !== to.meta.role`，类型一改，那个人浏览器里存的 type
+               立刻对不上，下次跳路由就被踢回 /middle 并看到「该账号类型无可用后台」。
+
+          【另需知道】"只有中小学端才能有这个特许"这条规则**只由前端的
+          v-if="type === 5" 保证**。后端 user_update_admin / user_create_admin
+          读该字段时只做 _as_bool 归一化、不判 type（apps/api/views.py:554-577），
+          所以直接打接口可以给任何类型的账号置上它，界面看不出来。
+          后端唯一的守备是：学校自助改资料的接口白名单里没有这个字段。
         -->
+        <el-form-item v-if="editForm.type === 5" label="可报两支">
+          <div class="quota-box">
+            <el-checkbox v-model="editForm.can_report_twice">允许报送两支队伍（合并办学学校）</el-checkbox>
+            <p class="quota-tip">仅合并办学学校适用；两支须为不同组别（小学组、中学组各一支），同一组别仍限 1 支。</p>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showEditInfo = false">取 消</el-button>
@@ -386,7 +443,28 @@ function modify(row) {
 }
 
 /**
- * 「重置密码」—— 确认框，重置为默认密码
+ * 「类型选择」变化时，把不适用的特许勾选清掉（本次新增）。
+ *
+ * 【为什么必须有这一步】勾选框是 v-if="form.type === 5"，一旦类型从「中小学账号」
+ * 改成别的，**勾选框会从界面上消失，但 form.can_report_twice 这个值还留在对象里**。
+ * 提交时发的是整个 form（submit() 里 adminApi.user.create(form.value)），
+ * 于是这次建出来的账号虽然类型是「学校账号」，数据库里却被写上了 can_report_twice=true。
+ * 这是**静默的脏数据**：界面上完全看不出来，只有等这个账号去报名时才会发现它多了一支额度。
+ * 所以类型一变就归零，让"界面上看不见"和"数据里没有"保持一致。
+ *
+ * 【为什么用 @change 而不是 watch】el-select 的 @change 只在**用户真的改了选择**时触发，
+ * 打开弹窗、程序赋值都不会触发 —— 这正是我们要的语义（只在用户操作时清）。
+ * 用 watch(form.type) 反而会在弹窗初始赋值那一下误触发。
+ *
+ * 【为什么形参是 form 而不是不用参数】这个方法将来也可能挂到「修改用户」弹窗上，
+ * 传对象进来比写死 form 更好复用；当前只有「添加用户」弹窗调它。
+ */
+function onTypeChange(target) {
+  if (target.type !== 5) target.can_report_twice = false
+}
+
+/**
+ * 【本次修复：空输入被当成「重置成功」】
  *
  * 【为什么从 prompt 改成 confirm】
  * 这一处历史上是 ElMessageBox.prompt('请输入新密码')，让操作者把口令打进去。
@@ -549,6 +627,27 @@ getData()
   padding: 10px;
   min-height: calc(100% - 20px);
   width: calc(100% - 20px);
+}
+
+/**
+ * 「可报两支」勾选框 + 下方小字说明（本次新增）。
+ * 【只用 CSS 类，不写内联样式】与模板里那句「提示：密码为必填项…」的内联写法不同，
+ * 这里用类名是因为小字要限宽换行，属性不止一条，写成内联会难读也难改。
+ * 【为什么要限宽】两个弹窗的 el-form 都带 inline，表单项会按内容宽度排。
+ * 那句小字有约 50 个字，不限宽会把这个表单项撑得极宽、把整行布局顶乱；
+ * 限到 420px 后它自然地折成两行，恰好压在勾选框下面。
+ * 【为什么字号是 12px】Element Plus 的表单帮助文字（如 el-form-item__error）
+ * 就是这个量级，保持一致，不喧宾夺主。
+ * 【为什么是 scoped】本页样式全部是 scoped，加在这里不会外溢到别的页面。
+ */
+.quota-box {
+  max-width: 420px;
+}
+.quota-tip {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: #909399;
 }
 
 .options {

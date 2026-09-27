@@ -26,7 +26,8 @@
         【宽度写在 <style> 里】不在标签上写 style="width:..."，
         与相邻的 .el-input 同一套写法。
         【为什么名字都带 filter —— 不叫 type / onTypeChange】本页已经有一个
-        onTypeChange（在「添加用户」弹窗里给「可报两支」勾选框做联动，形参是一个对象）。
+        onTypeChange（挂在「添加用户」弹窗的类型选择器上做联动，形参是一个对象；
+        本次修复前它误挂在「可报两支」勾选框上，从未生效）。
         重名会直接撞上：el-select 的 @change 传进来的是**选中的值**（0/1/5/''），
         而那个函数里有一句 `target.can_report_twice = false` —— 往数字上写属性，
         严格模式（ES module 恒为严格模式）必抛 TypeError（三种取值都验过）。
@@ -177,7 +178,21 @@
           <el-input v-model="form.password" type="password" />
         </el-form-item>
         <el-form-item label="类型选择" prop="type" >
-          <el-select v-model="form.type" placeholder="请选择账号类型" style = "width: 200px">
+          <!--
+            【本次修复：@change 原来挂错了元素】
+            onTypeChange 这个联动是为了"类型一改，就顺手把 can_report_twice 和
+            parent_id 清掉"（理由见下面那个函数里的长注释）。
+            但它原来挂在了**「可报两支」复选框**上，而那个复选框只在 type===5 时才渲染 →
+            onTypeChange 开头 `if (target.type === 5) return` 永远命中，
+            函数**从来没生效过**：把类型从「中小学账号」改成别的，
+            form.parent_id 会残留着上一次选的市州一起提交。
+            现在挂到类型选择器上，清理才真的会发生。
+            【为什么读 form.type 而不是用事件参数】Element Plus 的 emit 顺序是
+            `emit("update:modelValue", v)` 先、`emitChange(v)` 后
+            （node_modules/element-plus/es/components/select/src/useSelect.mjs:336-337），
+            所以进到 @change 时 v-model 已经写好了，form.type 就是新值。
+          -->
+          <el-select v-model="form.type" placeholder="请选择账号类型" style = "width: 200px" @change="onTypeChange(form)">
             <el-option label="组委会账号" :value="2" />
             <el-option label="市州账号" :value="1" />
             <el-option label="学校账号" :value="0" />
@@ -200,12 +215,15 @@
           （apps/core/report_drafts.py 的 ACCOUNT_QUOTA_SCOPES 同时含高校端与中小学端，
           但高校端表单的组别下拉只有「大学组」一项，第二支必然撞组别唯一、根本报不出来，
           勾了也没有意义）。所以约束在前端这一层：不是中小学账号就不给这个开关。
-          【@change 必须挂】见下面 onTypeChange 的说明——类型改掉时要顺手把勾选清掉。
+          【@change 挂在类型选择器上，不在这里】见上面类型 el-select 和下面 onTypeChange 的说明。
+          这个复选框**故意不挂 @change**：它只在 type===5 时才渲染，
+          挂上去等于永远命中 onTypeChange 开头的 `if (target.type === 5) return`，是死代码。
+          （历史上就是挂错在这里，导致"切类型时清空"的逻辑从来没生效过——本次修复。）
           【label 后面的小字】用独立的一行说明，不塞进 label 里，避免 label 过长挤坏 inline 布局。
         -->
         <el-form-item v-if="form.type === 5" label="可报两支">
           <div class="quota-box">
-            <el-checkbox v-model="form.can_report_twice" @change="onTypeChange(form)">允许报送两支队伍（合并办学学校）</el-checkbox>
+            <el-checkbox v-model="form.can_report_twice">允许报送两支队伍（合并办学学校）</el-checkbox>
             <p class="quota-tip">仅合并办学学校适用；两支队伍须为不同组别（小学组、中学组各一支）。</p>
           </div>
         </el-form-item>
@@ -757,9 +775,12 @@ function onTypeChange(target) {
    * 于是「选中小学 → 选成都市 → 改回学校账号 → 提交」会成功建出一个
    * **带着 parent_id 的学校账号**，界面上完全看不出来。
    *
-   * 后果不只是数据脏：parent_id 是市州端数据范围的唯一来源
-   * （apps/core/services.py:66-70 subordinate_school_ids），
-   * 一个学校账号挂到某市州名下，会让那个市州端多看到本不该看到的报名。
+   * 【后果有多大，如实说，别夸大】subordinate_school_ids 的过滤条件是
+   * `parent_id=<市州id>` **并且** `type=5`（apps/core/services.py:66-73），
+   * 所以这个 type=0 的账号**不会被算进任何市州的数据范围** —— 眼下不构成越权。
+   * 真正的危害是**破坏了「只有 type=5 才有 parent_id」这条不变量**，
+   * 而且它是个**潜伏陷阱**：user_update_admin 允许改 type，
+   * 哪天有人把这条账号的 type 改成 5，它会**静默地**进入那个市州的可见范围。
    *
    * 所以类型一变就归零，让"界面上看不见"和"数据里没有"保持一致。
    * 这与上面 can_report_twice 归零是同一个坑、同一个原因。

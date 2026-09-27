@@ -4,10 +4,14 @@
 - 后端基线：`ea12de8`
 - **结论先说**：这个功能**不需要后端新增或修改任何接口**，前端用的全是现有契约。
   **需要动的代码只有 2 处，都在 `apps/api/views.py` 一个文件里**（第三节）：
-  - **改动一（必做）**：`user_update_admin` 缺 `parent_id` 校验。因为 `parent_id` 是
-    `db_constraint=False` 的外键，**数据库层没有约束兜底**，接口校验是唯一一道防线（见第一节）。
-  - **改动二**：`user_create_admin` 的类型判断 + `committee` 赋值顺序。修一条不变量缺口。
+  - **改动一（必做）**：`user_update_admin` 缺 `parent_id` 校验，也缺「被改账号必须是 `type=5`」这道判断。
+    因为 `parent_id` 是 `db_constraint=False` 的外键，**数据库层没有约束兜底**，接口校验是唯一一道防线（见第一节）。
+    非 `type=5` 的账号一律把 `parent_id` **归 0 自愈、不报错**（理由见改动一）。
+  - **改动二**：`user_create_admin` 补类型判断 + 把 `committee` 赋值**提到校验之前**。修一条不变量缺口。
+    这条路径上非 `type=5` 是**报错拒绝**（与改动一刻意不同，理由见改动二末尾的对照表）。
   - **两处都不阻塞前端上线**，另有 **2 条顺带发现的相邻问题**（第七节），仅供你们判断。
+- **另外**：本次复核在前端发现并修掉了一个**前端自己的 bug**（类型选择器的 `@change` 挂错了元素，
+  导致"切类型时清空归属"从未生效）。**后端不用管**，但它是改动一「归 0 自愈」必要性的佐证 —— 见第八节。
 - **阅读顺序**：只想知道要改什么 → 看**第零节**、**第三节**和**第八节**。想了解全貌 → 从头看。
 
 ---
@@ -128,15 +132,33 @@ def user_update_admin(request):
 
 **问题**：`user_create_admin` 有两道校验（父账号存在 + 必须是市州），`user_update_admin` **一道都没有** —— `parent_id` 混在循环里被无条件 `setattr`。
 
-**后果**：直接打接口可以把它改成**不存在的 id**，或指向一个**学校账号**。而 `subordinate_school_ids()` 完全信任这个值，脏了之后市州端的数据范围就是错的。
+**后果**：直接打接口可以把它改成**不存在的 id**，或指向一个**学校账号**。
+`subordinate_school_ids()` 完全信任这个值 —— 它的过滤条件是
+`parent_id=<市州id>` **并且** `type=5`（`apps/core/services.py:66-73`），
+所以上面两种脏值都**匹配不上任何真实市州**，结果是**这个中小学账号会从那座市州端的
+可见范围里静默消失**（报名数据还在，只是再也查不出来、管不了）。
 （前端在 UI 层已经把选项限制成真实市州账号，所以正常操作不会出问题；缺的是接口层的守备。）
 
 **建议改法**：抽一个与 create 共用的校验函数，`parent_id` 从循环里拿出来单独走。
+同时补上 create 有、而这里没有的那道判断 —— **被改的这个账号本身必须是 `type=5`**。
 
 ```python
 def _apply_parent_id(user, requested_parent):
-    """中小学账号的所属市州：parent_id 必须为空，或指向一个 type=1 的市州账号。
-    返回 None 表示通过；否则返回应当直接回给前端的错误响应。"""
+    """设置账号的所属市州，并保证不变量：**只有中小学账号（type=5）才有 parent_id**。
+
+    【必须在 user.type 已经定下来之后调用】本函数用 user.type 做判据。
+
+    返回 None 表示通过；否则返回应当直接回给前端的错误响应。
+
+    【为什么 type != 5 时是「归 0」而不是「报错」】
+    user_update_admin 是**整对象更新** —— 前端改一个名字也会把整行发回来
+    （editForm 是 modify(row) 的深拷贝，行里本来就带 parent_id）。
+    如果这里报错，管理员连名字都改不了。
+    归 0 既能自愈历史脏数据，又不会挡住任何正常编辑。
+    """
+    if user.type != User.TYPE_PRIMARY_SECONDARY:
+        user.parent_id = 0
+        return None
     if requested_parent in (None, "", 0, "0"):
         user.parent_id = 0
         return None
@@ -154,9 +176,16 @@ def user_update_admin(request):
     if not user: return response(failure("用户不存在"))
     # can_report_twice 是报名特许，只能由管理员/组委会授予，单独归一化，不能让学校自助提权
     for k in ("username", "nickname", "description", "tel", "leader", "type"):
-        if k in data: setattr(user, k, data[k])            # ← parent_id 从这里移出
-    if "parent_id" in data:
-        err = _apply_parent_id(user, data["parent_id"])     # ← 补上与 create 同一套校验
+        if k in data: setattr(user, k, data[k])        # ← parent_id 从这里移出；type 先定下来
+    # 【顺序不能变】parent_id 必须放在上面这个循环**之后** ——
+    # helper 读的是 user.type，而 type 可能就在同一个请求里被改掉（例如 5 → 0），
+    # 必须用**新**的 type 判，否则这个请求会带着旧类型的判断写库。
+    if "parent_id" in data or user.type != User.TYPE_PRIMARY_SECONDARY:
+        # 两个条件任一成立就进 helper：
+        #   ① 本次请求带了 parent_id     → 调用方真的动了它
+        #   ② 账号不是中小学账号         → 不该有归属，顺手自愈成 0
+        # 两条都不成立（是中小学账号、且没传这个键）→ 完全不动，原值保留
+        err = _apply_parent_id(user, data.get("parent_id"))
         if err: return err
     if "can_report_twice" in data:
         user.can_report_twice = _as_bool(data["can_report_twice"])
@@ -164,6 +193,15 @@ def user_update_admin(request):
     user.save(); write_log(request.auth, 1, "修改用户 " + user.username)
     return response(success())
 ```
+
+> **为什么 helper 里要判 `user.type`（这一条是本次复核补的，很关键）**
+> 上一版漏了这一步，只校验了"父账号是市州"，没校验"**被改的这个账号**是中小学"。
+> 那会造成两个问题：
+> 1. **与 `user_create_admin` 的规则不一致** —— 同一条不变量，create 拒、update 放。
+> 2. **会挡住正常操作** —— 库里可能已经存在 `type=0` 却带着 `parent_id` 的脏数据
+>    （正是下面改动二要修的那种）。管理员打开「修改」只想改个名字，
+>    前端会把整行（含 `parent_id`）发回来，若这里报错，**连名字都改不了**。
+>    归 0 则顺带把脏数据自愈掉。
 
 **注意与前端的行为约定**：前端「清空归属」时**不会发 `parent_id` 这个键**（`JSON.stringify` 丢弃值为 `undefined` 的键）。
 所以 `if "parent_id" in data` 为假 → 保持原值不变。这是**有意的**：用户没碰这个字段时，数据库里的原值（`0` 或 `NULL`）原样保留，前端不制造无谓的写入。
@@ -217,7 +255,7 @@ def user_create_admin(request, committee=False):
 > 而且它是个**潜伏的陷阱** —— `user_update_admin` 允许改 `type`（`:555` 的白名单里有），
 > 哪天有人把这条账号的 type 改成 5，它会**静默地**进入那个市州的可见范围，排查起来很难往这上面想。
 
-**建议改法**：把 `if committee:` 提到 parent 校验**之前**，再加类型判断。
+**建议改法**：把 `if committee:` 提到 parent 校验**之前**（先定死类型，再判类型），再加类型判断。
 
 ```python
 def user_create_admin(request, committee=False):
@@ -250,6 +288,19 @@ def user_create_admin(request, committee=False):
 ```
 
 > `int()` 那一层是防御性的：前端 `el-option :value="5"` 发的是**数字** 5，但直接打接口可能传字符串 `'5'`。
+
+#### ⚠️ 为什么这里（create）是**报错**，而改动一（update）是**归 0** —— 不是写岔了
+
+这是本次复核刻意定下来的，两条路径对同一件事（"非中小学账号不该有 parent_id"）处理方式不同，
+因为**两个操作的性质不一样**：
+
+| | 调用方在做什么 | 报错的代价 | 所以 |
+|---|---|---|---|
+| **create** | 明确要求"新建一个带归属的账号" | 无代价 —— 前端根本发不出这种请求（下拉只在 `type===5` 渲染，切类型时 `@change` 会清掉 `parent_id`），只有直连接口才会撞上 | **报错**。告诉调用方"这条路由给不了你要的东西"，比悄悄建出一个**和你要的不一样**的账号好 |
+| **update** | 整对象更新，改个名字也会把整行（含 `parent_id`）发回来 | **很大** —— 库里若有一条历史脏数据（`type=0` + `parent_id=7`，正是本改动要防的那种），管理员**连名字都改不了** | **归 0 自愈**，不报错 |
+
+> 一句话记法：**create 是"新建"，报错不会伤到谁；update 是"改存量"，报错会锁死编辑。**
+> 两边都保证同一条不变量 —— **只有 `type=5` 的账号，`parent_id` 才可能是非 0**。
 
 ---
 
@@ -313,6 +364,8 @@ apps/core/services.py:350 / 368
 | 5 | `POST /api/admin/user/`，`type: 0` + 合法 `parent_id` | 返回「只有中小学账号可以设置所属市州」 |
 | 6 | `POST /api/admin/user/`，`type: 5` + 合法 `parent_id` | 创建成功，`parent_id` 落库 |
 | 7 | `POST /api/admin/user/`，`type: 5` + 不带 `parent_id` | 创建成功，`parent_id = 0`（与现状一致，**不能变成必填**） |
+| 8 | `PUT /api/admin/user/`，把一条 `type=0` 账号（假设它库里带着 `parent_id=7`）的 `nickname` 改掉，**整个请求里没有 `parent_id` 键** | 改名成功，且该账号的 `parent_id` 被**自动清成 0**（自愈），**不报错** |
+| 9 | `PUT /api/admin/user/`，把一条 `type=5` 账号**改成** `type=0`，请求里同时带 `parent_id: 7` | 类型改成功，`parent_id` 被清成 0。**必须用改后的 type 判**，先 setattr 再校验（见改动一的顺序说明）|
 
 **第 3a 和 3b 一定要分开测**：它们的结果不一样。"键不传"是**保持原值**，"显式传空"是**写成 0**。
 前端只会走 3a；把 3b 写成"原值不动"是错的 —— `if "parent_id" in data` 为真就会进 helper。
@@ -383,6 +436,14 @@ rows = [["账号", "名称", "密码", "修改人姓名", "修改人联系方式
 补上不是为了救前端 —— 改动一是把守备下沉到接口层（防绕过界面直接调接口，且数据库层没有 FK 约束兜底），
 改动二是修一条不变量缺口（前端本来也碰不到，但接口是通的）。
 
+> **本次复核顺手修了一个前端自己的 bug，如实告知你们**：管理员端「添加账号」里，
+> 类型选择器的 `@change` **原来挂错了地方** —— 挂在「可报两支」复选框上，而那个复选框
+> 只在 `type===5` 时才渲染，导致「切换类型时清掉 `parent_id`」这段逻辑**从来没执行过**。
+> 也就是说：先选 `type=5` + 成都市，再把类型改成 `type=0`，`parent_id` 会**残留 7** 一起提交。
+> 已修（`@change` 挂到类型选择器上）。**这一条只影响前端，你们不用动**；
+> 但它正好说明改动一里的「归 0 自愈」不是多余的防御 —— 前端就算修好了，
+> 老版本页面（用户没强刷）仍然会发出这种请求。
+
 ### 顺带发现、需要你们判断的（第七节）
 
 | # | 问题 | 位置 | 与本需求的关系 |
@@ -397,8 +458,9 @@ rows = [["账号", "名称", "密码", "修改人姓名", "修改人联系方式
 **前端已经能用了，后端一行不改也能跑。**
 
 - **第 1、2 条**（第三节）是要动的代码，都在 `apps/api/views.py` 一个文件里，各是一个小函数：
-  - 改动一：给 `user_update_admin` 补 `parent_id` 校验。**必做** —— 因为 `db_constraint=False`，
-    数据库层没有外键约束，接口校验是**唯一**一道防线。
+  - 改动一：给 `user_update_admin` 补 `parent_id` 校验（含「必须是被改账号本身是 type=5」这一条，
+    且必须在 `setattr(type)` **之后**判；非 type=5 一律**归 0 自愈、不报错**）。
+    **必做** —— 因为 `db_constraint=False`，数据库层没有外键约束，接口校验是**唯一**一道防线。
   - 改动二：给 `user_create_admin` 加类型判断 + 把 `if committee:` 提前。修一条不变量缺口，
     眼下不构成越权，但留着是个潜伏陷阱。
 - **第 3、4 条**是**不要动**的地方（`user_dict` 有 9 处调用方；自助改资料接口的白名单是对的）。

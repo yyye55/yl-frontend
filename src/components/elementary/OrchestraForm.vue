@@ -1473,17 +1473,44 @@ function notifyDraftError(err) {
      * 附带的干净之处：本函数不再需要读 can_report_twice（原先要引 getUser、加一行常量），
      * 所以那两处改动一并撤掉了 —— 额度弹窗现在只改了这一处字符串拼接。
      *
+     * 【2026-09-27 追加的分叉：重复报同一组别时不再拼那三句】
+     * 实测发现后端的组别唯一闸**是会点名的**（assert_report_group_unique，
+     * report_drafts.py:148 拼的是 `{组别}每所学校限报一支队伍，您已有报名记录`），
+     * 而下面那三句是给「报名被驳回 / 待审核 / 已通过」的人看的 —— 重复报同一组别的
+     * 人那条报名是**正常在库**的（既非驳回也非待审核），让他去「报名汇总」找
+     * 「编辑」按钮会扑空。所以这里按 e.msg 里有没有那个组别片段分叉：有就说换组别，
+     * 没有（账号总量已满等，后端不点名）才拼三句。判据是文案耦合，
+     * 后端哪天改了那句话，这里会安全退化成「照旧拼三句」，不会报错。
+     *
      * e.msg 来自后端（report_drafts.py 的 ReportQuotaExceeded），是用户唯一能知道
      * 真实原因的渠道 —— 上面 CONFLICT 那段的文案是硬编码的，绝不能让它落到那里。
      * 弹窗外壳（标题「无法提交」、按钮「知道了」、type: 'warning'）本次一律不动，
      * 只换中间这段字符串。
      */
+    // 后端这次说的是「重复报同一组别」吗？组别唯一闸的文案是
+    // `{组别}每所学校限报一支队伍，您已有报名记录`（report_drafts.py:148），组别名紧贴在
+    // 「每所学校」前；而账号总量闸的两句（report_drafts.py:178 / 180）都不带这个片段，
+    // 所以一个字符串判断就能把两者精确分开，不用后端加字段、不用额外请求。
+    // 先判 typeof：e.msg 可能是 undefined 或非字符串，直接调 .indexOf 会抛错。
+    const dupGroup =
+      typeof e.msg === 'string' && e.msg.indexOf('组每所学校限报一支队伍') !== -1
+
+    // 表单本身还留着另一个组别可报吗？中小学端是 ['小学组','中学组']（长度 2），
+    // 高校端只有 ['大学组']（长度 1）。只有真有多余组别，才敢说「改报另一个组别」，
+    // 否则又是给一条走不通的路 —— 那正是上面删掉旧第 4 句的理由，不能在这里重犯。
+    // cfg（758 行）是静态配置，不是会过期的登录快照，作用域上也拿得到。
+    const hasOtherGroup = Array.isArray(cfg.groupOptions) && cfg.groupOptions.length > 1
+
     return ElMessageBox.alert(
       (e.msg || '超出报送名额限制') +
-        '\n若已有报名需要调整，请在「报名汇总」中处理：' +
-        '\n· 【已驳回】点「编辑」修改后重新提交' +
-        '\n· 【待审核】先「删除」该条，再重新填写' +
-        '\n· 【已通过】无法自行修改，请联系组委会',
+        (dupGroup
+          ? hasOtherGroup
+            ? '\n同一组别只能报送一支队伍，请改报另一个组别。'
+            : '\n同一组别只能报送一支队伍，请勿重复报送。'
+          : '\n若已有报名需要调整，请在「报名汇总」中处理：' +
+            '\n· 【已驳回】点「编辑」修改后重新提交' +
+            '\n· 【待审核】先「删除」该条，再重新填写' +
+            '\n· 【已通过】无法自行修改，请联系组委会'),
       '无法提交',
       { confirmButtonText: '知道了', type: 'warning' }
     )
@@ -1906,6 +1933,16 @@ let lastQualificationError = null
  */
 const QUAL_TOAST_CLASS = 'qual-error-toast'
 
+/**
+ * 【第十二届·第十一轮】「参展学校 / 学校名称不一致」确认框的类名，配合文件末尾那段
+ * **非 scoped** 的 CSS，让文案里的 \n 真正换行。
+ *
+ * 理由与上面的 QUAL_TOAST_CLASS 完全同源：ElMessageBox 的节点同样由 Element Plus
+ * 挂到 document.body 下，已经不在本组件的 DOM 子树里，scoped 编译出的
+ * [data-v-xxx] 属性选择器匹配不到那个节点，写在 scoped 块里等于没写。
+ */
+const SCHOOL_MISMATCH_CLASS = 'school-mismatch-box'
+
 /** 本轮（同一批用户动作）里是否已经安排了校验，见 scheduleQualificationCheck */
 let pendingCheckTimer = null
 /** 本轮是否需要强制提示（批量导入路径置位） */
@@ -2044,6 +2081,162 @@ watch(
   () => scheduleQualificationCheck()
 )
 
+/* --------------- 参展学校 / 学校名称 一致性（第十二届·第十一轮） --------------- */
+
+/**
+ * 【这一节要解决的问题】
+ * 顶层「参展学校」（form.school_name）与人员表/教师表每一行的「学校名称」（item.school）
+ * 此前是两个互不相干的字段 —— 各自只判了「非空 + 不是纯数字」，
+ * 从不互相比较。于是「参展学校填 A 中学、人员表每行学校填 B 小学」能一路提交成功。
+ *
+ * 【不一致的实际后果 —— 只说真的会发生的那一半】
+ *   · 后端所有官方导出（附件2 报名表 registration_form.py:237、19 列数据导出、
+ *     admin/data1 报名数据导出）取的都是**团队级**的 report.school_name，
+ *     人员行的 school **一个官方导出都没进**（已 grep export_services.py /
+ *     registration_form.py 逐条核对）。
+ *   · 人员行的 school 只在一处被人看到：委员会端的人员详情弹窗
+ *     （components/common/ShowPerson.vue，被 CommitteeReportList.vue 调用）。
+ *     报名端的 PersonTable / TeacherTable 自己也显示一列。
+ *   · 而报名须知原文（本文件上方那段红字）写着：「乐团名单报名确定后不得更改，
+ *     如经资格审查有非本校师生的，则取消报名资格和成绩。」
+ * 所以后果不是数据错乱，而是**资格审查环节的口径不一致**：审核人在委员会端看到
+ * 某一行学校名称不是本校，可能判为"非本校人员"，导致整队取消资格和成绩。
+ *
+ * 【为什么判定必须放在父页面】
+ * school 是子表 data 里的字段，父页面拿不到；取数口只有父页面有 ——
+ * 与上面「资格类实时校验」同一处境，理由不再重复。
+ *
+ * 【为什么**不**写进 config/personRules.js】
+ * validatePeopleQualification / validatePeople 是**两个表单族共用**的
+ * （ProgramForm.vue:397、1081、1155 也在调），而 ProgramForm 里根本没有 school_name
+ * 这个字段。写进去会让合唱族对着 undefined 跑，还会污染它那条「同一批错不重复弹」
+ * 的去重状态 lastQualificationError。所以这一节刻意只留在这一个文件里。
+ *
+ * 【为什么是「确认框」而不是「直接报错拦住」】
+ * 编辑页存在大量历史报名表，它们当初提交时本来就没有这条约束。硬拦会让这些表
+ * **改不动也提交不了** —— 用户点「立即修改」会被一条他既无法理解、也无法消除的
+ * 错误挡住。确认框让老数据原样通过（点「仍要提交」即可），新数据被明确提醒。
+ * 这也与 personFields.js 里「判据取宽不取严：报名窗口期把真人卡在门口，
+ * 比放过一个含糊地址的代价大得多」的既有口径一致。
+ */
+
+/**
+ * 归一化学校名称 —— **只用于比较，不改任何数据**。
+ *
+ * 【为什么要归一化】三种差异都是真实会发生的，归一化后判为「一致」是为了不误伤真人：
+ *   ① 从通讯录 / 微信粘贴常带空格：「成都市 第七中学」
+ *   ② Excel 单元格可能是数字类型，需统一成字符串再比
+ *   ③ 中文输入法下会打出全角空格 U+3000，肉眼与半角完全一样
+ * 正则 `[\s　]` 与 config/personFields.js:146（checkPersonPhone「为什么先去空格」那段）
+ * 用的是同一份写法 —— 保持项目内口径一致，不另立一套。
+ *
+ * 【为什么先 String() 再 replace】school 可能来自 Excel 的数字单元格（是 number），
+ * 直接对 number 调 replace 会抛 TypeError。null / undefined 一并折成空串。
+ *
+ * @param {*} v 任意值（string / number / null / undefined）
+ * @returns {string} 去掉全部半角与全角空格后的字符串；空值返回 ''
+ */
+function normalizeSchoolName(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/[\s　]/g, '')
+}
+
+/**
+ * 「参展学校」与人员/教师表里的「学校名称」**有没有**不一致？
+ *
+ * 【为什么只回答"有没有"，不回答"是哪几行"】
+ * 2026-09-27 按产品要求改：提示语只说「部分人员填写的学校名称与参展学校不一致」，
+ * **不逐行列出**。于是这个函数不必再拼行文案、不必再关心行号与姓名，
+ * 从「返回字符串数组」简化成「返回布尔」—— 调用的那一侧也就不用再处理最多 10 条的截断。
+ * 顺带消掉了一个隐患：原先把用户填的姓名与学校名插进提示语，得额外提防
+ * 被当成 HTML 执行（所以当时刻意不用 dangerouslyUseHTMLString）。
+ * 现在文案是**纯常量**，一个用户输入都不进，这个隐患自然不存在了。
+ *
+ * 【为什么用 getCacheData() 而不是 getData()】
+ * getData() 会逐行跑 checkLine 并把第一个错误 ElMessage 出来 —— 那是「点提交」
+ * 时才该有的行为。这里只是比较，是一个纯读操作，绝不能带弹窗副作用。
+ * 这正是本文件 runQualificationCheck 里已确立的口径（见上方那段注释）。
+ *
+ * 【为什么两边都要判非空】
+ * 空值不在这里报，交给各自原有的必填校验：
+ *   · 参展学校为空 → rules.school_name 那条 required 已经拦了；
+ *   · 人员学校为空 → 子表 checkLine 的「学校名称不能为空」已经拦了。
+ * 这里再报一次，同一个问题会弹两条文案，用户分不清该补哪一个。
+ *
+ * 【教师表的「指挥带入行」会不会漏】
+ * 不会。那一行不在 form.teacher 里（它由 :conductor 这个 prop 单独渲染，
+ * 见 TeacherTable.vue 的注释），但它来自 form.person 里「教师 + 指挥」那一行，
+ * 已经在上面的参展人员那轮里比过了。
+ *
+ * 【子表未挂载时】personRef / teacherRef 为 null，用 && 短路成 undefined，
+ * 下面 differs 里的 `(list || [])` 会兜住，不会抛错。
+ *
+ * 【为什么用 some 而不是 filter/forEach】只要有一行对不上就得提示，没必要遍历到底。
+ * 大表（65 人 + 最多 2 名教师）下少走一遍循环，虽然省不了多少，但没有理由不省。
+ *
+ * @returns {boolean} true = 存在不一致；全一致、或无从比较时为 false
+ */
+function hasSchoolMismatch() {
+  const teamSchool = normalizeSchoolName(form.value.school_name)
+  if (!teamSchool) return false // 参展学校没填，没有可比较的基准
+
+  /**
+   * 某一张子表里有没有「填了、且与参展学校对不上」的行。
+   * @param {Array|undefined} list 子表行数组（getCacheData 的返回值）
+   */
+  const differs = (list) =>
+    (list || []).some((item) => {
+      if (!item) return false // 子表理论上不会有空行，防御性跳过
+      const own = normalizeSchoolName(item.school)
+      if (!own) return false // 空值交给各自的必填校验，见上面说明
+      return own !== teamSchool // 一致 → false（不计数）；不一致 → true（命中）
+    })
+
+  return (
+    differs(personRef.value && personRef.value.getCacheData()) ||
+    differs(teacherRef.value && teacherRef.value.getCacheData())
+  )
+}
+
+/**
+ * 参展学校一致性 —— 提交前的一次确认。**不拦截提交，只让用户明确选一次。**
+ *
+ * 【文案为什么是两句】第一句回答「出了什么事」，第二句回答「为什么要在意」——
+ * 依据是报名须知原文（本文件上方那段红字）：「乐团名单报名确定后不得更改，
+ * 如经资格审查有非本校师生的，则取消报名资格和成绩。」
+ * 只说第一句的话，用户没有理由为它停下来点一次「返回修改」。
+ *
+ * 【为什么不写「第 X 行」】按产品要求只给总提示。代价是用户得自己去两张表里找 ——
+ * 这是明确接受的取舍，不再列行。所以两句话**都是常量**，一个用户输入都不嵌，
+ * 也就没有「用户填的内容被当成 HTML 执行」那条隐患（详见上面 hasSchoolMismatch 的说明）。
+ *
+ * 【为什么 catch 里不弹「已取消」】用户在这里点「返回修改」的下一步动作就是回到
+ * 表单里改，再弹一条提示只是噪音。这与下面那个「请仔细核对」确认框不同 ——
+ * 那个是最后的递交动作，用户需要知道"没交上去"。
+ *
+ * @returns {Promise<boolean>} true = 用户选择继续提交；false = 取消
+ */
+async function confirmSchoolMismatch() {
+  if (!hasSchoolMismatch()) return true // 全一致，直接放行，不弹任何东西
+
+  const message =
+    '部分人员填写的「学校名称」与上方「参展学校」不一致。\n\n' +
+    '如经资格审查有非本校师生的，将取消报名资格和成绩。\n请核对后再决定是否继续提交。'
+
+  try {
+    await ElMessageBox.confirm(message, '提示', {
+      confirmButtonText: '仍要提交',
+      cancelButtonText: '返回修改',
+      type: 'warning',
+      customClass: SCHOOL_MISMATCH_CLASS
+    })
+    return true // 点了「仍要提交」
+  } catch {
+    // 点「返回修改」/ 按 ESC / 点右上角关闭 —— ElMessageBox 一律 reject，这里吞掉
+    return false
+  }
+}
+
 /* ------------------------- 提交 ------------------------- */
 
 /**
@@ -2056,7 +2249,13 @@ watch(
  *   ProgramForm 族则相反。已按 dist 原样实现。
  */
 function onSubmit() {
-  formRef.value.validate((valid) => {
+  /*
+   * 【第十二届·第十一轮】回调由同步改成 async，只为在中间 await 一次
+   * confirmSchoolMismatch()（ElMessageBox.confirm 返回 Promise）。
+   * el-form 的 validate 不关心回调返回什么，所以这个改动对它没有影响 ——
+   * 里面原有的 return 语句照旧、行为照旧。
+   */
+  formRef.value.validate(async (valid) => {
     if (!valid) return ElMessage.error('请检查数据完整性！')
 
     if (!personRef.value.getData() || !teacherRef.value.getData()) return false
@@ -2144,6 +2343,20 @@ function onSubmit() {
     if (!durationValidation.valid) {
       return ElMessage.error(durationValidation.error)
     }
+
+    /*
+     * 【第十二届·第十一轮】参展学校一致性确认（**不拦截**，用户可选择继续提交）。
+     *
+     * 位置：所有 error 级校验都通过之后、总确认框之前。
+     *   · 放前面那几条 error 之后 —— 那些是"填错了、必须改"，先修完再谈这条提醒；
+     *   · 放「请仔细核对」之前 —— 先让用户决定"这份表要不要交"，再让他确认
+     *     "内容核对过了"。反过来的话，「不一致」这个更需要停下来看一眼的信息
+     *     会被夹在两次确认之间，容易被顺手点过去。
+     *
+     * 点「返回修改」时直接 return：后续的暂存 / 提交一行都不会执行，
+     * 表单内容原样保留，用户可以就地改。
+     */
+    if (!(await confirmSchoolMismatch())) return
 
     ElMessageBox.confirm('请仔细核对填写内容，审核通过后将不可修改!', '提示', {
       confirmButtonText: '确定',
@@ -2308,5 +2521,38 @@ function onSubmit() {
 .qual-error-toast .el-message__content {
   white-space: pre-line;
   line-height: 1.7; // 多条时给点行距，否则挤成一坨看不清是几句
+}
+</style>
+
+<!--
+  参展学校 / 学校名称不一致确认框的换行样式。
+
+  【为什么这一段**故意不加 scoped】** 与上面 qual-error-toast 完全同源的理由：
+  ElMessageBox 的节点由 Element Plus 挂到 document.body 下，已经不在本组件的
+  DOM 子树里，scoped 编译出的 [data-v-xxx] 属性选择器匹配不到，写了也不生效。
+
+  【为什么不会波及别的元素】选择器只认 `school-mismatch-box`（我们通过
+  ElMessageBox 的 customClass 传进去的类名）且必须是它的后代 .el-message-box__message。
+  全项目只有 confirmSchoolMismatch 这一处用这个类名，其他 ElMessageBox 都不带它。
+  那条「请仔细核对填写内容」的确认框没传 customClass，因此完全不受影响。
+
+  【white-space: pre-line 是这段样式的关键】文案里的分段是用 \n\n 拼的，
+  而 HTML 默认把 \n 渲染成空格（三句话会连成一整段）。
+  pre-line = 保留换行、但折叠掉连续空格与行首缩进，正是这里要的效果。
+  （不用 pre / pre-wrap：那两个连空格一起保留，中文文案里多一个空格就会看着别扭。）
+
+  【为什么只有这一条规则了】2026-09-27 起提示语不再逐行列出不一致的人员，
+  从"最多 10 行列表"缩成固定的三句话。原先为那个列表准备的两条规则随之删除：
+    · max-height + overflow-y —— 列表才可能撑出屏幕，三句话不可能，留着是死代码；
+    · 内层 p 的 line-height: 1.7 —— 列 10 行时才需要行距，三句话用 EP 默认值更协调。
+  注意踩过的那个坑仍然成立、只是这里不再需要：EP 自带样式表里写着
+  `.el-message-box__message p { line-height: ... }`，直接命中 p；
+  而"直接命中的声明"赢过"从父级继承来的"，所以将来若再想调行距，
+  必须写到内层 p 上，写父级不生效。
+  （white-space 不受这条影响：EP 没在 p 上设它，它是可继承属性，写父级就能传下去。）
+-->
+<style lang="scss">
+.school-mismatch-box .el-message-box__message {
+  white-space: pre-line;
 }
 </style>

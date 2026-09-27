@@ -96,6 +96,43 @@
               {{ row.type === 5 ? (row.can_report_twice ? '是' : '否') : '—' }}
             </template>
           </el-table-column>
+          <!--
+            「所属市州」列（本次新增）。
+
+            【数据从哪来】row.parent_id 本来就在列表接口的返回里
+            （后端 user_dict 就带这个字段，apps/core/services.py:63），
+            再用 cityMap 换成市州名称 —— **不需要任何行级的额外请求**。
+
+            【为什么不是每个账号都有值】归属只对中小学账号（type=5）有意义：
+            · 学校端（0）的 parent_id 没有业务含义；
+            · 市州端（1）自己就是市州，谈不上"所属市州"。
+            判据因此与相邻的「可报两支」列完全一致：row.type === 5 ? ... : '—'。
+
+            【没有归属时为什么是「—」，而不是空白】本列与组委会端 /committee/user
+            的同一列必须显示一致 —— 那里也是「—」。两页同一个字段、同一个含义，
+            空着一个显示「—」一个显示空白，会让人以为是两种不同的"没有"。
+            这里的破折号与相邻「可报两支」列的用法是同一种：都在说"这里没有值"。
+
+            【学校端 / 市州端为什么也是「—」】它们没有"所属市州"这个概念，
+            与"有这个概念但还没设"在显示上是同一件事 —— 都是没有值。
+            这也让两页能用同一句代码表达，不会一方多一个分支。
+
+            【为什么用 || 而不是 ??】parent_id 为 0 / null / undefined 时
+            cityMap[...] 都是 undefined；市州名理论上也不会是空串。
+            两者结果相同，这里用 || 更短。
+
+            【宽度 120】表头「所属市州」4 个字 + 单元格「攀枝花市」4 个字，
+            120 足够不折行；不写 align，与相邻列统一用 Element Plus 默认左对齐。
+
+            【为什么放在「可报两支」后面而不是紧挨「类型」】
+            上面「可报两支」那段注释写着「紧跟在「类型」列后面」，
+            插到它们中间会让那句注释变成错的。放这里，本文件现有注释全部保持为真。
+          -->
+          <el-table-column label="所属市州" width="120">
+            <template #default="{ row }">
+              {{ row.type === 5 ? (cityMap[row.parent_id] || '—') : '—' }}
+            </template>
+          </el-table-column>
           <el-table-column prop="leader" label="修改人姓名" />
           <el-table-column prop="tel" label="修改人电话号码" />
           <el-table-column prop="description" show-overflow-tooltip label="其他信息" />
@@ -172,6 +209,34 @@
             <p class="quota-tip">仅合并办学学校适用；两支队伍须为不同组别（小学组、中学组各一支）。</p>
           </div>
         </el-form-item>
+        <!--
+          「所属市州」选择器（本次新增）。
+
+          【为什么只对 type===5 显示】归属只对中小学账号有意义，这与上面
+          「可报两支」用 v-if="form.type === 5" 是同一条规矩。
+
+          【@change 不用挂】本下拉自己不需要联动清理；要为它做防护的是
+          类型选择器的 @change —— 见 onTypeChange 里那段说明。
+
+          【为什么 clearable】允许不指定归属（对应 parent_id 为空）。
+          后端 user_create_admin 对空值的处理是默认 values["parent_id"] = 0
+          （apps/api/views.py:569），传空 = 没有归属，不会报错。
+
+          【不设为必填】后端允许 parent_id = 0，现存账号也大多没有归属，
+          与现状保持一致，不在这里卡住用户。若将来要强制必填，
+          在 rules 里补一条 required 即可。
+
+          【宽度用 class 不用内联】本文件既有做法是样式收在 <style> 里，
+          与相邻的 .quota-box / .quota-tip 保持一致。
+        -->
+        <el-form-item v-if="form.type === 5" label="所属市州">
+          <div class="city-box">
+            <el-select v-model="form.parent_id" class="city-select" placeholder="请选择所属市州" clearable>
+              <el-option v-for="c in cityAccounts" :key="c.id" :label="c.nickname" :value="c.id" />
+            </el-select>
+            <p class="quota-tip">归属决定该市州端能看到哪些中小学账号的报名，请谨慎修改。</p>
+          </div>
+        </el-form-item>
         <p style="margin:10px">提示：密码为必填项，长度需为 {{ PASSWORD_MIN }} 到 {{ PASSWORD_MAX }} 个字符</p>
         <p style="margin:10px">其他信息：（可以填写一些关于账号的介绍）</p>
         <el-input
@@ -237,6 +302,36 @@
           <div class="quota-box">
             <el-checkbox v-model="editForm.can_report_twice">允许报送两支队伍（合并办学学校）</el-checkbox>
             <p class="quota-tip">仅合并办学学校适用；两支须为不同组别（小学组、中学组各一支），同一组别仍限 1 支。</p>
+          </div>
+        </el-form-item>
+        <!--
+          「所属市州」选择器（本次新增）。
+          【为什么只对 type===5 显示】本页原有的规矩就是「不是中小学账号就不给这个开关」，
+          这里沿用同一判据。本弹窗没有「类型选择」控件，editForm.type 由 modify(row)
+          从整行深拷贝而来，恒等于该账号的真实类型，判得准。
+
+          【@change 为什么不用挂】本弹窗不显示、也改不了「类型」，做不出
+          "把 type=5 改成别的类型"这个动作，所以没有需要清理的残留值。
+          （这与「可报两支」复选框在这里同样不挂 @change 是同一个原因。）
+
+          【为什么 clearable】允许把归属清空（对应 parent_id = null）。
+          后端 user_update_admin 是 `if k in data: setattr(user, k, data[k])`
+          （apps/api/views.py:551），传 null 就写 NULL，与「没有归属」同义，不会出错。
+          注意：如果前端传的是 undefined，JSON 会整个丢掉这个键，后端就"不改动"——
+          两种结果都符合预期。
+
+          【编辑页会原值回传】modify() 是整行深拷贝，行里本来就带 parent_id，
+          所以**即使不做本次改动，编辑任何账号也会把这个值原样发回去**。
+          这里只是把它变成"可见、可改"，不改变原有的提交形状。
+
+          【宽度用 class 不用内联】与相邻的 .quota-box / .quota-tip 保持一致。
+        -->
+        <el-form-item v-if="editForm.type === 5" label="所属市州">
+          <div class="city-box">
+            <el-select v-model="editForm.parent_id" class="city-select" placeholder="请选择所属市州" clearable>
+              <el-option v-for="c in cityAccounts" :key="c.id" :label="c.nickname" :value="c.id" />
+            </el-select>
+            <p class="quota-tip">归属决定该市州端能看到哪些中小学账号的报名，请谨慎修改。</p>
           </div>
         </el-form-item>
       </el-form>
@@ -346,7 +441,9 @@
  *     本页 rules 的文案与「添加用户」弹窗里的那句提示都引用它。
  */
 
-import { ref, reactive } from 'vue'
+// 【本次新增 computed】用于把市州账号数组推导成 {id: 名称} 的查找表，
+// 供「所属市州」列在本页表格里 O(1) 查名。原有的 ref / reactive 用法完全不变。
+import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { adminApi } from '@/api'
@@ -383,6 +480,70 @@ const total = ref(0)
 const data = ref([])
 const form = ref({})
 const editForm = ref({})
+
+/* =========================================================================
+ * 「所属市州」数据源（本次新增）
+ * =========================================================================
+ *
+ * 【这个东西解决的是什么问题】
+ * 后端 users 表用 parent_id 表示归属：**中小学账号（type=5）的 parent_id
+ * 指向市州账号（type=1）的 id**（apps/core/services.py:66-70 的 subordinate_school_ids
+ * 写得很明白："归属于该市州账号的中小学账号，parent_id 指向该市州账号"）。
+ * 但列表接口返回的是 parent_id 这个**数字**，不是「成都市」。
+ * 所以要显示市州名，前端必须自己建一张对照表。
+ *
+ * 【对照表从哪来】就用本页已经在用的那个接口，加一个 type=1 只要市州账号：
+ *     GET /api/admin/user/list?page=1&limit=1000&type=1
+ * 后端 user_list 的展示范围是 type__in=(0,1,5)，所以 type=1 筛出的就是全部市州账号，
+ * 它们的 nickname 就是市州名。**不需要后端新增任何接口或字段。**
+ *
+ * 【为什么不能从本页的 data 里找】data 是**分页 + 筛选**过的：
+ * 停在第 2 页、或筛了「学校端」时，市州账号根本不在 data 里，翻不到。
+ *
+ * 【为什么不去改后端的 user_dict 加个 parent_name】
+ * user_dict 是全局共用的序列化函数，有 9 处调用方（登录接口、获取当前用户、
+ * 审核列表、参展扫描件列表、报名详情…）。改它会让**登录响应**都多出一个字段，
+ * 影响面远超本页需求。所以这条路不走。
+ */
+
+/**
+ * 全部市州账号（type=1），形如 [{ id: 7, nickname: '成都市', ... }, ...]
+ * 【失败时保持为初始值 []】这一列是纯展示的辅助信息，拿不到就整列空白，
+ * 不影响账号列表本身；弹错误提示反而会打断「我就想看看账号列表」的正常操作。
+ */
+const cityAccounts = ref([])
+
+/**
+ * 查找表：{ 市州账号id: 市州名称 }，例如 { 7: '成都市' }
+ * 【为什么由 cityAccounts 推导而不是另存一份】两份数据就要手动同步，
+ * 漏同步一次就是"下拉里有、列里没有"这种难查的漂移。推导则天然一致。
+ */
+const cityMap = computed(() =>
+  cityAccounts.value.reduce((acc, u) => {
+    acc[u.id] = u.nickname
+    return acc
+  }, {})
+)
+
+/**
+ * 拉取全部市州账号，重建对照表。
+ *
+ * 【limit: 1000 的依据】后端 list_page 对 limit 只做 `max(1, int(...))`，没有上限，
+ * 一次能取全（apps/core/services.py:78-90）。本页 isUsernameTaken() 已经在用
+ * 同样的 limit: 1000，属于本文件已有的写法，不是这里新发明的。
+ *
+ * 【type 为什么直接写数字 1，不走 getData() 那套显式判空】
+ * getData() 里那段「0 是 falsy 所以要显式判空」的注释针对的是**用户可选的筛选值**；
+ * 这里写的是数字字面量 1，不存在那个坑，不需要绕。
+ *
+ * 【四川共 21 个市州】1000 的余量极大，实际不可能取不全。
+ */
+function loadCityAccounts() {
+  adminApi.user.list({ page: 1, limit: 1000, type: 1 }).then(({ data: res }) => {
+    if (res.code !== 0 || !Array.isArray(res.data)) return
+    cityAccounts.value = res.data
+  })
+}
 
 /**
  * 【本次修复】两个 el-form 的 ref。
@@ -458,6 +619,18 @@ function getData() {
       ElMessage.error(res.msg)
     }
   })
+
+  /*
+   * 【本次新增，放在 getData 末尾，不是 onMounted】
+   * getData 已经被「首次进入 / 翻页 / 换类型筛选 / 点刷新 / 新增成功 / 修改成功」
+   * 六处调用。挂在这里 = 这六种情况市州对照表都会自动跟着刷新，
+   * **新增或修改市州账号后不需要为本页再补任何接线**（列表刷新 ⇄ 对照表刷新，永远同步）。
+   *
+   * 【代价】每次翻页/筛选多一个小请求。市州只有 21 个账号，可以忽略。
+   * 【与上面那次请求的关系】两次请求各写各自的 ref（data / cityAccounts），互不干扰，
+   * 也不存在先后依赖 —— 谁先回来都不影响结果。
+   */
+  loadCityAccounts()
 }
 
 /**
@@ -491,7 +664,60 @@ function handleCurrentChange(current) {
 }
 
 function modify(row) {
-  editForm.value = JSON.parse(JSON.stringify(row))
+  const next = JSON.parse(JSON.stringify(row))
+
+  /*
+   * 【本次新增：把「没有归属」统一成 undefined】
+   *
+   * 后端有两种"没有归属"的写法：null（早期数据）和 0（user_create_admin 的默认值，
+   * 见 apps/api/views.py:569 的 values["parent_id"] = 0）。
+   *
+   * 【为什么必须归一化 —— 这是实测出来的，不是推测】
+   * el-select（本项目装的 Element Plus 2.14.6）判空用的 emptyValues 是
+   * ["", undefined, null]（node_modules/element-plus/es/hooks/use-empty-values/index.mjs:8），
+   * **数字 0 不算空值**。于是 parent_id = 0 的账号打开弹窗时：
+   *   hasModelValue 为真 → 不走 placeholder 分支 → 走 states.selectedLabel
+   *   → getOption(0) 在所有选项里找不到 value 为 0 的那一个（选项全部来自市州账号的真实 id）
+   *   → 兜底 currentLabel = (0 ?? "") = 0
+   * 结果下拉框里明晃晃显示一个「0」，看着就像页面坏了。
+   *
+   * 【为什么归一成 undefined，而不是 null 或 ''】
+   * 提交时 editForm 是整个对象发出去的，JSON.stringify 会**丢掉值为 undefined 的键**，
+   * 而后端 user_update_admin 是 `if k in data: setattr(user, k, data[k])`
+   * （apps/api/views.py:551）—— 键不存在 = 不改动。
+   * 所以用户没碰这个字段时，数据库里那个 0 原样保留，**零副作用**。
+   *   · 归一成 null：会把 0 改写成 NULL。语义相同，但白白动了数据，没必要。
+   *   · 归一成 ''：后端 setattr(user, 'parent_id', '') 往 IntegerField 里写空串会直接报错。
+   *
+   * 【与 clearable 清空的行为一致】el-select 清空时发的正是 undefined
+   * （DEFAULT_VALUE_ON_CLEAR，同文件第 11 行），两条路径结果完全相同，不会出现
+   * "手选清空"和"打开就有"两种不同的提交形状。
+   *
+   * 【!next.parent_id 覆盖到哪些值】0 / null / undefined / '' / NaN 全部命中；
+   * 真实市州 id 都是正整数，不会被误伤。
+   *
+   * 【后半句为什么还要查 cityMap —— 悬空 id 的同样问题】
+   * 如果这个账号的 parent_id 指向一个**已经查不到的市州账号**（市州被软删除，
+   * 或有人绕开界面直接调接口写了个不存在的 id），上面那个判断拦不住它：
+   * id 是正整数，归一化后仍然是 99，el-select 同样找不到对应选项，
+   * **框里就显示一个「99」**。所以只要它不在对照表里，一并归一化掉。
+   *
+   * 【为什么前面要加 Object.keys(...).length 这个条件】
+   * 这是防止把"对照表没加载出来"误判成"这个 id 不存在"：
+   * 若市州列表请求失败，cityMap 是空的，不加这个条件就会把**每一个**有效归属
+   * 都当悬空值抹掉，管理员会看到"明明有归属却显示请选择"。
+   * 加了之后：对照表为空时只处理 0/null/undefined/'/NaN，不动真实 id —— 宁可显示得难看，
+   * 也不要把正确数据判成错的。
+   *
+   * 【代价（如实说明）】悬空归属会被显示成"未选择"，管理员看不出它是悬空的。
+   * 这是有意取的决定：一个下拉框里出现裸数字「99」比"显示未选择"更容易被当成页面 bug。
+   * 且无论哪种处理，只要管理员不碰这个字段，提交时这个键都会被丢掉，数据库里的原值不受影响。
+   */
+  if (!next.parent_id || (Object.keys(cityMap.value).length && !cityMap.value[next.parent_id])) {
+    next.parent_id = undefined
+  }
+
+  editForm.value = next
   showEditInfo.value = true
 }
 
@@ -513,7 +739,32 @@ function modify(row) {
  * 传对象进来比写死 form 更好复用；当前只有「添加用户」弹窗调它。
  */
 function onTypeChange(target) {
-  if (target.type !== 5) target.can_report_twice = false
+  if (target.type === 5) return
+
+  target.can_report_twice = false
+
+  /*
+   * 【本次新增，这一行不加就是静默脏数据】
+   *
+   * 「所属市州」下拉是 v-if="form.type === 5"，类型一改，下拉从界面上消失，
+   * 但 form.parent_id 这个值**还留在对象里**，提交时发的是整个 form
+   * （submit() 里 adminApi.user.create(form.value)）。
+   *
+   * 而后端 user_create_admin 的校验是（apps/api/views.py:571-575）：
+   *     if parent.type != User.TYPE_CITY:
+   *         return response(failure("上级账号必须是市州账号"))
+   * 它**只检查"父账号是不是市州"，不检查"新账号是不是 type=5"**。
+   * 于是「选中小学 → 选成都市 → 改回学校账号 → 提交」会成功建出一个
+   * **带着 parent_id 的学校账号**，界面上完全看不出来。
+   *
+   * 后果不只是数据脏：parent_id 是市州端数据范围的唯一来源
+   * （apps/core/services.py:66-70 subordinate_school_ids），
+   * 一个学校账号挂到某市州名下，会让那个市州端多看到本不该看到的报名。
+   *
+   * 所以类型一变就归零，让"界面上看不见"和"数据里没有"保持一致。
+   * 这与上面 can_report_twice 归零是同一个坑、同一个原因。
+   */
+  target.parent_id = undefined
 }
 
 /**
@@ -701,6 +952,28 @@ getData()
   font-size: 12px;
   line-height: 18px;
   color: #909399;
+}
+
+/**
+ * 「所属市州」下拉 + 下方小字说明（本次新增）。
+ * 【为什么需要 city-box】两个弹窗的 el-form 都带 inline，表单项按内容宽度排。
+ * 不加这层容器的话，下拉下方的说明文字不受约束，会把这个表单项撑得很宽、
+ * 把整行布局顶乱。限到 420px 后它自然地折行压在下拉下面 —— 与 .quota-box 同一个理由。
+ * 【小字复用了 .quota-tip】那条规则本身就是「表单下方的灰色说明文字」的通用样式，
+ * 属性完全适用，不再复制一份，避免两处字号/颜色将来改跑偏。
+ */
+.city-box {
+  max-width: 420px;
+}
+
+/**
+ * 「所属市州」下拉的宽度。
+ * 【为什么必须给宽度】el-select 不给宽度时宽度随内容走，
+ * 「成都市」和「凉山彝族自治州」会让同一行忽宽忽窄。
+ * 200px 与「添加用户」弹窗里「类型选择」那个 el-select 的宽度保持一致。
+ */
+.city-select {
+  width: 200px;
 }
 
 .options {

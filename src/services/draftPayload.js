@@ -47,6 +47,7 @@
  */
 
 import { getM, getS } from '@/utils/date'
+import { MEAL_SLOT_COUNT } from '@/config/mealSlots'
 
 /** 表单里的标量字段 → 原样往返（不含 time_length / 文件 / 人员，它们要转换） */
 const SCALAR_KEYS = [
@@ -99,6 +100,40 @@ function firstFileId(list) {
   const arr = Array.isArray(list) ? list : []
   const id = arr.length > 0 ? arr[0].id : null
   return id === null || id === undefined || id === '' ? null : String(id)
+}
+
+/**
+ * 用餐预约人数 → payload 要的固定 6 位数组（2026-09-27 后端新增字段）
+ *
+ * 【为什么在转接层还要再规整一次】界面层（MealTable 的输入框）已经只收数字了，
+ * 但本层是「表单 → payload」的**唯一出口**，而 form 里的值有三个来源：
+ * 用户输入、草稿回显、正式报回显（编辑页 `form.value = r` 是**整体替换**，
+ * 后端回显什么就是什么）。只靠 UI 兜底的话，任一条回显路径带来脏值都会原样上天。
+ * 与 time_length 那条注释同一个理由：契约不该靠界面层的输入过滤来保证。
+ *
+ * 归一规则，逐个来源说明为什么要这样收：
+ *   · 非数组（null / undefined / 后端回显成对象）→ 整份当「未填」，出 6 个 null。
+ *     后端宽松路径（create/update）也把非数组整体视为未填，两边口径一致；
+ *     而草稿路径遇到非数组是**直接 400**，所以这里必须把形状摆正。
+ *   · 长度不足 6 → 补 null；超过 6 → 截断。后端的草稿校验写明「最多 6 项」，
+ *     多一项就是 400，截断比报错好（前端本来也只渲染 6 格，多出来的无处可改）。
+ *   · 元素非整数（字符串 "12"、布尔、小数 12.5、NaN）→ null。
+ *     ⚠️ 这里**不学**后端的宽松路径去做 "12"→12：宽松路径是给直传 create/update 的，
+ *     而本层产出的 payload 同时喂给**草稿**路径，那条路径遇到字符串是 400。
+ *     同一个 payload 要同时满足两条校验，只能按**严**的那条来。
+ *   · 元素 ≤ 0 → null（不是 0）。契约里 null / 0 / 缺位三者语义等价，都是「未填」；
+ *     统一成 null 是为了让 build→restore→build 幂等 —— 否则每次往返都在 null/0 之间
+ *     抖动，payloadSignature 恒判定「有变化」，暂存会被反复触发。
+ *
+ * ⚠️ 下标与格子的对应关系在 config/mealSlots.js，本函数**不重复**那份顺序，
+ *    只负责长度与元素类型。顺序若错，错的是那里，不是这里。
+ */
+function normalizeMealCounts(v) {
+  const list = Array.isArray(v) ? v : []
+  return Array.from({ length: MEAL_SLOT_COUNT }, (_, i) => {
+    const n = list[i]
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
 }
 
 /** 一行参展人员 → payload 里的一条 person */
@@ -211,7 +246,18 @@ export function buildDraftPayload({ form, fileList, fileList1 }) {
     time_length: timeLength,
     spectrum: firstFileId(fileList1),
     file: firstFileId(fileList),
+    /*
+     * 【老键·原样透传】dinner_reservation 是「勾了哪几格」的字符串集合，
+     * 至今没有控件绑定它（模板里也没有），所以实际上恒为 []。保持原样发送，
+     * 不改它的形状、也不拿新键去覆盖它 —— 后端两个键并存，渲染时以新键优先。
+     */
     dinner_reservation: Array.isArray(f.dinner_reservation) ? f.dinner_reservation : [],
+    /*
+     * 【新键·用餐预约人数】6 个下标对应 11月20/21/22 日的午晚两餐，
+     * 下标顺序见 config/mealSlots.js。取值与归一见 normalizeMealCounts 的长注释。
+     * 注意它**必须每次全量发送**：后端 PUT /report/update 漏传该键 = 清空。
+     */
+    dinner_reservation_counts: normalizeMealCounts(f.dinner_reservation_counts),
     // 教师在前、人员在后 —— 与 OrchestraForm.onSubmit 拼 allPeople 的顺序一致
     person: [...teachers.map(personToPayload), ...students.map(personToPayload)]
   }
@@ -269,13 +315,23 @@ export function restoreDraftPayload(payload, baseForm) {
   }
 
   /*
-   * 2.5) 用餐预约：目前模板里**没有任何控件绑定它**（dist 遗留），所以 payload 里
-   *      始终是 buildDraftPayload 兜底出来的 []，恢复与否在界面上看不出差别。
-   *      仍然显式恢复，是为了让 build→restore→build 成为**幂等的往返**：
-   *      不写这一行时，该键只能靠 `{...baseForm}` 撞运气活下来 —— 一旦调用方传入的
-   *      baseForm 里没有这个键（例如编辑页刚进页面、form 还没初始化），它就会被
-   *      build 的兜底 [] 覆盖掉。将来真要接上用餐预约控件时，这个静默丢数据
-   *      的坑很难查。加这一行的成本是零。
+   * 2.5) 用餐预约人数：**必须显式恢复，且必须过一遍 normalizeMealCounts**。
+   *
+   *      取值的三个来源（草稿详情、edit-draft 换出的正式报内容、后端回显）都可能给出
+   *      长度不足 6 的数组、null、甚至（老数据）压根没有这个键。归一之后再写进 form，
+   *      MealTable 拿到的就永远是规规矩矩的 6 位数组 —— 于是**回显、编辑、再提交**
+   *      这条链路上，任何一个格子都不会因为源数据短一截而错位到隔壁时段。
+   *
+   *      不写这一行会怎样：该键只能靠 `{...baseForm}` 撞运气活下来。一旦调用方传入的
+   *      baseForm 里没有这个键（例如编辑页刚进页面、form 还没初始化），它就会保持
+   *      undefined，界面上 6 个框全空 —— 用户看到的是「我上次填的人数没了」，
+   *      再点一次提交就把服务端那份**覆盖成空**。这正是老键那条注释里预警过的坑。
+   */
+  form.dinner_reservation_counts = normalizeMealCounts(p.dinner_reservation_counts)
+
+  /*
+   * 老键（字符串集合）保持原样恢复，理由见上面这段的历史说明：它至今没有控件绑定，
+   * 恢复与否在界面上看不出差别，但保留这一行能让 build→restore→build 成为幂等往返。
    */
   if (Array.isArray(p.dinner_reservation)) form.dinner_reservation = p.dinner_reservation
 

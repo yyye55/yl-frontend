@@ -32,11 +32,14 @@
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
-    - 重置密码的 prompt：`inputValidator`（空串 / 纯空格 / 长度越界都不放行，口径见
-      src/config/accountRules.js）+ `inputType: 'password'`
-      （dist 无；不加的话空输入会被提示「重置成功」而密码没变，且新密码是明文显示）
-    - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码 scylb@2026。
-      这是给操作者的操作约定，不是系统自动行为 —— 详见模板里那段注释。
+    - 重置密码从 prompt 改成 confirm：弹「是否重置为默认密码？」，没有输入框。
+      原因：后端 user_update_admin 现在 `if "password" in data` 就无条件重置为默认口令
+      （yilinbei hou/apps/api/views.py:543），请求体里 password 的值被忽略 ——
+      留着输入框只会骗人。dist 时代的 inputValidator / inputType:'password' 随之删除。
+    - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码。
+      值取自 src/config/defaultPassword.js；这句话现在描述的是系统实际行为 ——
+      详见模板里那段注释。
+    - 与 admin/user.vue 的同名函数保持同步（两处一起改，见其文件头）。
 -->
 <template>
   <div class="bg">
@@ -70,12 +73,13 @@
 
         <!--
           【本仓库新增，dist 无】重置密码的默认口径提示。
-          ⚠️ 这是给操作者看的一条**操作约定**（重置时请填这个值），不是系统行为：
-          后端 user_update_admin 并不会自动套用默认密码，它按弹窗里输入的明文
-          set_password（apps/api/views.py:517 `if data.get("password")`），
-          输入框留空则密码纹丝不动。所以这句话在提醒人，不是在描述功能。
+          ⚠️ 这句话的性质变了：原先它是一条**操作约定**（后端当时不套用默认密码，
+          靠操作者在弹窗里手填这个值，填了才生效），现在它**就是系统行为** ——
+          user_update_admin 无条件重置为 RESET_PASSWORD_DEFAULT（yilinbei hou/apps/api/views.py:543）。
+          值本身来自 src/config/defaultPassword.js，别在这里写死字面量：
+          提示里显示的口令必须与实际生效的是同一个，否则用户拿着提示语登不进去。
         -->
-        <p style="margin:10px;">提示：重置密码后恢复为默认密码：<b>scylb@2026</b></p>
+        <p style="margin:10px;">提示：重置密码后恢复为默认密码：<b>{{ DEFAULT_PASSWORD }}</b></p>
 
         <el-table :data="data" border style="width: 100%">
           <el-table-column type="index" label="序号" width="60" />
@@ -123,7 +127,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { committeeApi } from '@/api/committee'
-import { checkPasswordInput } from '@/config/accountRules'
+import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
 
 const keyword = ref(null)
 const page = ref(1)
@@ -210,27 +214,28 @@ function getData() {
  * 调用的是 user_update_admin —— 它会接受任意 user_id 修改（不像 /api/user 那样限制自己），
  * 这是 committee 域特有的管理能力。
  *
- * 【本仓库增强，dist 无】inputValidator + inputType。
- *  症状：弹窗里什么都不输（或只打空格）就点「确定」，页面提示「重置成功」，密码却没变。
- *  原因：后端 user_update_admin 的条件是 `if data.get("password")`，空串 falsy 被跳过、
- *        接口仍返回 success()；而 `'   '`（纯空格）是 truthy，会真的把密码改成一串空格。
- *  做法：inputValidator 把空串与纯空格都拦下（红字 + 确定按钮不关弹窗，EP 原生行为，
- *        依据本机 element-plus@2.14.6 message-box 源码 handleAction 第 187 行 / validate 第 200-214 行）；
- *        inputType 设成 'password'（EP 默认 'text'，原本新密码是明文显示）。
- *  长度：改用 src/config/accountRules.js 的 checkPasswordInput，与「添加账号」「自助改密」
- *        同一组数（6-20）。原先这一处不判长度，管理员能把密码重置成 1 位，
- *        接口返回成功而用户登不进去，属静默失败。
+ * 【本次变更：prompt → confirm，重置为默认密码】
+ *  后端不再接受调用方指定的新密码：user_update_admin 里
+ *    `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
+ *  （yilinbei hou/apps/api/views.py:543，常量在同文件 :521）——
+ *  只要请求体里出现 password 键，它的值被忽略，一律重置为 scylb@2026。
+ *  于是 dist 时代的「请输入新密码」输入框成了骗人的控件：填什么都会被丢弃，
+ *  用户按自己填的去登录必然失败。改用 confirm 后弹窗里问的就是将要发生的事。
+ *
+ *  同时删除 dist 之后本仓库加过的 inputValidator（checkPasswordInput）与
+ *  inputType:'password' —— 没有输入框可校验、也没有明文可遮了。
+ *  它们当初防的是「空输入被当成重置成功」，而那个问题现在从根上消失：
+ *  password 由本函数写死成 DEFAULT_PASSWORD，不可能为空。
+ *  checkPasswordInput 失去全部调用方，已从 src/config/accountRules.js 移除。
+ *
  *  与 admin/user.vue 的同名函数保持一致（两处一起改，见其文件头）。
  */
 function resetPassword(id) {
-  ElMessageBox.prompt('请输入新密码', '重置密码', {
+  ElMessageBox.confirm('是否重置为默认密码？', '重置密码', {
     confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    // 空串 / 纯空格 / 长度越界都拦下，口径见 src/config/accountRules.js
-    inputValidator: checkPasswordInput,
-    inputType: 'password'
-  }).then(({ value }) => {
-    committeeApi.user.update({ id, password: value }).then((res) => {
+    cancelButtonText: '取消'
+  }).then(() => {
+    committeeApi.user.update({ id, password: DEFAULT_PASSWORD }).then((res) => {
       const body = res && res.data
       if (!body) {
         ElMessage.error('响应为空')
@@ -244,7 +249,8 @@ function resetPassword(id) {
       }
     })
   }).catch(() => {
-    ElMessage.info('取消输入')
+    // confirm 的取消/关闭都走这里（reject 'cancel' / 'close'），不再有「取消输入」这回事
+    ElMessage.info('已取消')
   })
 }
 

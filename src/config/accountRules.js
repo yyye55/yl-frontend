@@ -29,21 +29,19 @@ export const MSG_ACCOUNT_LENGTH = `长度在 ${ACCOUNT_MIN} 到 ${ACCOUNT_MAX} �
 export const MSG_PASSWORD_LENGTH = `长度在 ${PASSWORD_MIN} 到 ${PASSWORD_MAX} 个字符`
 
 /**
- * 校验一个"新设置的密码"，返回 true 或错误文案。
+ * 【checkPasswordInput 为什么没了 —— 别当成漏写补回来】
  *
- * 【签名为什么是这样】给 ElMessageBox.prompt 的 inputValidator 用
- * （admin/user.vue 与 committee/user.vue 的「重置密码」）——EP 的契约就是
- * 返回字符串当作红字提示、返回 true 才放行，与 async-validator 的
- * (rule, value, callback) 完全不同，所以不能和 el-form 的 rules 共用同一个函数。
+ * 这里原本还导出一个 checkPasswordInput(value)，专供 ElMessageBox.prompt 的
+ * inputValidator，也是全仓唯一一个按 EP 那套契约（返回字符串 = 红字提示、
+ * 返回 true = 放行）写的校验函数，所以不能和 el-form 的 rules 合并。
  *
- * 【为什么保留"纯空格"这一条】后端改密码的条件是 `if data.get("password")`：
- * 空串是 falsy 会被跳过（改不成），而 `'      '` 是 truthy 会真的把密码改成
- * 一串空格 —— 用户此后既登不进去、也猜不到自己密码是什么。只判空串挡不住它。
+ * 它只有两个调用方：admin/user.vue 与 committee/user.vue 的「重置密码」。
+ * 那两处已经改成 ElMessageBox.confirm —— 不再由操作者指定新密码，
+ * 一律重置为 DEFAULT_PASSWORD（见 src/config/defaultPassword.js），
+ * 没有输入框可校验，函数随之失去全部调用方，于是删除。
+ *
+ * 【它当初防的是什么，现在还防不防】
+ * 防的是「空输入被当成重置成功」：后端旧写法 `if data.get("password")` 对空串
+ * 不成立，于是密码没改、接口却返回 success()。这个坑现在从根上没有了 ——
+ * 请求体里的 password 由页面写死成默认口令，不可能为空、也不可能是一串空格。
  */
-export function checkPasswordInput(value) {
-  const v = value == null ? '' : String(value)
-  if (v === '') return '请输入新密码'
-  if (v.trim() === '') return '密码不能为纯空格'
-  if (v.length < PASSWORD_MIN || v.length > PASSWORD_MAX) return MSG_PASSWORD_LENGTH
-  return true
-}

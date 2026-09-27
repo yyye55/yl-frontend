@@ -300,12 +300,16 @@
               【本仓库新增，dist 无】用餐预约
               位置：参展人员表格之后、下方红色报名须知之前。
               标题与上方「参展人员」同款；「备注」是表格外的提示，不占表格列。
-              组件本身无 props / 无 emit —— 这 6 个输入框只是渲染出来，不参与提交，
-              也不写暂存草稿。详见 MealTable.vue 文件头。
+
+              【2026-09-27 接通后端】原先这里只有一个不接线的静态表（填了不保存、不提交，
+              详见 MealTable.vue 文件头的旧说明）。后端已交付 dinner_reservation_counts
+              （6 个下标对应 11月20/21/22 日的午晚两餐），现在按 v-model 双向绑定：
+              值经 form → draftPayload 进暂存与提交，回显走草稿/正式报的 payload。
+              下标与格子的对应关系、以及「为什么是 6 格不是 4 格」，见 MealTable.vue 文件头。
             -->
             <div style="font-size: 16px; font-weight: bold">用餐预约</div>
             <p style="color: black; margin: 10px 0">备注：如果需在成都理工大学食堂购票用餐，请备注时间并在对应位置写上就餐人数</p>
-            <Meal />
+            <Meal v-model="form.dinner_reservation_counts" />
           </div>
         </div>
 
@@ -456,6 +460,8 @@
  *   3d27: form:{read:!1,minute:0,second:0,**group:"大学组",establishment:"管乐团"**,dinner_reservation:[]}
  *   5e02/30d4/0b72: form:{read:!1,minute:0,second:0,dinner_reservation:[]}
  * 已逐模块 grep `form:{...}` 确认，不是推断。
+ * 【本仓库新增，dist 无】makeForm() 现在四个变体都多一个 dinner_reservation_counts，
+ * 它是第十二届的后端新字段，dist 时代不存在，故不在上面对照表的「dist 原文」之列。
  *
  * ===========================================================================
  * 三、dist 已知缺陷（保持原行为，仅记录，未擅自修复）
@@ -499,9 +505,17 @@
  *
  * 【低·UI】`uploadSuccess` / `uploadSuccess1` 是空函数（`(e,t){}`），照搬。
  *
- * 【低】`dinner_reservation:[]` 在表单初值里，但模板中没有任何控件绑定它；
- *   提交时它会随 `JSON.parse(JSON.stringify(this.form))` 一起进 payload，
- *   后端 create_report 会丢弃（不在 Report 的字段集合里）。照搬。
+ * 【低】`dinner_reservation:[]` 在表单初值里，但模板中没有任何控件绑定它。照搬。
+ *   【订正 2026-09-27】本条原文后半句写「后端 create_report 会丢弃（不在 Report 的字段
+ *   集合里）」——**这半句早已不成立**：Report 有 dinner_reservation（LegacyJSONField），
+ *   草稿层也认它。提交体也不再是 `JSON.parse(JSON.stringify(this.form))`（见 onSubmit 里
+ *   「提交体统一由 buildDraftPayload 产出」那段），改为由 draftPayload.js 显式带上该键。
+ *   本键至今仍无控件绑定，所以在页面上恒为 [] —— 保留它是为了不改变既有提交内容。
+ *
+ *   用餐预约**真正**的落地字段是 2026-09-27 后端新增的 `dinner_reservation_counts`
+ *   （6 个下标 = 11月20/21/22 日的午晚两餐，值 null 或 ≥0 整数），由 MealTable 用
+ *   v-model 绑定。两个键并存、互不覆盖：老键是「勾了哪几格」的字符串集合，
+ *   新键是「每格几个人」，后端渲染时以新键优先。
  *
  * ===========================================================================
  * 四、Vue 2 -> Vue 3 / Element UI -> Element Plus 的逐项迁移说明
@@ -621,7 +635,8 @@ import { useDraftSession } from '@/composables/useDraftSession'
 
 import Teacher from './TeacherTable.vue'
 import Person from './PersonTable.vue'
-// 【本仓库新增，dist 无】用餐预约表格，见该文件头（仅渲染 UI，不接接口、不参与提交）
+// 【本仓库新增，dist 无】用餐预约表格，见该文件头
+// （2026-09-27 起接线：v-model 绑 form.dinner_reservation_counts，随暂存与提交上送）
 import Meal from './MealTable.vue'
 import FileCover from '@/components/common/FileCover.vue'
 import HaveToRead from '@/components/common/HaveToRead.vue'
@@ -768,6 +783,14 @@ const fileList1 = ref([])
  * 【零副作用】唯一的读取方 draftPayload.js:287 用的是 `Number(f.minute || 0)`，
  * '' || 0 得 0 —— 暂存发出去的 time_length 与改动前**逐字节相同**。
  * 校验顺序、上限判断、> 60 的拆分口径全部不受影响（见 minuteValidator）。
+ *
+ * 【第十二届新增】dinner_reservation_counts 是本仓库新加的键，dist 里没有：
+ *   6 个「未填」（null），下标对应 11月20/21/22 日的午晚两餐，见 MealTable.vue 文件头。
+ *   初值给 null 而不是 0 —— 契约里两者语义等价（都是「未填」），但只保留一种写法能让
+ *   build→restore→build 幂等，否则每次往返都在 null/0 之间抖动，payloadSignature
+ *   会一直认定「有变化」而反复暂存。
+ *   注意与它**并存**的老键 dinner_reservation（字符串数组）不是同一个东西:
+ *   老键至今没有控件绑定（dist 遗留），只在 draftPayload 里原样透传。
  */
 function makeForm() {
   return {
@@ -775,6 +798,9 @@ function makeForm() {
     minute: '',
     second: '',
     dinner_reservation: [],
+    // 与上面那个老键配对：老键是「勾了哪几格」，这个新键是「每格几个人」。
+    // 两者并存、互不覆盖（后端渲染时以新键优先），详见文件头与 MealTable.vue。
+    dinner_reservation_counts: [],
     /*
      * 【第十二届·第七轮】两张人员表的数组必须在这里就建出来，不能留 undefined。
      *

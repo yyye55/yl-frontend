@@ -24,14 +24,31 @@
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
+    - 工具栏新增「合唱团名称」「学校名称」两个搜索框，keyword 的 placeholder
+      由「请输入内容」改为写出它实际能搜的列名。依据是后端 report_queryset 新增的
+      choir_name / school_name 两个 icontains 参数，以及 keyword 在本接口下同时
+      匹配 name 与 choir_name（yilinbei hou/apps/api/views.py:752-753）。
+      这是**纯增量**改动：老参数一个没动，URL 上不带新参数时行为与 dist 完全一致。
 -->
 <template>
   <div class="bg">
     <div class="options">
+      <!--
+        【本次变更：placeholder 不再写「请输入内容」】
+        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 report_queryset
+        （yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围**取决于调用方**：
+          · 本组件走 /api/committee/report/list → committee_report_list →
+            `report_page(request, descending=True)`（views.py:752-753），current_user 与
+            user_ids 都是 None，落在 `Q(name__icontains) | Q(choir_name__icontains)` 那一支
+            —— **名称和合唱团名都匹配**。
+          · 市州/学校/中小学端的报名列表走的是另一个分支，那边只匹配 name
+            （见 components/elementary/ReportList.vue 的同名改动）。
+        所以这里把两列都写出来。本页表格正是「合唱团名称 / 节目名称」两列，与表头一致。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
-        placeholder="请输入内容"
+        :placeholder="KEYWORD_PLACEHOLDER"
         size="mini"
         @change="getData"
       >
@@ -39,6 +56,15 @@
           <el-button :icon="Search" />
         </template>
       </el-input>
+
+      <!--
+        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）。
+        本页的 keyword 虽然也能命中合唱团名，但**搜不到学校名**（school_name 从不参与 keyword）；
+        而且用 keyword 搜合唱团名时它会同时扫节目名，容易带出不相干的行。
+        想精确定位时用这两个框。
+      -->
+      <el-input v-model="choirName" placeholder="请输入合唱团名称" size="mini" @change="getData" />
+      <el-input v-model="schoolName" placeholder="请输入学校名称" size="mini" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -155,8 +181,21 @@ const props = defineProps({
   groupLabel: { type: String, required: true }  // '中小学教师组' 或 '高校教师组'
 })
 
+/**
+ * 【本次新增】搜索框的 placeholder 文本。
+ *
+ * 与 CommitteeReportList.vue 不同，本组件只服务一个列集合（合唱团 / 节目），
+ * 所以这里写死字符串，不按 props 分支。
+ *
+ * 后端在这个接口下 keyword 同时匹配 name 与 choir_name，两个列名都写进框里。
+ */
+const KEYWORD_PLACEHOLDER = '请输入节目/合唱团名称'
+
 const keyword = ref(null)
 const status = ref(null)
+// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
+const choirName = ref(null)
+const schoolName = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -196,7 +235,12 @@ function getData() {
     limit: limit.value,
     keyword: keyword.value,
     group: props.group,
-    status: status.value
+    status: status.value,
+    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
+    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
+    // 也就是「框里没填」= 不传该条件 —— 与上面 status / keyword 的处理一致。
+    choir_name: choirName.value,
+    school_name: schoolName.value
   }
   committeeApi.report.getList(params).then((res) => {
     const body = res && res.data

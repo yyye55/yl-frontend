@@ -1,16 +1,33 @@
 <template>
   <div class="bg">
     <div class="options">
+      <!--
+        【本次变更：placeholder 不再写「请输入内容」】
+        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 user_list
+        （yilinbei hou/apps/api/views.py:526）里 keyword 是一个三选一的 OR：
+        `Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
+        所以把三个列名都写出来，与表格里的「账号 / 修改人电话号码 / 名称」三列对应。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
-        placeholder="请输入内容"
+        :placeholder="KEYWORD_PLACEHOLDER"
         @change="getData"
       >
         <template #append>
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
+
+      <!--
+        【本次新增】后端 user_list 新增的独立 nickname 参数（views.py:527-528，icontains）。
+        【它和上面那个框的区别 —— 为什么不嫌重复】keyword 是三选一的 OR，
+        搜「张三」时电话或账号里含这两个字的行也会被带出来；本框只匹配名称，
+        要找某个具体单位时用这个，结果干净。
+        【和 keyword / type 之间是 AND】三个条件在后端都是 .filter() 叠加，
+        所以「名称含实验小学 + 类型=学校端」是交集，不是并集。
+      -->
+      <el-input v-model="nickname" placeholder="请输入名称" @change="getData" />
       <!--
         类型筛选。
         【选项为什么只有 0/1/5 三个】后端 user_list 先卡死展示范围
@@ -83,8 +100,9 @@
           <!--
             「可报两支」列（本次新增），紧跟在「类型」列后面。
             【数据从哪来】列表接口 GET /api/admin/user/list 走的是后端的 user_dict
-            （apps/api/views.py:533），而 user_dict 里就有 can_report_twice
-            （apps/core/services.py:62）—— 所以行数据里本来就有，不需要额外请求。
+            （apps/api/views.py:533 的 list_page 第三个参数），而 user_dict 里就有
+            can_report_twice（apps/core/services.py:62）—— 所以行数据里本来就有，
+            不需要额外请求。
             【为什么 type!==5 要显示「—」而不是「否」】特许只对中小学端有意义，
             给学校端 / 市州端写「否」会让人以为"它本来可以，只是没给"，
             显示破折号表达的是"此项与它无关"。
@@ -323,7 +341,7 @@
  *
  *  1) 后端不再接受调用方指定的新密码。user_update_admin 现在是
  *     `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- *     （yilinbei hou/apps/api/views.py:543，常量在同文件 :521）——
+ *     （yilinbei hou/apps/api/views.py:559，常量在同文件 :521）——
  *     请求体里只要出现 password 这个键，**值被忽略**，一律重置为 scylb@2026。
  *     于是原先那个「请输入新密码」的输入框只会骗人：填什么都进不了库。
  *     现改为 ElMessageBox.confirm('是否重置为默认密码？')，没有输入框。
@@ -333,7 +351,7 @@
  *     注意这条提示的性质变了：它现在是**如实的系统行为**，不再是「提醒操作者自己填那个值」的约定。
  *
  *  3) 默认口令收敛到 src/config/defaultPassword.js（原先 login/index.vue 里另有一份硬编码）。
- *     后端那份在 apps/api/views.py:521，改一处要连它一起改。
+ *     后端那份在 apps/api/views.py:537，改一处要连它一起改。
  *
  *  4) 「修改用户」弹窗里的密码框已删除 —— 它与「重置密码」走同一个接口
  *     （PUT /api/admin/user/，见 adminApi.user.update），留着的话，
@@ -365,7 +383,19 @@ import {
 // 别把字典抄回本文件 —— 两份副本漏改一处，那一页的类型列会渲染成空白。
 import { TYPE_LABEL } from '@/config/accountTypes'
 
+/**
+ * 【本次新增】keyword 输入框的 placeholder 文本。
+ * 后端 keyword 同时匹配 username / tel / nickname（views.py:526），三个列名都写出来。
+ */
+const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
+
 const keyword = ref(null)
+
+/**
+ * 【本次新增】对应后端 user_list 的独立 nickname 参数，只匹配名称这一列。
+ * 初值 null = 不筛，见 getData()。
+ */
+const nickname = ref(null)
 
 /**
  * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
@@ -431,7 +461,15 @@ const editRules = {
 }
 
 function getData() {
-  const params = { page: page.value, limit: limit.value, keyword: keyword.value }
+  const params = {
+    page: page.value,
+    limit: limit.value,
+    keyword: keyword.value,
+    // 【本次新增】后端 user_list 的独立 nickname 参数（icontains）。
+    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
+    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword 的处理一致。
+    nickname: nickname.value
+  }
 
   // ── 类型筛选：只有选了具体类型才把 type 塞进请求 ──────────────────────
   // 【为什么不能写 if (filterType.value)】0（学校端）在 JS 里是 falsy。
@@ -523,7 +561,7 @@ function onTypeChange(target) {
  * 这一处历史上是 ElMessageBox.prompt('请输入新密码')，让操作者把口令打进去。
  * 后端现在不再接受调用方指定的新密码：user_update_admin 里
  * `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- * （yilinbei hou/apps/api/views.py:543）—— 带不带值、带什么值都一样。
+ * （yilinbei hou/apps/api/views.py:559）—— 带不带值、带什么值都一样。
  * 于是输入框成了一个纯骗人的控件：填进去的任何东西都被丢弃，用户按自己填的去登录必然失败。
  * 换成 confirm 后，弹窗里问的就是将要发生的事，不再有可填的地方。
  *

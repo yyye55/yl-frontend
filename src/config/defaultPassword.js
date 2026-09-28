@@ -11,10 +11,11 @@
  * 第 3 处写错 = 那条提醒永远不弹（不报错，只是静默失效，最难发现）。
  *
  * 【后端也有一份，且后端才是最终生效的那个】
- *   yilinbei hou/apps/api/views.py:521  `RESET_PASSWORD_DEFAULT = "scylb@2026"`
- *   yilinbei hou/apps/api/views.py:543  `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
+ *   yilinbei hou/apps/api/views.py:537  `RESET_PASSWORD_DEFAULT = "scylb@2026"`
+ *   yilinbei hou/apps/api/views.py:559  `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
  * 即：请求体里只要**出现** password 这个键，它的**值被忽略**，一律重置为上面那个常量。
  * 所以这个文件改了、后端那份不改，前端提示的和实际生效的仍然对不上。两处要一起改。
+ * （行号随后端文件变动，对不上时按常量名搜 RESET_PASSWORD_DEFAULT，别按行号找。）
  *
  * 【前端为什么还是把真值发过去，而不是发个占位字符串】
  * 「值被忽略」是后端当前实现的一条约定，不是协议。发真值意味着不依赖它：

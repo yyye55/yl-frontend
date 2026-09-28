@@ -310,7 +310,7 @@ watch(
  *
  * 【直接原因】它唯一的产出是"把服务端值填进表单"，而这份值与弹窗已有的 props.user
  *   **同源同字段**：GET /api/user 返回 user_dict(user)（apps/api/views.py 的 user_info），
- *   登录接口返回的也是 user_dict(user)（apps/core/services.py:47）。同一行的同一次读取，
+ *   登录接口返回的也是 user_dict(user)（apps/core/services.py:56 定义）。同一次读取，
  *   值不可能不同。
  *
  * 【根本原因】它当初存在的理由是"顺手同步 store，让顶部昵称也跟着刷新"。

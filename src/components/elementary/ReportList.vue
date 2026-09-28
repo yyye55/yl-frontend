@@ -1,16 +1,37 @@
 <template>
   <div class="bg">
     <div class="options">
+      <!--
+        【本次变更：placeholder 不再写「请输入内容」】
+        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 report_queryset
+        （yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围**取决于调用方**：
+          · 本组件走 /api/{city,school,primary}/report/list，那几条路由传了
+            `request.auth` 或 `user_ids=...`（views.py:1105-1111），落在
+            `qs.filter(name__icontains=keyword)` 那一支 —— **只匹配 name**，
+            即列集合 I 的「节目名称」/ 列集合 II 的「自选曲目」。
+          · 组委会、管理员走的是另一个分支，那个分支才额外匹配 choir_name（见对应组件）。
+        所以这里按当前列集合把列名写进 placeholder，不再笼统写「请输入内容」。
+        想按乐团名 / 学校名搜，用右边两个独立输入框（走 choir_name / school_name，与本框互不影响）。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
-        placeholder="请输入内容"
+        :placeholder="KEYWORD_PLACEHOLDER"
         @change="getData"
       >
         <template #append>
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
+
+      <!--
+        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）：
+        `choir_name` 与 `school_name`。
+        【为什么本页真的需要它们】上面那个 keyword 在本端**只搜得到曲目名**，
+        按乐团名称、按学校名称此前在本页完全搜不出来（不是搜得慢，是搜不到）。
+      -->
+      <el-input v-model="choirName" :placeholder="CHOIR_PLACEHOLDER" @change="getData" />
+      <el-input v-model="schoolName" placeholder="请输入学校名称" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -273,6 +294,18 @@
  * 【已移除】`size="mini"`：Element Plus 只认 large/default/small，不含 "mini"，每渲染一次
  * 告警一次；而 EP 里没有 `.el-*--mini` 规则，该属性本就不产生样式，删掉是零视觉变化。
  * **未**改成 small —— `--small` 是真实尺寸规则，会把表格/按钮/下拉改小。
+ *
+ * ===========================================================================
+ * 五、本仓库新增（dist 无）
+ * ===========================================================================
+ * 【工具栏新增「乐团名称」「学校名称」两个搜索框 + keyword 的 placeholder 改为如实描述】
+ *   后端 report_queryset（yilinbei hou/apps/api/views.py:112-117）新增了 choir_name /
+ *   school_name 两个 icontains 参数，可与 keyword 组合。
+ *   本页原先只有 keyword 一个框、placeholder 还写着「请输入内容」，而 keyword 在本端
+ *   走的是 `qs.filter(name__icontains=keyword)` 那一支（views.py:1105-1111 传了
+ *   request.auth / user_ids）—— **只匹配曲目名**，按乐团名或学校名根本搜不出来。
+ *   故新增两个专用框，并把 keyword 的 placeholder 按列集合写成真实列名。
+ *   详见模板里那两段注释与 KEYWORD_PLACEHOLDER / CHOIR_PLACEHOLDER 的定义处。
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -354,9 +387,23 @@ const { openWindow } = useTabs()
 /** 【第十二届权限调整】市州端只读：报名汇总里不提供「编辑」「删除」*/
 const { canEditReport } = usePermission()
 
+/**
+ * 【本次新增】两个搜索框的 placeholder 文本，按当前变体的列集合取值。
+ *
+ * 取的就是表格里那两个列的真实表头（见模板的 columns === 'I' 分支）——
+ * 框里说的必须和表头一致，否则用户会照着一个页面上的词去另一个页面搜。
+ * 都带「请输入」前缀是因为 el-input 的 placeholder 只在空值时显示，
+ * 写短一点可以少截断（.options > .el-input 的宽度被样式钉死在 220px）。
+ */
+const KEYWORD_PLACEHOLDER = cfg.columns === 'I' ? '请输入节目名称' : '请输入自选曲目名称'
+const CHOIR_PLACEHOLDER = cfg.columns === 'I' ? '请输入合唱团名称' : '请输入乐团名称'
+
 /* ------------------------- dist data() ------------------------- */
 const keyword = ref(null)
 const status = ref(null)
+// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
+const choirName = ref(null)
+const schoolName = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -407,7 +454,17 @@ let reqSeq = 0
  * 所以读 res.count / res.data，而不是 res.data.data。
  */
 function getData() {
-  const params = { page: page.value, limit: limit.value, keyword: keyword.value, status: status.value }
+  const params = {
+    page: page.value,
+    limit: limit.value,
+    keyword: keyword.value,
+    status: status.value,
+    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
+    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
+    // 也就是「框里没填」= 不传该条件 —— 与上面 status / keyword 的处理一致。
+    choir_name: choirName.value,
+    school_name: schoolName.value
+  }
   // 4b6a / 67bc: 固定常量 2 / 3
   // 1c73 / cd09: 不发该参数
   if (cfg.group !== undefined) params.group = cfg.group

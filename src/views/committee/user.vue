@@ -37,7 +37,7 @@
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
     - 重置密码从 prompt 改成 confirm：弹「是否重置为默认密码？」，没有输入框。
       原因：后端 user_update_admin 现在 `if "password" in data` 就无条件重置为默认口令
-      （yilinbei hou/apps/api/views.py:543），请求体里 password 的值被忽略 ——
+      （yilinbei hou/apps/api/views.py:559），请求体里 password 的值被忽略 ——
       留着输入框只会骗人。dist 时代的 inputValidator / inputType:'password' 随之删除。
     - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码。
       值取自 src/config/defaultPassword.js；这句话现在描述的是系统实际行为 ——
@@ -47,16 +47,33 @@
 <template>
   <div class="bg">
     <div class="options">
+      <!--
+        【本次变更：placeholder 不再写「请输入内容」】
+        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 user_list
+        （yilinbei hou/apps/api/views.py:526，与 admin/user 同一个函数）里 keyword
+        是一个三选一的 OR：`Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
+        所以把三个列名都写出来。本页表格里的「名称 / 账号 / 修改人联系方式」正是这三列。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
-        placeholder="请输入内容"
+        :placeholder="KEYWORD_PLACEHOLDER"
         @change="getData"
       >
         <template #append>
           <el-button :icon="Search" />
         </template>
       </el-input>
+
+      <!--
+        【本次新增】后端 user_list 新增的独立 nickname 参数（views.py:527-528，icontains）。
+        【它和上面那个框的区别 —— 为什么不嫌重复】keyword 是三选一的 OR，
+        搜「实验小学」时账号或电话里含这几个字的行也会被带出来；本框只匹配名称。
+        【和 keyword / type 之间是 AND】后端几个条件都是 .filter() 叠加，
+        「名称含实验小学 + 类型=学校端」是交集，不是并集。
+        与 admin/user.vue 的同名改动保持一致（两处一起改，见其文件头）。
+      -->
+      <el-input v-model="nickname" placeholder="请输入名称" @change="getData" />
 
       <!--
         类型筛选。与 admin/user.vue 那页是同一个东西，选项、取值、注释口径都一致。
@@ -96,7 +113,7 @@
           【本仓库新增，dist 无】重置密码的默认口径提示。
           ⚠️ 这句话的性质变了：原先它是一条**操作约定**（后端当时不套用默认密码，
           靠操作者在弹窗里手填这个值，填了才生效），现在它**就是系统行为** ——
-          user_update_admin 无条件重置为 RESET_PASSWORD_DEFAULT（yilinbei hou/apps/api/views.py:543）。
+          user_update_admin 无条件重置为 RESET_PASSWORD_DEFAULT（yilinbei hou/apps/api/views.py:559）。
           值本身来自 src/config/defaultPassword.js，别在这里写死字面量：
           提示里显示的口令必须与实际生效的是同一个，否则用户拿着提示语登不进去。
         -->
@@ -110,7 +127,7 @@
             类型列。与 admin/user.vue 那页是同一列。
             【数据从哪来】列表接口 GET /api/committee/user/list 与 /api/admin/user/list
             在后端是**同一个 user_list 函数**，走同一个 user_dict
-            （apps/core/services.py:59-63 里返回了 "type": user.type）——
+            （apps/core/services.py:56-63 的返回值里就有 "type": user.type）——
             所以行数据里本来就有 type，不需要额外请求、不需要改接口、不需要改后端。
             【为什么不写 prop="type" 直接用】row.type 是数字（0/1/5…），
             直接渲染出来是一列裸数字，等于没加。所以用默认插槽过一层 TYPE_LABEL 映射。
@@ -174,7 +191,20 @@ import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
 // 别把字典抄回本文件 —— 两份副本漏改一处，那一页的类型列会渲染成空白。
 import { TYPE_LABEL } from '@/config/accountTypes'
 
+/**
+ * 【本次新增】keyword 输入框的 placeholder 文本。
+ * 后端 keyword 同时匹配 username / tel / nickname（views.py:526），三个列名都写出来。
+ * 与 admin/user.vue 用同一个字符串 —— 两页搜的是同一个接口，说法不该有出入。
+ */
+const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
+
 const keyword = ref(null)
+
+/**
+ * 【本次新增】对应后端 user_list 的独立 nickname 参数，只匹配名称这一列。
+ * 初值 null = 不筛，见 getData()。
+ */
+const nickname = ref(null)
 
 /**
  * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
@@ -253,6 +283,10 @@ function getData() {
     page: page.value,
     limit: limit.value,
     keyword: keyword.value,
+    // 【本次新增】后端 user_list 的独立 nickname 参数（icontains）。
+    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
+    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword 的处理一致。
+    nickname: nickname.value,
     parent_id: true  // 【dist 原样】后端忽略，但 dist 原文确实发了这个参数
   }
 
@@ -308,7 +342,7 @@ function getData() {
  * 【本次变更：prompt → confirm，重置为默认密码】
  *  后端不再接受调用方指定的新密码：user_update_admin 里
  *    `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- *  （yilinbei hou/apps/api/views.py:543，常量在同文件 :521）——
+ *  （yilinbei hou/apps/api/views.py:559，常量在同文件 :537）——
  *  只要请求体里出现 password 键，它的值被忽略，一律重置为 scylb@2026。
  *  于是 dist 时代的「请输入新密码」输入框成了骗人的控件：填什么都会被丢弃，
  *  用户按自己填的去登录必然失败。改用 confirm 后弹窗里问的就是将要发生的事。
@@ -367,7 +401,8 @@ function resetPassword(id) {
  * 【本仓库增强，dist 无】exporting 防重复点击 + 按钮 :loading。
  *
  * 后端：GET /api/committee/user/export → xlsx
- * committee 用户看到所有 user；admin 用户只看到 type=0（apps/api/views.py:482 user_export_admin）
+ * committee 用户看到所有 user；admin 用户只看到 type=0
+ * （apps/api/views.py:596 user_export_admin；行号随后端文件变动，对不上时按函数名搜）
  */
 function download(name) {
   if (exporting.value) return

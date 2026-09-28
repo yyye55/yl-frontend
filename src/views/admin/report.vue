@@ -1,10 +1,19 @@
 <template>
   <div class="bg">
     <div class="options">
+      <!--
+        【本次变更：placeholder 不再写「请输入内容」】
+        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。
+        后端 report_queryset（yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围
+        **取决于调用方**：只有 current_user / user_ids 都是 None 时才落在
+        `Q(name__icontains) | Q(choir_name__icontains)` 那一支（上面「其他说明」里已记录
+        超管匹配 name 与 choir_name）。管理员正在这一支上，所以两个列名都写进框里，
+        与本页表格表头（合唱团名称 / 节目名称）一致。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
-        placeholder="请输入内容"
+        :placeholder="KEYWORD_PLACEHOLDER"
         @change="getData"
       >
         <template #append>
@@ -13,6 +22,15 @@
           </el-button>
         </template>
       </el-input>
+
+      <!--
+        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）。
+        keyword 虽然也能命中合唱团名，但**搜不到学校名**（school_name 从不参与 keyword）；
+        而且用 keyword 搜合唱团名时它会同时扫节目名，容易带出不相干的行。
+        想精确定位时用这两个框。
+      -->
+      <el-input v-model="choirName" placeholder="请输入合唱团名称" @change="getData" />
+      <el-input v-model="schoolName" placeholder="请输入学校名称" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -136,20 +154,21 @@
  * 依据：
  *   - 分页键 limit：后端 apps/core/services.py `list_page()` 读的是 request.GET.get("limit")，
  *     且 openapi.json 中 report 列表接口也用 limit；dist 的 getData 同样发送 limit。
- *   - 字段名：后端 report_dict()（apps/core/services.py:137）返回 Report 全部字段
+ *   - 字段名：后端 report_dict()（apps/core/services.py:346）返回 Report 全部字段
  *     并附加 user / person / file / spectrum，其中 choir_name / name / contact_name /
  *     contact_phone / contact_way / status / remark / user.nickname / person 全部存在。
  *   - 状态值：后端 `status_label` 为 {0:待审核, 1:已通过, -1:未通过}，
  *     dist 的 <Status> 组件渲染 -2 未填写 / -1 已驳回 / 0 待审核 / 1 组委会通过。
- *   - 筛选参数：后端 report_queryset()（apps/api/views.py:67）只读取 keyword / status / group，
- *     其中 keyword 对超管匹配 name 与 choir_name。与本页三个筛选控件一一对应。
+ *   - 筛选参数：后端 report_queryset()（apps/api/views.py:95）读取 keyword / status / group，
+ *     另有后来新增的 choir_name / school_name（:112-117）。其中 keyword 对超管匹配
+ *     name 与 choir_name（:102-107）。与本页五个筛选控件一一对应。
  *
  * ---------------------------------------------------------------------------
  * 【与 dist 的差异（唯一一处，且是有依据地修正一个必然失败的调用）】
  * ---------------------------------------------------------------------------
  * dist 原文中 check() 与 returnBack() 调用的是 `this.$api.committee.report.check`
  * （chunk-335604d9 中 `api.committee.report.check` 出现 2 次），即**管理员页面却调用了组委会接口**。
- * 但后端对两个接口做了严格的角色校验（apps/api/views.py:49）：
+ * 但后端对两个接口做了严格的角色校验（apps/api/views.py:76 role_error；行号随后端文件变动）：
  *     def role_error(request, expected):
  *         if not user or user.type != expected: return response({...}, 403)
  *   - PUT /api/admin/report/check     -> role_error(request, 3)  仅管理员
@@ -171,6 +190,14 @@
  *  - refresh() 不会把 page 重置为 1（与 scan.vue 的 reflush 行为不同），此处按 dist 原样。
  *  - size="mini"（Element UI 2.x 写法）已移除：Element Plus 的合法尺寸为 large/default/small，
  *    "mini" 每次渲染都会告警，而 EP 中没有对应的 `--mini` 样式规则，删除零视觉变化。
+ *
+ * ---------------------------------------------------------------------------
+ * 【本次新增（纯增量，不动任何老参数）】
+ * ---------------------------------------------------------------------------
+ *  工具栏加了「合唱团名称 / 学校名称」两个输入框，keyword 的 placeholder 由「请输入内容」
+ *  改为写出它实际能搜的列名。依据是后端 report_queryset 新增的 choir_name / school_name
+ *  两个 icontains 参数（yilinbei hou/apps/api/views.py:112-117）。
+ *  两个框为空时不发送该参数，因此不带新参数的请求与改动前完全等价。
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -181,7 +208,16 @@ import Remark from '@/components/common/Remark.vue'
 import ShowContent from '@/components/common/ShowContent.vue'
 import ShowPerson from '@/components/common/ShowPerson.vue'
 
+/**
+ * 【本次新增】keyword 输入框的 placeholder 文本。
+ * 本页 keyword 同时匹配 name 与 choir_name（见模板中的说明），故两个列名都写出来。
+ */
+const KEYWORD_PLACEHOLDER = '请输入节目/合唱团名称'
+
 const keyword = ref(null)
+// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
+const choirName = ref(null)
+const schoolName = ref(null)
 const group = ref(null)
 // dist 原文声明但全程未使用的遗留字段，保留以对齐原文
 const isDelete = ref(null)
@@ -198,7 +234,12 @@ function getData() {
     limit: limit.value,
     keyword: keyword.value,
     group: group.value,
-    status: status.value
+    status: status.value,
+    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
+    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
+    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword / group / status 的处理一致。
+    choir_name: choirName.value,
+    school_name: schoolName.value
   }
   adminApi.report.getList(params).then(({ data: res }) => {
     // 分页契约：{ data:[...], count:N, code:0, msg:'' }

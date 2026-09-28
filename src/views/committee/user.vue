@@ -42,6 +42,10 @@
     - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码。
       值取自 src/config/defaultPassword.js；这句话现在描述的是系统实际行为 ——
       详见模板里那段注释。
+    - 新增「所属市州」列（纯展示）。数据源与显示规则与管理员端 /admin/user 的同一列
+      逐字一致：读列表接口本来就返回的 parent_id，再用本页额外一次 ?type=1
+      查出的市州账号建对照表换成名称。不新增接口、不改后端、不新增样式。
+      没有归属的账号显示「—」（两页统一）。
     - 与 admin/user.vue 的同名函数保持同步（两处一起改，见其文件头）。
 -->
 <template>
@@ -143,6 +147,43 @@
           <el-table-column label="类型" width="110">
             <template #default="{ row }">{{ TYPE_LABEL[row.type] ?? row.type }}</template>
           </el-table-column>
+          <!--
+            「所属市州」列（本次新增）。与管理员端 /admin/user 的同一列**逐字一致**，
+            两页显示规则必须一样（改一处时记得对照另一处）。
+
+            【数据从哪来】row.parent_id 本来就在列表接口的返回里
+            （后端 user_dict 就带这个字段，apps/core/services.py:63），
+            再用 cityMap 换成市州名称 —— **不需要任何行级的额外请求**。
+            本页的列表接口 GET /api/committee/user/list 与 /api/admin/user/list
+            在后端是**同一个 user_list 函数**，行数据结构完全相同。
+
+            【为什么不是每个账号都有值】归属只对中小学账号（type=5）有意义：
+            · 学校端（0）的 parent_id 没有业务含义；
+            · 市州端（1）自己就是市州，谈不上"所属市州"。
+            判据因此与管理员端完全一致：row.type === 5 ? ... : '—'。
+
+            【没有归属时为什么是「—」而不是空白】空单元格和「—」在直觉上会被读成
+            两种不同的东西。这里统一用「—」表达"没有值"，
+            与本表其它列、以及管理员端同一列都一致。
+
+            【为什么用 || 而不是 ??】parent_id 为 0 / null / undefined 时
+            cityMap[...] 都是 undefined；市州名理论上也不会是空串。
+            两者结果相同，这里用 || 更短。
+
+            【宽度 120】与管理员端同一列取同一个值：表头「所属市州」4 个字 +
+            单元格「攀枝花市」4 个字，120 足够不折行；不写 align，
+            与相邻列统一用 Element Plus 默认左对齐。
+
+            【为什么紧挨「类型」列放】管理员端那页是放在「可报两支」后面，
+            因为插到「类型」和「可报两支」中间会让那段注释变成错的。
+            本页**没有「可报两支」列**，「类型」后面直接就是「修改人姓名」，
+            所以紧挨「类型」放 —— 两页的视觉顺序都是「类型 → 所属市州」。
+          -->
+          <el-table-column label="所属市州" width="120">
+            <template #default="{ row }">
+              {{ row.type === 5 ? (cityMap[row.parent_id] || '—') : '—' }}
+            </template>
+          </el-table-column>
           <el-table-column prop="leader" label="修改人姓名" />
           <el-table-column prop="tel" label="修改人联系方式" />
           <el-table-column prop="description" label="其他信息" show-overflow-tooltip />
@@ -180,7 +221,9 @@
 /**
  * Committee User 列表（账号列表）
  */
-import { ref, onMounted } from 'vue'
+// 【本次新增 computed】用于把市州账号数组推导成 {id: 名称} 的查找表，
+// 供「所属市州」列在本页表格里 O(1) 查名。原有的 ref / onMounted 用法完全不变。
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
@@ -221,6 +264,81 @@ const limit = ref(10)
 const total = ref(0)
 const data = ref([])
 const exporting = ref(false)
+
+/* =========================================================================
+ * 「所属市州」数据源（本次新增，与管理员端 /admin/user 同一套写法）
+ * =========================================================================
+ *
+ * 【这个东西解决的是什么问题】
+ * 后端 users 表用 parent_id 表示归属：**中小学账号（type=5）的 parent_id
+ * 指向市州账号（type=1）的 id**（apps/core/services.py:66-70 的 subordinate_school_ids
+ * 写得很明白："归属于该市州账号的中小学账号，parent_id 指向该市州账号"）。
+ * 但列表接口返回的是 parent_id 这个**数字**，不是「成都市」。
+ * 所以要显示市州名，前端必须自己建一张对照表。
+ *
+ * 【对照表从哪来】就用本页已经在用的那个接口，加一个 type=1 只要市州账号：
+ *     GET /api/committee/user/list?page=1&limit=1000&type=1
+ * 后端 user_list 的展示范围是 type__in=(0,1,5)，所以 type=1 筛出的就是全部市州账号，
+ * 它们的 nickname 就是市州名。**不需要后端新增任何接口或字段。**
+ *
+ * 【这个请求本页本来就能发】页面上「市州端」那个筛选项（模板里的
+ * <el-option label="市州端" :value="1" />）点一下发出去的就是 ?type=1 ——
+ * 所以这里不引入任何新的失败模式、不涉及任何新的权限，只是提前多发一次。
+ *
+ * 【为什么不能从本页的 data 里找】data 是**分页 + 筛选**过的：
+ * 停在第 2 页、或筛了「学校端」时，市州账号根本不在 data 里，翻不到。
+ *
+ * 【为什么不去改后端的 user_dict 加个 parent_name】
+ * user_dict 是全局共用的序列化函数，有 9 处调用方（登录接口、获取当前用户、
+ * 审核列表、参展扫描件列表、报名详情…）。改它会让**登录响应**都多出一个字段，
+ * 影响面远超本页需求。所以这条路不走。
+ */
+
+/**
+ * 全部市州账号（type=1），形如 [{ id: 7, nickname: '成都市', ... }, ...]
+ * 【失败时保持为初始值 []】这一列是纯展示的辅助信息，拿不到就整列显示「—」，
+ * 不影响账号列表本身；弹错误提示反而会打断「我就想看看账号列表」的正常操作。
+ */
+const cityAccounts = ref([])
+
+/**
+ * 查找表：{ 市州账号id: 市州名称 }，例如 { 7: '成都市' }
+ * 【为什么由 cityAccounts 推导而不是另存一份】两份数据就要手动同步，
+ * 漏同步一次就是"筛选里有、列里没有"这种难查的漂移。推导则天然一致。
+ */
+const cityMap = computed(() =>
+  cityAccounts.value.reduce((acc, u) => {
+    acc[u.id] = u.nickname
+    return acc
+  }, {})
+)
+
+/**
+ * 拉取全部市州账号，重建对照表。
+ *
+ * 【limit: 1000 的依据】后端 list_page 对 limit 只做 `max(1, int(...))`，没有上限，
+ * 一次能取全（apps/core/services.py:78-90）。管理员端 /admin/user 用的是同一个值，
+ * 两页保持一致。
+ *
+ * 【type 为什么直接写数字 1，不走 getData() 那套显式判空】
+ * getData() 里那段「0 是 falsy 所以要显式判空」的注释针对的是**用户可选的筛选值**；
+ * 这里写的是数字字面量 1，不存在那个坑，不需要绕。
+ *
+ * 【四川共 21 个市州】1000 的余量极大，实际不可能取不全。
+ *
+ * 【与 getData() 的写法差异】这里用 res && res.data 做空响应守卫，
+ * 与本页 getData()/resetPassword() 的既有写法一致（不用 .catch 会留下
+ * unhandled rejection，本页其余请求都带 catch）。
+ */
+function loadCityAccounts() {
+  committeeApi.user.list({ page: 1, limit: 1000, type: 1 }).then((res) => {
+    const body = res && res.data
+    if (!body || body.code !== 0 || !Array.isArray(body.data)) return
+    cityAccounts.value = body.data
+  }).catch(() => {
+    // 拦截器已处理。这一列拿不到就整列显示「—」，不影响账号列表本身。
+  })
+}
 
 // 以下字段在 dist 中声明但未使用 —— Vue3 中保留以保证 data 形状对齐
 // const dtype = ref(0)
@@ -321,6 +439,19 @@ function getData() {
   }).catch(() => {
     // 拦截器已处理
   })
+
+  /*
+   * 【本次新增，放在 getData 末尾，不是 onMounted】
+   * getData 已经被「首次进入 / 翻页 / 换类型筛选 / 点刷新 / 重置密码成功」
+   * 五处调用。挂在这里 = 这五种情况市州对照表都会自动跟着刷新，
+   * 不需要为本页再补任何接线（列表刷新 ⇄ 对照表刷新，永远同步）。
+   *
+   * 【代价】每次翻页/筛选多一个小请求。市州只有 21 个账号，可以忽略。
+   * 【与上面那次请求的关系】两次请求各写各自的 ref（data / cityAccounts），互不干扰，
+   * 也不存在先后依赖 —— 谁先回来都不影响结果。
+   * 注意 cityAccounts 与 data 是两个不同的 ref，这里没有名字冲突。
+   */
+  loadCityAccounts()
 }
 
 /**

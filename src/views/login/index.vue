@@ -33,24 +33,133 @@
           </el-button>
         </el-form-item>
 
-        <p>
-          “意林杯”四川省第十二届管乐展示活动报名系统已正式启用，各单位填报时请一定核对好信息后再进行填写，保证活动顺利进行。
-        </p>
+        <!--
+          登录表单里的说明文字。
+          【文字从哪来】applyNotice.js 的 formContent —— 本文件里不再写文案字面量。
+          【为什么写成一行不换行】虽然这里没有 white-space: pre-line（换行只会
+          被折叠成一个空格，不会真的换行），但那个空格会跑到邮箱前面去，
+          看起来像「邮箱 前面多了个空格」。写成一行最省心，两处也统一。
+          【谁负责变红】.apply_email，和弹窗用的是同一个类、同一条 CSS。
+        -->
+        <p><span v-for="(seg, i) in formSegments" :key="i" :class="{ apply_email: seg.email }">{{ seg.text }}</span></p>
+
+        <!--
+          报名账号申请的入口 —— 点这行文字才打开弹窗（不再自动弹）。
+          开与不开的取舍见 script 里 showApply 的注释。
+          【为什么用 el-button type="text"】与全仓 25 处文字链接同一套写法
+          （如 PersonTable.vue:63 的「下载模板」）；升 EP 3.0 时才统一改 link prop，
+          现在不要单独改这一处。
+          【放在 el-form 里也不会误触登录】el-button 的 native-type 默认是
+          "button"，不是 "submit"。
+          【为什么不用 el-form-item 包】包了就得挂 prop，会平白多出一条校验规则。
+        -->
+        <div class="apply_entry">
+          <el-button type="text" @click="showApply = true">报名账号申请</el-button>
+        </div>
       </el-form>
     </div>
+
+    <!--
+      报名账号申请弹窗
+
+      【位置】放在 .login_box 的**外面**，作为 .login_container 的直接子级。
+      【append-to-body 是必须的】它让弹窗 teleport 到 <body> 下。理由有两条：
+        1) 本项目另外 5 个 el-dialog（Remark / ShowContent / ShowPerson /
+           ShowScFile / UploadScanDialog）全都带这个属性，属既有惯例；
+        2) .login_box 上有 transform: translateX(150px)，而 CSS 规范里
+           transform 不为 none 的元素会成为后代 position: fixed 的包含块。
+           不加 append-to-body 又嵌进 .login_box 的话，遮罩就只盖得住那张
+           .login_box 那张卡片，而不是整个屏幕。
+      【右上角的 X】el-dialog 自带的（showClose 默认 true），不用写代码。
+      【底部的按钮不会误触登录】整个弹窗在 el-form 的外面；且 el-button 的
+      native-type 默认是 "button"，不是 "submit"。
+      【width 为什么写成 min()】固定 620px 在手机上会溢出；min(620px, 100vw-32px)
+      让窄屏自动收窄。EP 把 width 写进 CSS 变量 --el-dialog-width
+      （element-plus/es/components/dialog/src/use-dialog.mjs:37-38），字符串原样
+      透传，min()/calc() 是合法 CSS。
+      【为什么宽度用属性而不是 CSS 规则】弹窗 teleport 到 body 之后，它已经不
+      是 .login_container 的后代，scoped 的 `.login_container :deep(.el-dialog)`
+      会编译成 `.login_container[data-v-x] .el-dialog` —— 前半段匹配不上，
+      规则**不报错也不生效**。所以别顺手加那条规则。
+      【align-center：上下左右居中】EP 内置的属性，不用自己写 CSS。它做了两件事
+      （已在 node_modules 里核实）：
+        1) use-dialog.mjs:47 —— 给遮罩层 .el-overlay-dialog 加内联
+           `display: flex`（那个 div 本来就是 position:fixed 铺满全屏的，
+           el-dialog.css 里写着 top/bottom/left/right 全 0）；
+        2) dialog-content.vue...:34 —— 给 .el-dialog 挂上 is-align-center 类，
+           对应 el-dialog.css 里的 `.el-dialog.is-align-center { margin: auto }`。
+      flex 容器里的子项带 margin:auto，会把剩余空间在两个方向上都吃掉，
+      效果就是水平垂直双双居中。
+      【开了它之后 top 属性就失效了】EP 默认给 .el-dialog 加
+      `margin: var(--el-dialog-margin-top, 15vh) auto 50px`，也就是平时那个
+      「偏上、距顶 15vh」的位置；而 `.el-dialog.is-align-center` 是 (0,2,0)，
+      压得过 `.el-dialog` 的 (0,1,0)，margin 被整个换成 auto。所以别再加 top。
+      【已知边界：内容比屏幕还高时顶上会不会被切掉】不会。
+      遮罩层是 overflow:auto，弹窗是 flex 子项，理论上「居中 + 溢出」有顶部
+      滚不到的老问题。实测（Chromium，视口故意压到 1200×150，弹窗 195px 高于
+      视口）：scrollHeight 195 > clientHeight 150 可滚动，scrollTop=0 时弹窗
+      top=0（不是负数），滚到底 top=-45 —— 内容从头到尾都够得到。浏览器对
+      滚动容器里的 flex 项做了 safe 对齐。另外正文 .apply_text 自己还限了
+      max-height: 50vh 且内部滚动，双保险。
+    -->
+    <el-dialog
+      v-model="showApply"
+      :title="APPLY_NOTICE.title"
+      width="min(620px, calc(100vw - 32px))"
+      align-center
+      append-to-body
+    >
+      <!--
+        弹窗正文。
+        【为什么写成一行不换行】父级 .apply_text 上有 white-space: pre-line，
+        也就是说源码里的换行符会被当成真的换行渲染出来。这些 <span> 必须紧挨着，
+        中间不能有换行/缩进，否则「指定邮箱」和邮箱之间会凭空多出一个空行。
+        （Vue 编译器默认会吃掉纯空白的换行节点，但那是它的默认行为，
+          写死成一行才不依赖这个默认值。）
+        【谁负责变红】:class 绑定的 .apply_email 在下面的 <style> 里，不用行内样式。
+        【v-for 的 key 用下标】这些片段只来自一个静态配置串，不会重新排序或增删，
+        下标是稳定的，可以用。
+      -->
+      <p class="apply_text"><span v-for="(seg, i) in applySegments" :key="i" :class="{ apply_email: seg.email }">{{ seg.text }}</span></p>
+
+      <!--
+        弹窗底部。
+        【为什么要多包一层 div】EP 给 .el-dialog__footer 写死了 text-align: right
+        （el-dialog.css），按钮默认靠右。要让它居中就得改这个对齐方式。
+        【为什么不用 :deep(.el-dialog__footer)】弹窗被 append-to-body teleport 到了
+        <body> 下，已经不是 .login_container 的后代，scoped 的祖先选择器会编译成
+        `.login_container[data-v-x] .el-dialog__footer` —— 前半段匹配不上，
+        规则不报错也不生效（同 .el-dialog 那条的注释）。
+        【为什么不用 EP 的 center 属性】它会把 .el-dialog--center 的
+        text-align 改成 inherit（el-dialog.css），**标题「报名账号申请」也会跟着居中** ——
+        本次只要求按钮居中，不动标题。
+        【为什么这个 div 上的类能被 scoped 命中】它是我们模板里的元素
+        （插槽内容算父组件的），自带 data-v 属性；和 .apply_text / .apply_email
+        是同一个道理，与元素在 DOM 里被 teleport 到哪无关。
+        【为什么用 text-align 而不是 flex】与本文件 .btns / .apply_entry 的居中
+        写法一致，且按钮是 inline-block，text-align 正对症。
+      -->
+      <template #footer>
+        <div class="apply_footer">
+          <el-button type="primary" @click="downloadApply">下载《账号申请表（附件4）》</el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <div class="footer">Copyright @2026 四川省教育厅版权所有</div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue"
+import { ref, reactive, computed, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { login as apiLogin } from "@/api/auth"
 import { DEFAULT_PASSWORD } from "@/config/defaultPassword"
 import { setToken, setUser } from "@/utils/auth"
 import { useUserStore } from "@/store/modules/user"
+import { APPLY_NOTICE } from "@/config/applyNotice"
+import { downloadStaticFile } from "@/utils/excel"
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -61,6 +170,151 @@ const loginForm = reactive({
   username: "",
   password: ""
 })
+
+/**
+ * 「报名账号申请」弹窗自动弹出的一次性标记的键名。
+ *
+ * 【为什么必须是 sessionStorage，不能用 localStorage】
+ * 本文件下面那个清缓存的 onMounted 每次挂载都会把 localStorage 里
+ * 除 draft_session: 以外的 key **全部清掉**（它只操作 window.localStorage，
+ * 见该函数里的 `const ls = window.localStorage`）。
+ * 标记若写进 localStorage，会被它抹掉，于是「退出登录」回到本页时又弹一次 ——
+ * 正是要避免的情况。
+ * sessionStorage 不受那段代码影响，三个场景才能各归其位：
+ *   · 冷启动 / 新开标签页打开登录页            → 弹（本次会话还没看过）
+ *   · 退出登录（router.push，页面不刷新）      → 不弹（标记还在）
+ *   · 登录态过期（window.location.href 整页跳转）→ 不弹（sessionStorage 跨刷新/跳转存活）
+ *
+ * 【为什么这里用布尔标记就够，而 guard.js 那个非要用时间戳】
+ * guard.js:155 要的是「60 秒内只自愈一次」，窗口会随时间失效，所以必须存时刻；
+ * 这里要的是「本标签页看过就不再弹」，语义本身就是一次性的，布尔标记正合适。
+ *
+ * 【已知边界】sessionStorage 随标签页的生命周期存在：用户关掉标签页再打开，
+ * 会再弹一次。这是刻意的 —— 「部署/终端运行之后打开界面」时就应该弹出来。
+ */
+const APPLY_SEEN_KEY = 'applyNoticeSeen'
+
+/**
+ * 判断本次进入登录页要不要自动打开弹窗，并顺手记下「已看过」。
+ *
+ * 【为什么读和写必须挤在同一个函数里】拆成两个的话，中间只要有一处提前
+ * return（比如读失败的分支），标记就写不进去，用户会被反复弹。
+ *
+ * 【为什么在 setup 里直接调用，而不是写个 onMounted】
+ * ref(初值) 在 setup 阶段求值，弹窗第一次渲染出来就是开着的，不需要等挂载；
+ * 更重要的是**不新增任何 onMounted** —— 于是和下面那个清缓存的 onMounted
+ * 完全没有先后顺序上的耦合，谁先谁后都不影响。
+ *
+ * 【fail-closed：存储不可用时返回 false（不自动弹）】
+ * 隐私模式、企业策略、跨源 iframe 的存储分区都可能让 sessionStorage 抛异常。
+ * 拿不到标记时选择「不弹」：弹窗内容用户仍能用页面上那行「报名账号申请」
+ * 手动打开，功能不会丢；反过来「拿不到就当没看过」会变成每次进来都被糊一脸。
+ * 这与 guard.js:171-174 对存储不可用的取态一致。
+ */
+function shouldAutoOpenApply() {
+  let seen
+  try {
+    seen = window.sessionStorage.getItem(APPLY_SEEN_KEY)
+  } catch (_) {
+    return false
+  }
+  if (seen) return false
+
+  try {
+    window.sessionStorage.setItem(APPLY_SEEN_KEY, '1')
+  } catch (_) {
+    // 写不进去不影响这一次的展示，只是下次可能还会再弹
+  }
+  return true
+}
+
+/**
+ * 报名账号申请弹窗的显示状态。
+ *
+ * 【初值】冷启动打开登录页 → true（自动弹）；从应用内回到登录页 → false。
+ * 判断逻辑全在 shouldAutoOpenApply 里，见上面那段注释。
+ * 入口还有登录表单最后那行「报名账号申请」，任何时候点它都能打开。
+ */
+const showApply = ref(shouldAutoOpenApply())
+
+/**
+ * 把一段纯文字切成一段段「文字 + 这段要不要标红」，给模板里的 v-for 用。
+ *
+ * 这是个纯函数（给什么切什么，不读组件状态），所以弹窗正文和下面登录表单里
+ * 那段文字可以共用同一套切法 —— 两处的高亮规则永远一致，不会一处红一处不红。
+ *
+ * 【为什么要切而不直接 v-html】文字走的是 {{ }} 文本插值，HTML 标签不生效，
+ * 塞 <span style="color:red"> 只会被原样显示出来；而改成 v-html 又会把这段文字
+ * 变成 HTML 解析口子（将来文案里出现 < 就被吃掉，也是一个 XSS 面）。
+ * 切成若干段普通文本、各自套一个 <span>，是纯结构做法，没有这些副作用。
+ *
+ * 【举例】text = 'A邮箱B'，key = '邮箱'
+ *   → split 得到 ['A', 'B']，下面循环拼成
+ *     [{ text:'A', email:false }, { text:'邮箱', email:true }, { text:'B', email:false }]
+ *
+ * 【三种降级情况都不会报错，只是不标红】
+ *   1) key 没配（空串 / undefined）  —— 直接整段当普通文字；
+ *   2) key 在 text 里找不到          —— split 结果长度为 1，走上面的分支；
+ *      （「改了文案忘了改 highlight」就是这种，照常显示，不会白屏）
+ *   3) text 为空                     —— 渲染出一个空 <p>，不崩。
+ *   注意：key 在一段里出现多次时，**每一处都会被标红**，这是 split 的自然行为。
+ */
+function splitByHighlight(text, key) {
+  const src = text || ''
+
+  // 情况 1：没配 highlight。!key 同时挡住了空串（空串传给 split 会把整段炸成单字）。
+  if (!key) return [{ text: src, email: false }]
+
+  const parts = src.split(key)
+  // 情况 2：文字里根本没有这个子串，split 原样返回一整段。
+  if (parts.length === 1) return [{ text: src, email: false }]
+
+  // 正常情况：把分隔符本身作为「要标红」的那一段插回去。
+  const segments = []
+  parts.forEach((part, i) => {
+    if (i > 0) segments.push({ text: key, email: true })
+    // 空字符串段直接跳过：省掉无意义的空 <span>（例如 highlight 正好在开头/结尾）
+    if (part) segments.push({ text: part, email: false })
+  })
+  return segments
+}
+
+/**
+ * 弹窗正文的分段结果。数据源：applyNotice.js 的 content + highlight。
+ */
+const applySegments = computed(() =>
+  splitByHighlight(APPLY_NOTICE.content, APPLY_NOTICE.highlight)
+)
+
+/**
+ * 登录表单里那段说明文字的分段结果。数据源：applyNotice.js 的 formContent + highlight。
+ *
+ * 【和上面共用同一个 highlight】所以「邮箱在表单里是红的、在弹窗里不是」这种
+ * 不一致不可能发生 —— 两处要么都红，要么都不红。
+ */
+const formSegments = computed(() =>
+  splitByHighlight(APPLY_NOTICE.formContent, APPLY_NOTICE.highlight)
+)
+
+/**
+ * 下载账号申请表。
+ *
+ * 【本次改动：从 downloadRemoteFile 换成 downloadStaticFile】
+ * 申请表是一份固定文件，随前端一起部署，没必要为它单独开一个后端接口
+ * （原先约定的 GET /api/apply/form 未上线）。文件实体在
+ * public/static/账号申请表.docx，地址拼装见 applyNotice.js 的 url。
+ *
+ * 注意旧注释里那条「为什么不用 downloadStaticFile」的理由已经作废 ——
+ * 它当年拒绝静态文件，是因为「文件不存在，点了会 404 把 JSON 甩到新标签页」；
+ * 现在文件真的放进了 public/static/，这个前提不存在了。
+ *
+ * 【函数契约】downloadStaticFile 无返回值、不抛异常（utils/excel.js:194），
+ * 只负责点一个同源的 <a href download>，所以这里不需要 try/catch，也不需要 .catch()。
+ * 与 PersonTable.vue:63 / PersonTableMajor.vue:32 是同一套写法。
+ */
+function downloadApply() {
+  downloadStaticFile(APPLY_NOTICE.url, APPLY_NOTICE.fileName)
+}
 
 /**
  * 【登录页只判必填，刻意不判长度 —— 别"顺手补上"】
@@ -233,7 +487,7 @@ async function submit() {
 .login_box {
   position: relative;
   z-index: 1;
-  width: 520px;
+  width: 600px;
   background-color: rgba(255, 255, 255, 0.96);
   border-radius: 12px;
   padding: 48px 52px;
@@ -243,7 +497,7 @@ async function submit() {
 
 .title {
   text-align: center;
-  font-size: 32px;
+  font-size: 36px;
   font-weight: bold;
   color: #1a1a1a;
   margin-bottom: 32px;
@@ -306,5 +560,82 @@ async function submit() {
   color: #000;
   font-size: 12px;
   z-index: 1;
+}
+
+/*
+  报名账号申请的入口（登录表单的最后一行）。
+  【为什么用 <div> 包一层】只是为了居中。若直接写成 <p>，会被上面那条
+  `.login_form p { margin-top: 18px }` 命中，间距会莫名其妙地变大。
+  【颜色为什么不用 EP 默认的 #409eff】与上面「登录」按钮的 #004088 统一。
+  这里不用 !important：`.apply_entry[data-v-x] .el-button` 是 (0,3,0)，
+  已经压过 EP 自己的 `.el-button.is-text` (0,2,0)。
+*/
+.apply_entry {
+  margin-top: 4px;
+  text-align: center;
+
+  :deep(.el-button) {
+    color: #004088;
+    font-size: 14px;
+  }
+
+  :deep(.el-button:hover) {
+    color: #1a5fa8;
+  }
+}
+
+/*
+  弹窗正文。
+  【为什么必须单独写一条】现有的 .login_form p { ... } 命中不到它 ——
+  这个 <p> 在 el-form 的外面，不是它的后代。
+  【scoped 能不能命中】能。弹窗虽然被 teleport 到了 <body>，但这个 <p> 是
+  我们模板里的元素，身上自带组件的 data-v 属性；`.apply_text[data-v-x]`
+  与它所在的 DOM 位置无关，照样生效。（失效的只会是「锚在祖先身上」的选择器，
+  比如 .login_container :deep(.el-dialog)。）
+  【white-space: pre-line】以后往原文里加换行符时，能真的换行而不是被折叠成空格。
+  【max-height + overflow-y】正文将来变长时弹窗内部滚动，不会把弹窗顶出屏幕。
+*/
+.apply_text {
+  margin: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  font-size: 14px;
+  color: #333333;
+  line-height: 1.8;
+  white-space: pre-line;
+}
+
+/*
+  「要强调的那个词」（当前是邮箱）的样式：红色 + 加粗。
+  【用在哪两处】① 弹窗正文里的 <span>；② 登录表单那段 <p> 里的 <span>。
+  两处共用这一条 CSS、共用同一个类名 —— 改颜色只改这里。
+  【红色为什么用 #d80e0e】项目里已有同款用法的先例：
+  src/components/elementary/PersonTable.vue:51 就是
+  `color: #d80e0e; font-weight: bold` 的「红色加粗提示」。
+  没跟着用 var(--danger-color)（= #f56c6c），因为那个红偏浅，
+  混在 14px 黑色正文里不够抢眼，起不到「让人一眼看到邮箱」的作用。
+  【为什么不用行内 style】样式统一收在 CSS 里；行内样式权重还高，
+  以后想微调（比如加下划线）会改不动。
+  【要不要 !important】不要。这条规则编译出来是
+  `.apply_email[data-v-x]`，权重 (0,2,0)。两处的颜色都只是从父级
+  <p> 继承来的（继承的东西权重最低），所以压得住，两处表现一致。
+*/
+.apply_email {
+  color: #d80e0e;
+  font-weight: bold;
+}
+
+/*
+  弹窗底部的「下载《账号申请表（附件4）》」按钮，居中。
+  【为什么要写这条】EP 的 .el-dialog__footer 自带 text-align: right，
+  不加这条按钮就贴着右下角。
+  【权重够不够】够。这条编译出来是 `.apply_footer[data-v-x]`，
+  而 footer 上的 text-align 只是被继承下去的（继承的东西权重最低），
+  所以不需要 !important。
+  【为什么只影响按钮不影响标题】这个 div 只包了页脚里的按钮；
+  标题在 .el-dialog__header 里，完全在另一棵子树上。
+*/
+.apply_footer {
+  text-align: center;
 }
 </style>

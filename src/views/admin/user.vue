@@ -30,12 +30,18 @@
       <el-input v-model="nickname" placeholder="请输入名称" @change="getData" />
       <!--
         类型筛选。
-        【选项为什么只有 0/1/5 三个】后端 user_list 先卡死展示范围
-        type__in=(0,1,5)（学校端 / 市州端 / 中小学端），再把 type 作为 AND 条件叠加上去
-        （apps/api/views.py 的 user_list）。所以传 2/3/4 一定返回空表 ——
-        下拉里摆组委会(2)/管理员(3)/省级(4)，等于给用户一个必然筛不出东西的按钮，
-        他筛出空表只会当成 bug 报上来。干脆不给选项。
-        【:value 前面那个冒号不能省】绑的是数字 0/1/5，不是字符串 '0'/'1'/'5'，
+        【选项为什么是 0/1/2/5 四个】后端 user_list 先卡死展示范围，再把 type 作为
+        AND 条件叠加上去（apps/api/views.py 的 user_list）。2026-09-28 起这个范围
+        分两侧：管理员侧是 (0,1,2,5)（学校端 / 市州端 / 组委会 / 中小学端，多一个 2），
+        组委会侧仍是 (0,1,5)。所以传 3/4 一定返回空表 —— 下拉里摆管理员(3)/省级(4)，
+        等于给用户一个必然筛不出东西的按钮，他筛出空表只会当成 bug 报上来。干脆不给选项。
+        【本次为什么补上「组委会」这一项】后端放开 type=2 可见之后，不传 type 时
+        列表**默认就会混进组委会的行**（「类型」列会显示「组委会」），而下拉里却筛不到
+        它们 —— 那才是真会被当成 bug 的现象。补这一项与后端的放开同源，一一对应。
+        【组委会端为什么不跟着补】组委会端 /committee/user 走同一个 user_list，
+        但 register_user_routes 只给管理员侧传 show_committee=True，那边拿到的仍是
+        (0,1,5)，所以 committee/user.vue 的下拉维持三项不变，别去"对齐"。
+        【:value 前面那个冒号不能省】绑的是数字 0/1/2/5，不是字符串 '0'/'1'/'2'/'5'，
         与「添加账号」弹窗里选类型的写法一致（理由见那里）。
         后端拿到的是字符串，但它做了 int() 转换，所以这里数字字符串都筛得对。
         【"全部类型"绑空串】与 ref 初值 '' 保持同一种值，不会出现 null 和 '' 两种空值并存；
@@ -45,7 +51,7 @@
         【为什么名字都带 filter —— 不叫 type / onTypeChange】本页已经有一个
         onTypeChange（挂在「添加用户」弹窗的类型选择器上做联动，形参是一个对象；
         本次修复前它误挂在「可报两支」勾选框上，从未生效）。
-        重名会直接撞上：el-select 的 @change 传进来的是**选中的值**（0/1/5/''），
+        重名会直接撞上：el-select 的 @change 传进来的是**选中的值**（0/1/2/5/''），
         而那个函数里有一句 `target.can_report_twice = false` —— 往数字上写属性，
         严格模式（ES module 恒为严格模式）必抛 TypeError（三种取值都验过）。
         症状不是白屏：Vue 3 把事件处理器包在 callWithAsyncErrorHandling 里，
@@ -59,6 +65,14 @@
         <el-option label="全部类型" :value="''" />
         <el-option label="学校端" :value="0" />
         <el-option label="市州端" :value="1" />
+        <!--
+          「组委会」这一项是本次（2026-09-28）新增的，后端放开 type=2 后补上。
+          【标签为什么写「组委会」】与「类型」列取同一个来源：
+          src/config/accountTypes.js 的 TYPE_LABEL[2]。两处字面必须一样，
+          否则筛出来的选项名和表里那一列的名字对不上，看着像两个东西。
+          【:value 同样必须是数字 2，不是字符串 '2'】理由与相邻几项一致，见上面那段。
+        -->
+        <el-option label="组委会端" :value="2" />
         <el-option label="中小学端" :value="5" />
       </el-select>
       <el-button type="primary" @click="reflush"> 刷新 </el-button>
@@ -85,11 +99,16 @@
           <el-table-column prop="nickname" label="名称" />
           <!--
             类型列。
-            【为什么不写 prop="type" 直接用】row.type 是数字（0/1/5…），
+            【为什么不写 prop="type" 直接用】row.type 是数字（0/1/2/5…），
             直接渲染出来是一列裸数字，等于没加。所以用默认插槽过一层 TYPE_LABEL 映射。
-            【?? row.type 的兜底不能删】列表接口按 type__in=(0,1,5) 过滤，
-            正常只会出现 0/1/5；但万一后端以后放开过滤，遇到表里没有的值（如 2/3/4），
-            只写 TYPE_LABEL[row.type] 会渲染成空白，还不如显示原始数字。
+            【?? row.type 的兜底不能删】本页列表接口的范围是 (0,1,2,5)，
+            正常只会出现这四个值（其中的 2 = 组委会，2026-09-28 由后端放开，
+            见上面「类型筛选」那段的说明）；但万一后端以后再继续放开，遇到表里没有的
+            值（如 3 管理员 / 4 省级），只写 TYPE_LABEL[row.type] 会渲染成空白，
+            还不如显示原始数字。
+            【2 能显示了，但这一行不用动】TYPE_LABEL 里本来就有 2: '组委会'
+            （src/config/accountTypes.js「为什么 2/3/4 也写进来」那段当时就是为了
+            防今天这种情况），所以放开之后这一列自动就是对的，不需要加分支。
             【本列不引入任何样式】宽度和排版全部交给 Element Plus 默认单元格样式，
             和相邻几列完全一致；没有 align、没有 class、没有内联 style。
             宽度 110 是因为「中小学端」是本表里最长的类型名（5 个字），
@@ -205,6 +224,16 @@
             函数**从来没生效过**：把类型从「中小学账号」改成别的，
             form.parent_id 会残留着上一次选的市州一起提交。
             现在挂到类型选择器上，清理才真的会发生。
+
+            【实测抓到的 POST body（Playwright 驱动真实构建产物，抓的是实际请求体）】
+              操作：选中小学账号 → 勾「可报两支」→ 选成都市 → 类型改成「学校账号」→ 确定
+              修复前 → {"type":0,"can_report_twice":true,"parent_id":7}   ← 两个字段都漏
+              修复后 → {"type":0,"can_report_twice":false}                ← parent_id 键直接消失
+            【注意漏的是**两个**字段】不只是 parent_id，can_report_twice 那个 true
+            也会一起挂在非中小学账号上发出去（等于白送一份报名特许）。
+            修复后 can_report_twice 会显式发 false（原先是 undefined、键被 JSON 丢掉）；
+            后端 user_create_admin 是 `if "can_report_twice" in data: _as_bool(...)`，
+            显式 false 与不传等效，无副作用。
             【为什么读 form.type 而不是用事件参数】Element Plus 的 emit 顺序是
             `emit("update:modelValue", v)` 先、`emitChange(v)` 后
             （node_modules/element-plus/es/components/select/src/useSelect.mjs:336-337），
@@ -350,11 +379,15 @@
           "把 type=5 改成别的类型"这个动作，所以没有需要清理的残留值。
           （这与「可报两支」复选框在这里同样不挂 @change 是同一个原因。）
 
-          【为什么 clearable】允许把归属清空（对应 parent_id = null）。
-          后端 user_update_admin 是 `if k in data: setattr(user, k, data[k])`
-          （apps/api/views.py:551），传 null 就写 NULL，与「没有归属」同义，不会出错。
-          注意：如果前端传的是 undefined，JSON 会整个丢掉这个键，后端就"不改动"——
-          两种结果都符合预期。
+          【为什么 clearable + 为什么必须挂 @clear/@change（本次修复）】
+          允许把归属清空（对应 parent_id = 0）。
+          但 el-select 清空时把值置成 undefined，JSON.stringify 会丢掉这个键，
+          后端 `if k in data` 为假 → "不改动" → **清空在库里不生效**（实测确认，见
+          editCityCleared 那段的说明）。所以必须用 @clear 把"用户主动清空过"这个
+          意图记下来，提交时再显式翻译成 0。
+          @change 用来撤销这个标记：清空后又选了「绵阳市」，不撤销就会把 8 覆盖成 0。
+          反过来，用户没碰这个字段时标记恒为 false，请求体一个字节都不变 ——
+          "没碰就不发这个键"这条性质保住了。
 
           【编辑页会原值回传】modify() 是整行深拷贝，行里本来就带 parent_id，
           所以**即使不做本次改动，编辑任何账号也会把这个值原样发回去**。
@@ -364,7 +397,8 @@
         -->
         <el-form-item v-if="editForm.type === 5" label="所属市州">
           <div class="city-box">
-            <el-select v-model="editForm.parent_id" class="city-select" placeholder="请选择所属市州" clearable>
+            <el-select v-model="editForm.parent_id" class="city-select" placeholder="请选择所属市州" clearable
+                       @clear="editCityCleared = true" @change="editCityCleared = false">
               <el-option v-for="c in cityAccounts" :key="c.id" :label="c.nickname" :value="c.id" />
             </el-select>
             <p class="quota-tip">归属决定该市州端能看到哪些中小学账号的报名，请谨慎修改。</p>
@@ -419,7 +453,8 @@
  *     四个列恒为空白。
  *  2. 筛选条件对不上后端：旧版传 username，后端 user_list 只认 keyword。
  *     旧版的「角色」下拉在当时确实是无效的 —— 那时后端还不支持按 type 过滤。
- *     【已不是现状】后端后来给 user_list 加了 type 参数（值只能在展示范围 0/1/5 内），
+ *     【已不是现状】后端后来给 user_list 加了 type 参数（值只能在展示范围内收窄，
+ *     本页的范围是 0/1/2/5 —— 2026-09-28 起管理员侧多放开了组委会 2），
  *     本页搜索栏那个「类型」下拉就是接它，见 getData 与 onFilterTypeChange。
  *  3. 分页参数错误：旧版传 size，后端 list_page 读的是 limit，导致每页条数恒为默认 10。
  *  4. 删除功能是伪造的：旧版 onDelete 调用 admin.user.update({...row, deleted:true})，
@@ -529,6 +564,34 @@ const data = ref([])
 const form = ref({})
 const editForm = ref({})
 
+/**
+ * 「修改用户」弹窗里，用户有没有用 × **主动清空**过「所属市州」。
+ *
+ * 【为什么必须有这个标记 —— 这是实测出来的，不是推测】
+ * el-select 清空时把值置为 undefined（DEFAULT_VALUE_ON_CLEAR），而 JSON.stringify
+ * 会丢掉值为 undefined 的键。于是"清空"发出去的请求体里**根本没有 parent_id 这个键**，
+ * 后端 user_update_admin 做的是 `if k in data: setattr(...)` → 键不存在 = 不改动
+ * → **库里那条归属原封不动，界面却显示"请选择所属市州"**，刷新一下又变回原样。
+ * 实测抓到的 PUT body（样本行 type=5 / parent_id=7）：
+ *   {"id":101,...,"type":5,...,"can_report_twice":false}   ← 没有 parent_id 键
+ * 也就是说，这个 × 曾经是个**静默空操作**。
+ *
+ * 【为什么不能直接把值设成 0 了事】
+ * el-select 判空的集合是 ["", undefined, null]（element-plus 的 use-empty-values），
+ * **数字 0 不算空**。modelValue 一旦是 0，下拉框里会明晃晃渲染出一个裸「0」——
+ * 正是 modify() 里那段长注释专门在防的现象。所以下拉的显示值必须继续是 undefined，
+ * 只能把"清空"这个**意图**单独记在标记里，到提交那一刻再翻译成 0。
+ *
+ * 【为什么不能改成"只要 type=5 且值为空就发 0"】
+ * 那样管理员只改个名字、压根没碰归属时，也会把库里的 NULL 写成 0。语义虽然相同，
+ * 但属于无谓写入；更要紧的是会毁掉"没碰这个字段就不发这个键"这条性质 ——
+ * 那是后端契约 3a（键不传 = 原值保留）的地基。
+ *
+ * 【谁负责复位】两处：modify() 每次打开弹窗时置 false；@change 里选值时置 false。
+ * 用 @change 而不是 watch，理由与 onTypeChange 那段注释相同（只在用户真的操作时触发）。
+ */
+const editCityCleared = ref(false)
+
 /* =========================================================================
  * 「所属市州」数据源（本次新增）
  * =========================================================================
@@ -542,7 +605,9 @@ const editForm = ref({})
  *
  * 【对照表从哪来】就用本页已经在用的那个接口，加一个 type=1 只要市州账号：
  *     GET /api/admin/user/list?page=1&limit=1000&type=1
- * 后端 user_list 的展示范围是 type__in=(0,1,5)，所以 type=1 筛出的就是全部市州账号，
+ * 后端 user_list 在管理员侧（本页）的展示范围是 type__in=(0,1,2,5) ——
+ * 2026-09-28 起多放开了组委会(2)，但市州账号（type=1）那一档没有任何变化，
+ * 所以 type=1 筛出的**仍然**就是全部市州账号，这段推断不受影响，
  * 它们的 nickname 就是市州名。**不需要后端新增任何接口或字段。**
  *
  * 【为什么不能从本页的 data 里找】data 是**分页 + 筛选**过的：
@@ -658,8 +723,11 @@ function getData() {
   //   它对空串是安全的（`account_type not in (None, "")`），所以传 '' 也不会错。
   //   这里仍然不发，是为了不依赖后端那一句实现 —— 后端哪天真改成「按 key 是否存在」
   //   来判断，前端不用跟着动。
-  // 【后端怎么用这个值】先卡死展示范围 type__in=(0,1,5)，再 filter(type=int(值))，
-  //   两个条件是 AND。所以传 2/3/4 只会得到空表，越不了权
+  // 【后端怎么用这个值】先卡死展示范围，再 filter(type=int(值))，两个条件是 AND。
+  //   本页（管理员侧）的范围是 (0,1,2,5) —— 2026-09-28 起 user_list 多了一个
+  //   show_committee 形参，只有管理员侧（register_user_routes("/admin", 3)）传 True
+  //   才把组委会(2)放进范围；组委会侧仍只放 (0,1,5)。
+  //   所以现在只有传 3/4 才得到空表，传 2 筛得出来，越权面没有变化
   //   （apps/api/views.py 的 user_list，以及它上面那条"不能借 type 越权"的注释）。
   // 【和 keyword 的关系也是 AND】后端三个条件都是 .filter() 叠加，
   //   「选学校端 + 搜张三」= 只在学校端账号里搜张三，不是并集。
@@ -774,6 +842,9 @@ function modify(row) {
   }
 
   editForm.value = next
+  // 【必须复位】上一次编辑如果点过 ×，标记还留着 true；不复位的话，
+  // 这次打开一个 type=5 的行、啥都不碰直接点确定，就会白白发一个 parent_id=0 出去。
+  editCityCleared.value = false
   showEditInfo.value = true
 }
 
@@ -881,7 +952,31 @@ async function editSubmit() {
   const valid = await ruleEditFormRef.value.validate().catch(() => false)
   if (!valid) return
 
-  adminApi.user.update(editForm.value).then(({ data: res }) => {
+  /*
+   * 【本次修复：把"清空归属"翻译成显式 0】
+   *
+   * 背景（实测确认，详见 editCityCleared 那段）：el-select 清空后值是 undefined，
+   * 提交时这个键被 JSON.stringify 丢掉，后端判定为"不改动" —— 于是这个 × 是个静默空操作。
+   *
+   * 【为什么是 0 不是 null】与后端 user_create_admin 的既有写法
+   * （apps/api/views.py:566 的 values["parent_id"] = 0）保持一致，
+   * 免得一个库里并存 NULL 和 0 两种"没有归属"。后端 user_update_admin 的
+   * `requested_parent in (None, "", 0, "0")` 那一支两种都收，效果相同。
+   *
+   * 【为什么只在标记为真时才构造新对象】标记为假时原样发 editForm.value ——
+   * 请求体一个字节都不变，保住"没碰这个字段就不发这个键"这条后端契约（3a）。
+   * 用展开运算符造一个浅拷贝，不直接改 editForm.value，
+   * 避免"点了确定但因为别的原因失败、弹窗没关"时把 0 留在表单里。
+   *
+   * 【这一支不会被非中小学账号走到】市州下拉是 v-if="editForm.type === 5" 渲染的，
+   * 标记只在用户真的点了那个下拉的 × 时才为 true，所以发出去的一定是 type=5 的账号：
+   * 后端 helper 判 type=5、值又是 0 → 走"归 0"分支，正是我们要的。
+   */
+  const payload = editCityCleared.value
+    ? { ...editForm.value, parent_id: 0 }
+    : editForm.value
+
+  adminApi.user.update(payload).then(({ data: res }) => {
     if (res.code === 0) {
       ElMessage.success('修改成功')
       showEditInfo.value = false
@@ -930,10 +1025,16 @@ function download(fileName) {
  * 让流程落回原来的「直接 POST」。宁可偶尔走到那个 500，
  * 也不要因为查重这一步自己出问题就**拦住一次合法的建号操作**。
  *
- * 【覆盖不到的情况，已知】列表接口的过滤条件是 type__in=(0, 1, 5)，
- * 所以撞上 type=2/3/4 的存量账号（组委会 / 管理员 / 省级）时查不出来，仍会 500。
- * 前端拿不到这些账号的清单（/committee/*、/admin/* 都按角色隔离），
- * 这一条只能靠后端修 —— 方案见文档末尾给后端的那段代码。
+ * 【覆盖范围：2026-09-28 起变宽了】本函数查的是 /admin/user/list，而该接口在
+ * 管理员侧的展示范围已放开组委会(2)，变成 (0,1,2,5)。所以撞上 type=2 的存量账号
+ * **现在查得出来、能就地拦住** —— 这是本次后端改动顺带带来的改善：在此之前，
+ * 管理员建一个和组委会账号同名的账号会直接撞 500 整页跳转（见本函数上面的说明）。
+ *
+ * 【仍然覆盖不到的情况，已知】type=3（管理员）与 type=4（省级）不在列表范围内，
+ * 撞上这两个仍会 500。而且**前端无解**：拿不到它们的清单 —— /admin/user/list
+ * 永远不含 3/4（后端特意留的越权防线），/committee/* 又按角色隔离。
+ * 要彻底消掉这条路径只能靠后端把"账号重复"从 500 改成返回 failure（code 1），
+ * 别试图在前端这里补一个分支。
  */
 function isUsernameTaken(username) {
   if (!username) return Promise.resolve(false)

@@ -7,13 +7,6 @@
 import request, { HOST } from '@/utils/request'
 
 export const adminApi = {
-  recommend: {
-    getList: (params) => request.get(HOST + '/api/admin/recommend/list', { params })
-  },
-  report: {
-    getList: (params) => request.get(HOST + '/api/admin/report/list', { params }),
-    check:   (data)   => request.put(HOST + '/api/admin/report/check', data)
-  },
   user: {
     list:     (params) => request.get(HOST + '/api/admin/user/list', { params }),
     // 【修复·尾部斜杠】原为 '/api/admin/user'（无尾斜杠），后端注册的是 '/api/admin/user/'。
@@ -39,12 +32,6 @@ export const adminApi = {
   person: {
     list:   (params) => request.get(HOST + '/api/admin/person/list', { params }),
     update: (data)   => request.put(HOST + '/api/admin/person', data)
-  },
-  chouqian: {
-    getByType:  (type)  => request.get(HOST + '/api/admin/chouqian/' + type),
-    update:     (data)  => request.put(HOST + '/api/admin/chouqian/update', data),
-    exportOne:  (type)  => request.get(HOST + '/api/admin/chouqian/export/' + type, { responseType: 'blob' }),
-    exportAll:  ()      => request.get(HOST + '/api/admin/chouqian/exportall', { responseType: 'blob' })
   },
   exportData: {
     data1: () => request.get(HOST + '/api/admin/export/data1', { responseType: 'blob' }),

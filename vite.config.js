@@ -53,9 +53,5 @@ export default defineConfig(({ mode }) => ({
         assetFileNames: '[ext]/[name].[hash].[ext]'
       }
     }
-  },
-  optimizeDeps: {
-    // face-api.js 是 CommonJS，需要预构建
-    include: ['face-api.js']
   }
 }))

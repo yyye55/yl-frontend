@@ -14,10 +14,6 @@ export const schoolApi = {
     getById: (id)     => request.get(HOST + '/api/school/report/' + id),
     update:  (data)   => request.put(HOST + '/api/school/report/update', data)
   },
-  recommend: {
-    createAndUpdate: (data)   => request.post(HOST + '/api/school/recommend/cau', data),
-    getList:         (params) => request.get(HOST + '/api/school/recommend/list', { params })
-  },
   index: {
     getIndexTotal:   () => request.get(HOST + '/api/school/index/total'),
     getIndexPercent: () => request.get(HOST + '/api/school/index/percent')

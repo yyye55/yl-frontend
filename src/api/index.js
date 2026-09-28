@@ -21,8 +21,6 @@ import { cityApi } from './city'
 import { schoolApi } from './school'
 // 中小学端（type=5）。与 city/school 并列的第三个端，见本文件 primary.js 说明
 import { primaryApi } from './primary'
-import { v2adminApi, v2committeeApi, v2schoolApi } from './v2'
-import { chouqianApi } from './chouqian'
 import { scanApi } from './scan'
 import { liveApi, exportApi } from './live'
 import { fileApi, qiniuApi, userApi } from './misc'
@@ -36,10 +34,6 @@ export {
   cityApi,
   schoolApi,
   primaryApi,
-  v2adminApi,
-  v2committeeApi,
-  v2schoolApi,
-  chouqianApi,
   scanApi,
   liveApi,
   exportApi,
@@ -56,10 +50,6 @@ export default {
   city: cityApi,
   school: schoolApi,
   primary: primaryApi,
-  v2admin: v2adminApi,
-  v2committee: v2committeeApi,
-  v2school: v2schoolApi,
-  chouqian: chouqianApi,
   scan: scanApi,
   live: liveApi,
   export: exportApi,

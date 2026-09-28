@@ -17,8 +17,8 @@ const ICON_NAMES = new Set(Object.keys(ElementPlusIcons))
 const IconResolver = (name) =>
   ICON_NAMES.has(name) ? { name, from: '@element-plus/icons-vue' } : undefined
 
-// 与 dist 中 h.p = "/ylbxt/" 对齐
-// 开发环境 base 设为 / 让开发更简单；生产环境按 dist 设为 /ylbxt/
+// 部署前缀：生产环境挂在 /ylbbm/ 子路径下，开发环境为 /
+// 开发环境 base 设为 / 让开发更简单；生产环境按实际部署路径设为 /ylbbm/
 //
 // 【部署前缀唯一来源】
 // 这里的 base 是整个项目部署前缀的唯一来源。
@@ -53,9 +53,5 @@ export default defineConfig(({ mode }) => ({
         assetFileNames: '[ext]/[name].[hash].[ext]'
       }
     }
-  },
-  optimizeDeps: {
-    // face-api.js 是 CommonJS，需要预构建
-    include: ['face-api.js']
   }
 }))

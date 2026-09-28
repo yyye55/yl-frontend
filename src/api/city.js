@@ -14,10 +14,6 @@ export const cityApi = {
     getById: (id)     => request.get(HOST + '/api/city/report/' + id),
     update:  (data)   => request.put(HOST + '/api/city/report/update', data)
   },
-  recommend: {
-    createAndUpdate: (data)   => request.post(HOST + '/api/city/recommend/cau', data),
-    getList:         (params) => request.get(HOST + '/api/city/recommend/list', { params })
-  },
   index: {
     getIndexTotal:   () => request.get(HOST + '/api/city/index/total'),
     getIndexPercent: () => request.get(HOST + '/api/city/index/percent'),

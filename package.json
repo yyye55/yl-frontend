@@ -14,7 +14,6 @@
     "ali-oss": "^6.23.0",
     "axios": "^1.6.0",
     "element-plus": "^2.5.0",
-    "face-api.js": "^0.22.2",
     "nprogress": "^0.2.0",
     "pinia": "^2.1.7",
     "qiniu-js": "^3.4.4",

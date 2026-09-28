@@ -46,16 +46,16 @@ export const APPLY_NOTICE = {
 
   // 下载地址。
   // 【当前状态】不再调用后端接口，直接下载随前端一起部署的静态文件。
-  // 文件实体在 public/static/账号申请表.docx，构建时原样拷进 dist/static/，
+  // 文件实体在 public/static/账号申请表（附件4）.docx，构建时原样拷进 dist/static/，
   // 与「参演人员导入模板.xlsx」是同一套做法（见 PersonTable.vue 的下载模板按钮）。
   // 【为什么必须拼 BASE_URL】生产环境 base 是 '/ylbxt/'（vite.config.js），
   // 写死 '/static/...' 线上会 404。BASE_URL 由 base 派生、恒带尾部 '/'，
   // 所以这里直接接 'static/...' 即可。
   // 【换文件时改两处】本行路径 + 下面的 fileName。
-  url: import.meta.env.BASE_URL + 'static/账号申请表.docx',
+  url: import.meta.env.BASE_URL + 'static/账号申请表（附件4）.docx',
 
   // 存盘时显示的文件名。
   // downloadStaticFile 靠 <a download> 属性决定存盘名，不写就会退回用 URL 最后一段。
   // 现在它与静态文件的实际文件名一致，但两者互相独立 —— 改一个不影响另一个。
-  fileName: '账号申请表.docx'
+  fileName: '账号申请表（附件4）.docx'
 }

@@ -302,7 +302,7 @@ const formSegments = computed(() =>
  * 【本次改动：从 downloadRemoteFile 换成 downloadStaticFile】
  * 申请表是一份固定文件，随前端一起部署，没必要为它单独开一个后端接口
  * （原先约定的 GET /api/apply/form 未上线）。文件实体在
- * public/static/账号申请表.docx，地址拼装见 applyNotice.js 的 url。
+ * public/static/账号申请表（附件4）.docx，地址拼装见 applyNotice.js 的 url。
  *
  * 注意旧注释里那条「为什么不用 downloadStaticFile」的理由已经作废 ——
  * 它当年拒绝静态文件，是因为「文件不存在，点了会 404 把 JSON 甩到新标签页」；

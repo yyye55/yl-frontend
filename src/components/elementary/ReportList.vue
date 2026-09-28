@@ -2,16 +2,16 @@
   <div class="bg">
     <div class="options">
       <!--
-        【本次变更：placeholder 不再写「请输入内容」】
-        「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 report_queryset
-        （yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围**取决于调用方**：
-          · 本组件走 /api/{city,school,primary}/report/list，那几条路由传了
-            `request.auth` 或 `user_ids=...`（views.py:1105-1111），落在
-            `qs.filter(name__icontains=keyword)` 那一支 —— **只匹配 name**，
-            即列集合 I 的「节目名称」/ 列集合 II 的「自选曲目」。
-          · 组委会、管理员走的是另一个分支，那个分支才额外匹配 choir_name（见对应组件）。
-        所以这里按当前列集合把列名写进 placeholder，不再笼统写「请输入内容」。
-        想按乐团名 / 学校名搜，用右边两个独立输入框（走 choir_name / school_name，与本框互不影响）。
+        【本次变更：三个框收成一个】
+        这里原先并排摆三个输入框（曲目名 / 乐团名 / 学校名），来历是后端 report_queryset
+        （yilinbei hou/apps/api/views.py）里 keyword 的匹配范围**取决于调用方**：
+        市州/高校/中小学那几条路由只匹配 name，只有管理员/组委会才额外匹配 choir_name
+        —— 同一个框在不同身份的页面上搜的范围不一样。
+        补的那两个框走的是**另两个独立参数，与 keyword 是 AND 关系**：
+        同一个词分别填进三个框，后端要求同一行的三个字段都含这个词，结果必然是空表。
+        所以「一个框搜三个字段」只能由后端来做，现在后端已把 keyword 扩成
+        「曲目名 | 乐团名 | 学校名」（见 report_queryset 里 keyword 那段注释），
+        前端据此收回成下面这一个框。
       -->
       <el-input
         v-model="keyword"
@@ -23,15 +23,6 @@
           <el-button><el-icon><Search /></el-icon></el-button>
         </template>
       </el-input>
-
-      <!--
-        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）：
-        `choir_name` 与 `school_name`。
-        【为什么本页真的需要它们】上面那个 keyword 在本端**只搜得到曲目名**，
-        按乐团名称、按学校名称此前在本页完全搜不出来（不是搜得慢，是搜不到）。
-      -->
-      <el-input v-model="choirName" :placeholder="CHOIR_PLACEHOLDER" @change="getData" />
-      <el-input v-model="schoolName" placeholder="请输入学校名称" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -298,14 +289,16 @@
  * ===========================================================================
  * 五、本仓库新增（dist 无）
  * ===========================================================================
- * 【工具栏新增「乐团名称」「学校名称」两个搜索框 + keyword 的 placeholder 改为如实描述】
- *   后端 report_queryset（yilinbei hou/apps/api/views.py:112-117）新增了 choir_name /
- *   school_name 两个 icontains 参数，可与 keyword 组合。
- *   本页原先只有 keyword 一个框、placeholder 还写着「请输入内容」，而 keyword 在本端
- *   走的是 `qs.filter(name__icontains=keyword)` 那一支（views.py:1105-1111 传了
- *   request.auth / user_ids）—— **只匹配曲目名**，按乐团名或学校名根本搜不出来。
- *   故新增两个专用框，并把 keyword 的 placeholder 按列集合写成真实列名。
- *   详见模板里那两段注释与 KEYWORD_PLACEHOLDER / CHOIR_PLACEHOLDER 的定义处。
+ * 【搜索框从三个收成一个（2026-09-28 二次改动）】
+ *   早先的过程：本页原先只有 keyword 一个框、placeholder 还写着「请输入内容」，而
+ *   keyword 在本端走的是 `qs.filter(name__icontains=keyword)` 那一支（views.py:1105-1111
+ *   传了 request.auth / user_ids）—— **只匹配曲目名**，按乐团名或学校名搜不出来。
+ *   当时的补救是后端给 report_queryset 加了 choir_name / school_name 两个 icontains
+ *   参数，前端摆出两个专用框。
+ *   那两个参数与 keyword 是 **AND** 关系 —— 它们能做「叠加筛选」，但做不了「一个框搜
+ *   多个字段」，而且同一个词分别填进三个框必然搜出空表。所以本次改为从后端统一口径：
+ *   keyword 扩成「曲目名 | 乐团名 | 学校名」，前端三个框收回一个。
+ *   详见模板里那段注释与 KEYWORD_PLACEHOLDER 的定义处。
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -388,22 +381,21 @@ const { openWindow } = useTabs()
 const { canEditReport } = usePermission()
 
 /**
- * 【本次新增】两个搜索框的 placeholder 文本，按当前变体的列集合取值。
+ * 【本次变更】搜索框的 placeholder，按当前变体的列集合取值。
  *
- * 取的就是表格里那两个列的真实表头（见模板的 columns === 'I' 分支）——
+ * 用了表格里那两个列的真实表头（见模板的 columns === 'I' 分支）——
  * 框里说的必须和表头一致，否则用户会照着一个页面上的词去另一个页面搜。
- * 都带「请输入」前缀是因为 el-input 的 placeholder 只在空值时显示，
- * 写短一点可以少截断（.options > .el-input 的宽度被样式钉死在 220px）。
+ * 本次把三个框收成一个，所以三个字段都要写进 placeholder：不写全，用户就不知道
+ * 乐团名/学校名也搜得出来，会以为这个框还是只管曲目名。
+ * 带「请输入」前缀是因为 el-input 的 placeholder 只在空值时显示；
+ * 长度也要克制（.options > .el-input 的宽度被样式钉死在 220px，太长会截断）。
  */
-const KEYWORD_PLACEHOLDER = cfg.columns === 'I' ? '请输入节目名称' : '请输入自选曲目名称'
-const CHOIR_PLACEHOLDER = cfg.columns === 'I' ? '请输入合唱团名称' : '请输入乐团名称'
+const KEYWORD_PLACEHOLDER =
+  cfg.columns === 'I' ? '请输入节目/合唱团/学校名称' : '请输入曲目/乐团/学校名称'
 
 /* ------------------------- dist data() ------------------------- */
 const keyword = ref(null)
 const status = ref(null)
-// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
-const choirName = ref(null)
-const schoolName = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -458,12 +450,10 @@ function getData() {
     page: page.value,
     limit: limit.value,
     keyword: keyword.value,
-    status: status.value,
-    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
-    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 status / keyword 的处理一致。
-    choir_name: choirName.value,
-    school_name: schoolName.value
+    status: status.value
+    // 【本次变更】原先这里还带 choir_name / school_name 两个参数（对应上面被收掉的两个框）。
+    // 现在 keyword 一个就覆盖三个字段，不再单独传；值为 null 时无需剔除的写法保持不变
+    // —— axios 的默认序列化器会丢弃 null/undefined，即「框里没填」= 不传该条件。
   }
   // 4b6a / 67bc: 固定常量 2 / 3
   // 1c73 / cd09: 不发该参数

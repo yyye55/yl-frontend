@@ -63,18 +63,14 @@
   <div class="bg">
     <div class="options">
       <!--
-        【本次变更：placeholder 不再写「请输入内容」】
+        【本次变更：一个框搜三个字段，placeholder 写全三个列名】
         「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 report_queryset
-        （yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围**取决于调用方**：
-          · 本组件走 /api/committee/report/list → committee_report_list →
-            `report_page(request, descending=True)`（views.py:752-753），current_user 与
-            user_ids 都是 None，落在 `Q(name__icontains) | Q(choir_name__icontains)` 那一支
-            —— **name 和 choir_name 都匹配**。
-          · 市州/学校/中小学端的报名列表走的是另一个分支，那边只匹配 name
-            （见 components/elementary/ReportList.vue 的同名改动）。
-        所以本页的 placeholder 按当前列集合把两列都写出来。
-        另外两个专用框（乐团名称 / 学校名称）走的是独立的 choir_name / school_name 参数，
-        与本框互不影响，可以叠加使用。
+        （yilinbei hou/apps/api/views.py）里 keyword 原先的匹配范围**取决于调用方**：
+        本组件走 /api/committee/report/list，落在 `Q(name) | Q(choir_name)` 那一支，
+        而市州/学校/中小学端只匹配 name（见 components/elementary/ReportList.vue）——
+        同一个框在不同身份的页面上搜的范围不一样，谁也搜不到 school_name。
+        本次后端把 keyword 统一扩成「name | choir_name | school_name」，
+        三个身份的页面对齐成同一套口径，所以 placeholder 也把三个列名一起写出来。
       -->
       <el-input
         v-model="keyword"
@@ -88,13 +84,15 @@
       </el-input>
 
       <!--
-        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）。
-        本页的 keyword 虽然也能命中乐团名，但**搜不到学校名**（school_name 从不参与 keyword）；
-        而且用 keyword 搜乐团名时它会同时扫 name，容易带出不相干的行。
-        想精确定位时用这两个框。
+        【本次变更：两个框收掉了】
+        这里原先还有乐团名、学校名两个独立输入框，走的是后端 report_queryset 的
+        choir_name / school_name 参数。那两个参数与 keyword 是 **AND** 关系，
+        所以它们解决的是「再叠一层筛选」，而不是「一个框搜更多字段」——
+        本页的 keyword 当时能命中 name 与 choir_name、唯独搜不到 school_name，
+        才需要单摆一个学校名框。
+        现在后端已把 keyword 扩成「曲目名 | 乐团名 | 学校名」（见 report_queryset
+        里 keyword 那段注释），再用单独的框去叠关键词只会越筛越少，故收回。
       -->
-      <el-input v-model="choirName" :placeholder="CHOIR_PLACEHOLDER" @change="getData" />
-      <el-input v-model="schoolName" placeholder="请输入学校名称" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -229,20 +227,17 @@ const props = defineProps({
 })
 
 /**
- * 【本次新增】两个搜索框的 placeholder 文本，按当前列集合（props.columns）取值。
+ * 【本次变更】搜索框的 placeholder 文本，按当前列集合（props.columns）取值。
  *
  * 取的就是表格里那两个列的真实表头（见模板的 columns === 'I' 分支）——
  * 框里说的必须和表头一致，否则用户会照着一个页面上的词去另一个页面搜。
- * 本页的 keyword 同时匹配 name 与 choir_name，所以两个列名都写进去。
+ * 本页的 keyword 现在匹配 name / choir_name / school_name 三个字段，故三个列名都写进去。
  */
-const KEYWORD_PLACEHOLDER = props.columns === 'I' ? '请输入节目/合唱团名称' : '请输入曲目/乐团名称'
-const CHOIR_PLACEHOLDER = props.columns === 'I' ? '请输入合唱团名称' : '请输入乐团名称'
+const KEYWORD_PLACEHOLDER =
+  props.columns === 'I' ? '请输入节目/合唱团/学校名称' : '请输入曲目/乐团/学校名称'
 
 const keyword = ref(null)
 const status = ref(null)
-// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
-const choirName = ref(null)
-const schoolName = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -270,12 +265,10 @@ function getData() {
     limit: limit.value,
     keyword: keyword.value,
     group: props.group,
-    status: status.value,
-    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
-    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 status / keyword 的处理一致。
-    choir_name: choirName.value,
-    school_name: schoolName.value
+    status: status.value
+    // 【本次变更】原先这里还带 choir_name / school_name 两个参数（对应上面被收掉的两个框）。
+    // 现在 keyword 一个就覆盖三个字段。值为 null 时无需剔除的写法保持不变
+    // —— axios 的默认序列化器会丢弃 null/undefined，即「框里没填」= 不传该条件。
   }
   committeeApi.report.getList(params).then((res) => {
     const body = res && res.data

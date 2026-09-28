@@ -58,13 +58,17 @@
       </el-input>
 
       <!--
-        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）。
-        本页的 keyword 虽然也能命中合唱团名，但**搜不到学校名**（school_name 从不参与 keyword）；
-        而且用 keyword 搜合唱团名时它会同时扫节目名，容易带出不相干的行。
-        想精确定位时用这两个框。
+        【本次变更：两个框收掉了】
+        这里原先还有合唱团名、学校名两个独立输入框，走的是后端 report_queryset 的
+        choir_name / school_name 参数。那两个参数与 keyword 是 **AND** 关系，
+        解决的是「再叠一层筛选」，而不是「一个框搜更多字段」——
+        本页的 keyword 当时能命中 name 与 choir_name、唯独搜不到 school_name，
+        才需要单摆一个学校名框。
+        现在后端已把 keyword 扩成「曲目名 | 乐团名 | 学校名」（见 report_queryset
+        里 keyword 那段注释），再用单独的框去叠关键词只会越筛越少，故收回。
+        本页与组委会端的 CommitteeReportList / 各端的 ReportList 走同一个参数口径，
+        四处一起改，别只改一处。
       -->
-      <el-input v-model="choirName" placeholder="请输入合唱团名称" size="mini" @change="getData" />
-      <el-input v-model="schoolName" placeholder="请输入学校名称" size="mini" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -187,15 +191,13 @@ const props = defineProps({
  * 与 CommitteeReportList.vue 不同，本组件只服务一个列集合（合唱团 / 节目），
  * 所以这里写死字符串，不按 props 分支。
  *
- * 后端在这个接口下 keyword 同时匹配 name 与 choir_name，两个列名都写进框里。
+ * 【本次变更】后端 keyword 已扩成「name | choir_name | school_name」，
+ * 所以三个列名都写进框里 —— 不写全，用户会以为这个框还是只管节目名与合唱团名。
  */
-const KEYWORD_PLACEHOLDER = '请输入节目/合唱团名称'
+const KEYWORD_PLACEHOLDER = '请输入节目/合唱团/学校名称'
 
 const keyword = ref(null)
 const status = ref(null)
-// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
-const choirName = ref(null)
-const schoolName = ref(null)
 const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
@@ -235,12 +237,10 @@ function getData() {
     limit: limit.value,
     keyword: keyword.value,
     group: props.group,
-    status: status.value,
-    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
-    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 status / keyword 的处理一致。
-    choir_name: choirName.value,
-    school_name: schoolName.value
+    status: status.value
+    // 【本次变更】原先这里还带 choir_name / school_name 两个参数（对应上面被收掉的两个框）。
+    // 现在 keyword 一个就覆盖三个字段。值为 null 时无需剔除的写法保持不变
+    // —— axios 的默认序列化器会丢弃 null/undefined，即「框里没填」= 不传该条件。
   }
   committeeApi.report.getList(params).then((res) => {
     const body = res && res.data

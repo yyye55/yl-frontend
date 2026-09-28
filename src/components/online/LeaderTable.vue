@@ -28,12 +28,16 @@
       <span style="color:blue">123456</span> 的人员对应。
       <br>若表内有两人身份证号后6位相同，可改用「姓名+身份证号后6位」命名（例如
       <span style="color:blue">张小明123456.png</span>）加以区分。
+      <!--
+        【上面这句必须**常驻**】下面那条撞号提示只在真的撞了之后才出现；光靠它，
+        没撞号的用户读不到「后6位会重复」这条规则 —— 而恰恰是他们需要在命名文件之前就知道。
+      -->
     </div>
 
     <!--
       【本轮新增】表内撞号提示，紧跟命名说明。内容由 photoCollisionText 生成，
       判据与批量上传那侧同源（都走共用模块的 expectedOnlinePhotoNames）。
-      没有撞号时整段不渲染，不改变任何数据。
+      文案里会点名行号，理由见 formatPhotoCollisions 的注释。
     -->
     <div v-if="photoCollisionText" class="collision-tip">{{ photoCollisionText }}</div>
 
@@ -189,7 +193,7 @@ watch(() => props.showdata, (val) => {
  * 【本轮新增】表内撞号 —— 填表阶段就指出「批量上传注定分不清」的那几行。
  * 判据与批量上传那侧同源（都走 findPhotoNameCollisions + expectedOnlinePhotoNames），
  * 所以「这里提示会撞」与「上传时真的撞」不可能各说各话。理由详见 CrewTable.vue 里
- * 同名 computed 的注释，此处不重复。
+ * 同名 computed 的注释，此处不重复。文案要点名行号的理由见 formatPhotoCollisions 的注释。
  */
 const photoCollisions = computed(() =>
   findPhotoNameCollisions(data.value, expectedOnlinePhotoNames)

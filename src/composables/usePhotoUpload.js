@@ -176,37 +176,72 @@ export function findPhotoNameCollisions(rows, namesOf = expectedPhotoNames) {
   return out
 }
 
+/** 行号要用的中文数字。表格不会有三位数行，真到了就退回阿拉伯数字，不硬凑「一百零一行」 */
+const CN_DIGIT = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+
 /**
- * 把 findPhotoNameCollisions 的结果拼成**给用户看的一句话** —— 三张表共用同一份说法。
+ * 行号 → 「第一行」这样的说法（入参是 1 起的行号，不是下标）。
  *
- * 【为什么连文案也收进来】判据收成一份、文案却各写各的，仍会分叉：A 表说「改用姓名+后6位」，
+ * 只处理到 99：`第十一`、`第二十`、`第二十一` 这些写法在这里都是对的（十位为 1 时不写「一十」），
+ * 但上百行在报名表里不现实，与其写一套通用转换，不如退回阿拉伯数字。
+ */
+function rowLabel(n) {
+  if (n > 99) return `第 ${n} 行`
+  const tens = Math.floor(n / 10)
+  const ones = n % 10
+  if (tens === 0) return `第${CN_DIGIT[ones]}行`
+  if (tens === 1) return `第十${ones ? CN_DIGIT[ones] : ''}行`
+  return `第${CN_DIGIT[tens]}十${ones ? CN_DIGIT[ones] : ''}行`
+}
+
+/**
+ * 把一组行号连成中文里顺口的一句：两行是「第一行和第三行」，
+ * 三行及以上是「第一行、第二行和第三行」—— 末项用「和」，不用一串顿号收尾。
+ */
+function joinRowLabels(rowNumbers) {
+  const labels = rowNumbers.map(rowLabel)
+  if (labels.length <= 1) return labels[0] || ''
+  return labels.slice(0, -1).join('、') + '和' + labels[labels.length - 1]
+}
+
+/**
+ * 把 findPhotoNameCollisions 的结果拼成**给用户看的一句话** —— 三张表共用同一份说法
+ * （报名端 PersonTable、线上 CrewTable 与 LeaderTable）。
+ *
+ * 【为什么连文案也收进来】判据收成一份、文案却各写各的，仍会分叉：A 表说「按姓名+身份证号后6位命名」，
  * B 表说「请重命名文件」，用户在两页之间来回切就得重新理解一遍。更糟的是三处提示会
  * 各自跟着判据漂移，而后改的那两处没人会回头对齐。
  *
  * 【为什么把按钮名当参数】三张表的行内按钮本来就不叫同一个名字（报名端是「上传照片」、
  * 线上两表是「上传头像」）。这是既有的界面事实，不改；只把它作为参数传进来。
  *
- * 【为什么提示里要报行号】撞号这件事本身在界面上看不出来 —— 两行长得完全不一样，
- * 只是后 6 位恰好相同。不报行号，用户得自己一行行去比身份证后 6 位。
+ * 【为什么必须报行号】撞号这件事在界面上**看不出来** —— 那两行长得完全不一样，
+ * 只是后 6 位恰好相同。不报行号，用户得自己一行行去比对身份证后 6 位。
  *
- * @param {Array<{name: string, rows: number[]}>} collisions findPhotoNameCollisions 的返回值
+ * 【行号用中文数字，字段名用阿拉伯数字】正文是给人读的一句话，写成「第一行和第三行」；
+ * 而「身份证后6位」保留阿拉伯数字 —— 它在本系统里是**字段名**（列头、校验报错、黑字说明
+ * 全都写「后6位」），换成「后六位」会和用户眼前的表头对不上。
+ *
+ * 【为什么不报那两行实际会重名的文件名】行号是要用户去定位的，文件名不是 ——
+ * 报出来只是把系统内部的判定过程摆给用户看，而用户并不能拿它做什么。
+ *
+ * @param {Array<{name: string, rows: number[]}>} collisions findPhotoNameCollisions 的返回值；
+ *        用到 rows 拼行号，name 不进文案
  * @param {string} perRowButton 行内那个「传单张」按钮的文字，如 '上传照片'
  * @returns {string} 没有撞号时返回空串，调用方直接 v-if 即可
  */
 export function formatPhotoCollisions(collisions, perRowButton) {
   const list = Array.isArray(collisions) ? collisions : []
   if (!list.length) return ''
-  const parts = list.map((c) => {
-    // rows 是下标（0 起），用户看的是行号（1 起）
-    const rows = c.rows.map((i) => i + 1).join('、')
-    return `第 ${rows} 行（都能命名为 ${c.name}.jpg）`
-  })
+  const parts = list.map(
+    (c) => joinRowLabels(c.rows.map((i) => i + 1)) + '身份证后6位相同'
+  )
   return (
     '注意：' +
     parts.join('；') +
-    ' 的照片文件名会撞在一起，批量上传时认不出该传给哪一行。' +
+    '。其照片文件将重名，批量上传时系统无法判定文件所属行次。' +
     `请改用行内「${perRowButton}」按钮逐张上传，` +
-    '或把文件名写成「姓名+后6位」（例如 张小明123456.jpg），这样两行就分得开了。'
+    '或将文件按「姓名+身份证号后6位」命名（例如 张小明123456.jpg）加以区分。'
   )
 }
 

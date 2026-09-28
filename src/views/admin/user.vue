@@ -7,6 +7,17 @@
         （yilinbei hou/apps/api/views.py:526）里 keyword 是一个三选一的 OR：
         `Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
         所以把三个列名都写出来，与表格里的「账号 / 修改人电话号码 / 名称」三列对应。
+
+        【本次变更：删掉了旁边那个独立的「请输入名称」框】
+        原先并排摆着两个框：这个 keyword 框 + 一个只匹配 nickname 的框。实际用起来
+        两者搜的东西高度重叠 —— 后者能搜到的，前者全都能搜到（keyword 的 OR 里本来
+        就含 nickname），区别只是前者还会带出「账号或电话里含这几个字」的行。
+        对使用者来说这不是"多一个精确选项"，而是"同一个搜索要分两次填、还得先想清楚
+        填哪个框"。现在只留这一个：账号、电话、名称都在这里搜。
+        【后端不动】user_list 的独立 nickname 参数（views.py:527-528）仍在，只是本页
+        不再发它 —— 不传即不筛，与传 null 等价。将来若要恢复"只按名称筛"，
+        把 el-input 和 getData 里的 nickname 参数一起加回来即可。
+        与 committee/user.vue 同步（两处一起改，见其文件头）。
       -->
       <el-input
         v-model="keyword"
@@ -20,19 +31,16 @@
       </el-input>
 
       <!--
-        【本次新增】后端 user_list 新增的独立 nickname 参数（views.py:527-528，icontains）。
-        【它和上面那个框的区别 —— 为什么不嫌重复】keyword 是三选一的 OR，
-        搜「张三」时电话或账号里含这两个字的行也会被带出来；本框只匹配名称，
-        要找某个具体单位时用这个，结果干净。
-        【和 keyword / type 之间是 AND】三个条件在后端都是 .filter() 叠加，
-        所以「名称含实验小学 + 类型=学校端」是交集，不是并集。
-      -->
-      <el-input v-model="nickname" placeholder="请输入名称" @change="getData" />
-      <!--
         类型筛选。
+        【「高校端」这个叫法】type=0 的显示名本次从「学校端」改成了「高校端」，
+        理由与命名对照（后端/路由里仍叫 school/学校，是同一个 type）写在
+        src/config/accountTypes.js 的 TYPE_LABEL[0] 上方。
+        ⚠️ 下面这行的 label 是**写死的字面量**，不读 TYPE_LABEL ——
+        改显示名时这里和 committee/user.vue 那一页要一起动手，三处漏一处就会出现
+        「表格里叫高校端、下拉里叫学校端」。
         【选项为什么是 0/1/2/5 四个】后端 user_list 先卡死展示范围，再把 type 作为
         AND 条件叠加上去（apps/api/views.py 的 user_list）。2026-09-28 起这个范围
-        分两侧：管理员侧是 (0,1,2,5)（学校端 / 市州端 / 组委会 / 中小学端，多一个 2），
+        分两侧：管理员侧是 (0,1,2,5)（高校端 / 市州端 / 组委会 / 中小学端，多一个 2），
         组委会侧仍是 (0,1,5)。所以传 3/4 一定返回空表 —— 下拉里摆管理员(3)/省级(4)，
         等于给用户一个必然筛不出东西的按钮，他筛出空表只会当成 bug 报上来。干脆不给选项。
         【本次为什么补上「组委会」这一项】后端放开 type=2 可见之后，不传 type 时
@@ -63,7 +71,7 @@
       -->
       <el-select v-model="filterType" placeholder="全部类型" @change="onFilterTypeChange">
         <el-option label="全部类型" :value="''" />
-        <el-option label="学校端" :value="0" />
+        <el-option label="高校端" :value="0" />
         <el-option label="市州端" :value="1" />
         <!--
           「组委会」这一项是本次（2026-09-28）新增的，后端放开 type=2 后补上。
@@ -124,7 +132,7 @@
             can_report_twice（apps/core/services.py:62）—— 所以行数据里本来就有，
             不需要额外请求。
             【为什么 type!==5 要显示「—」而不是「否」】特许只对中小学端有意义，
-            给学校端 / 市州端写「否」会让人以为"它本来可以，只是没给"，
+            给高校端 / 市州端写「否」会让人以为"它本来可以，只是没给"，
             显示破折号表达的是"此项与它无关"。
             【宽度 90】表头「可报两支」4 个字 + 单元格「是/否」1 个字，
             90 足够不折行；不写 align，与相邻列统一用 Element Plus 默认左对齐。
@@ -142,7 +150,7 @@
             再用 cityMap 换成市州名称 —— **不需要任何行级的额外请求**。
 
             【为什么不是每个账号都有值】归属只对中小学账号（type=5）有意义：
-            · 学校端（0）的 parent_id 没有业务含义；
+            · 高校端（0）的 parent_id 没有业务含义；
             · 市州端（1）自己就是市州，谈不上"所属市州"。
             判据因此与相邻的「可报两支」列完全一致：row.type === 5 ? ... : '—'。
 
@@ -151,7 +159,7 @@
             空着一个显示「—」一个显示空白，会让人以为是两种不同的"没有"。
             这里的破折号与相邻「可报两支」列的用法是同一种：都在说"这里没有值"。
 
-            【学校端 / 市州端为什么也是「—」】它们没有"所属市州"这个概念，
+            【高校端 / 市州端为什么也是「—」】它们没有"所属市州"这个概念，
             与"有这个概念但还没设"在显示上是同一件事 —— 都是没有值。
             这也让两页能用同一句代码表达，不会一方多一个分支。
 
@@ -539,13 +547,11 @@ import { TYPE_LABEL } from '@/config/accountTypes'
  */
 const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
 
-const keyword = ref(null)
-
 /**
- * 【本次新增】对应后端 user_list 的独立 nickname 参数，只匹配名称这一列。
- * 初值 null = 不筛，见 getData()。
+ * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py:526），
+ * 所以这一个框就是「账号 / 电话 / 名称」三合一的搜索入口，见模板里那段注释。
  */
-const nickname = ref(null)
+const keyword = ref(null)
 
 /**
  * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
@@ -611,7 +617,7 @@ const editCityCleared = ref(false)
  * 它们的 nickname 就是市州名。**不需要后端新增任何接口或字段。**
  *
  * 【为什么不能从本页的 data 里找】data 是**分页 + 筛选**过的：
- * 停在第 2 页、或筛了「学校端」时，市州账号根本不在 data 里，翻不到。
+ * 停在第 2 页、或筛了「高校端」时，市州账号根本不在 data 里，翻不到。
  *
  * 【为什么不去改后端的 user_dict 加个 parent_name】
  * user_dict 是全局共用的序列化函数，有 9 处调用方（登录接口、获取当前用户、
@@ -708,17 +714,16 @@ function getData() {
   const params = {
     page: page.value,
     limit: limit.value,
-    keyword: keyword.value,
-    // 【本次新增】后端 user_list 的独立 nickname 参数（icontains）。
+    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py:526）。
     // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword 的处理一致。
-    nickname: nickname.value
+    // 也就是「框里没填」= 不传该条件。
+    keyword: keyword.value
   }
 
   // ── 类型筛选：只有选了具体类型才把 type 塞进请求 ──────────────────────
-  // 【为什么不能写 if (filterType.value)】0（学校端）在 JS 里是 falsy。
-  //   那样一选「学校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
-  //   用户报障时只会说「学校端筛不出来」，很难往这上面想。必须显式判空。
+  // 【为什么不能写 if (filterType.value)】0（高校端）在 JS 里是 falsy。
+  //   那样一选「高校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
+  //   用户报障时只会说「高校端筛不出来」，很难往这上面想。必须显式判空。
   // 【没选时为什么整个 key 都不发】后端 user_list 读的是 request.GET.get("type")，
   //   它对空串是安全的（`account_type not in (None, "")`），所以传 '' 也不会错。
   //   这里仍然不发，是为了不依赖后端那一句实现 —— 后端哪天真改成「按 key 是否存在」
@@ -730,7 +735,7 @@ function getData() {
   //   所以现在只有传 3/4 才得到空表，传 2 筛得出来，越权面没有变化
   //   （apps/api/views.py 的 user_list，以及它上面那条"不能借 type 越权"的注释）。
   // 【和 keyword 的关系也是 AND】后端三个条件都是 .filter() 叠加，
-  //   「选学校端 + 搜张三」= 只在学校端账号里搜张三，不是并集。
+  //   「选高校端 + 搜张三」= 只在高校端账号里搜张三，不是并集。
   if (filterType.value !== '' && filterType.value !== null && filterType.value !== undefined) {
     params.type = filterType.value
   }

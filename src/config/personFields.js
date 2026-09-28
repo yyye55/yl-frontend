@@ -19,16 +19,28 @@
  *
  * 【校验松紧】按「标准」档：
  *   姓名  —— 禁数字，长度 2–20（去首尾空格后）
- *   身份证 —— 18 位，前 17 位数字，末位数字或 X/x
+ *   身份证后6位 —— 5 位数字 + 末位数字或 X/x（见下方 RE_CARD 的说明）
  *   年龄  —— 5–80 的整数
  *   学校  —— 不能是纯数字（不限制必须写「XX学校」，避免误伤办学点等非标准名称）
  *   电话  —— 11 位手机号，或带区号的固定电话（红头文件口径，见 checkPersonPhone）
- * 后端 `card` 是 CharField(max_length=255)、无格式约束，故这几条是纯粹的前端把关，
- * 与后端不冲突。
+ *
+ * 【身份证这条不是"纯前端把关"，是后端规则的镜像】
+ * 2026-09-28 起，`card` 的语义由「完整 18 位身份证号」改为「后 6 位」，权威实现在后端
+ * `apps/core/models.py` 的 `normalize_card()`（`CARD_PATTERN` / `CARD_ERROR` / `CARD_MAX_LENGTH`），
+ * `store_people` / 暂存 / `/live/` / 后台改人员四条写入路径都调它。
+ * 本文件里的 RE_CARD 与 CARD_ERROR **逐字抄自后端**，改任何一边都必须同步另一边，
+ * 否则会出现「前端放行、后端整批拒绝」这类用户看不懂的失败。
  */
 
-/** 身份证实打实的 18 位：17 位数字 + 末位数字或 X。**不做校验位验算**（用户口径：只限位数与末位） */
-const RE_CARD = /^\d{17}[\dXx]$/
+/**
+ * 身份证后 6 位：5 位数字 + 末位数字或 X。
+ * **逐字同后端** `models.CARD_PATTERN`（含 `[0-9]` 的写法，不改成 `\d`，便于两边肉眼比对）。
+ * **不做校验位验算**（用户口径：只限位数与末尾字符）。
+ */
+const RE_CARD = /^[0-9]{5}[0-9Xx]$/
+
+/** **逐字同后端** `models.CARD_ERROR`。两处文案一旦分叉，用户就会看到两套说法 */
+const CARD_ERROR = '身份证后6位应为6位，前5位为数字，末位为数字或X'
 
 /** 中国大陆手机号：11 位、1 开头、第二位 3-9 */
 const RE_MOBILE = /^1[3-9]\d{9}$/
@@ -77,17 +89,34 @@ export function checkPersonName(value) {
 }
 
 /**
- * 身份证号：18 位，前 17 位数字，末位数字或 X/x。
+ * 身份证后 6 位：5 位数字 + 末位数字或 X/x。文案与判据都同后端。
  *
- * 【刻意不验校验位】19 位/17 位这类长度错误是用户能自己改的；校验位算错则会让
- * 户口本上抄来的号也过不去，反而制造求助。用户给的口径就是「严格 18 位、末位可 X」。
- * 同样不禁止小写 x —— 手抄时很常见，阻止它没有任何好处。
+ * 【刻意不验校验位】后 6 位里本来就不含校验位（末位是顺序码的末位），没有可验的东西。
+ * 同样不禁止小写 x —— 手抄时很常见，后端 `normalize_card` 会把它归一成大写 X。
+ *
+ * 【前端不做归一回写】不 trim 后写回、不改大小写：归一由后端负责，草稿回读拿到的
+ * 就是归一后的值，前端再写一遍只会多一处可能与后端分叉的地方。
+ *
+ * @returns {string|null} 不合格时返回给用户看的原因，合格返回 null
  */
 export function checkPersonCard(value) {
   const card = str(value).trim()
-  if (!card) return null
-  if (!RE_CARD.test(card)) return '身份证号应为18位，末位可以是数字或X'
+  if (!card) return null // 空由各表的必填分支负责，见 isBlankCard
+  if (!RE_CARD.test(card)) return CARD_ERROR
   return null
+}
+
+/**
+ * 身份证是否**实质为空** —— 纯空格算空。各表的必填分支用它，不要写 `!item.card`。
+ *
+ * 【为什么必须单独一个函数】`" "` 是 truthy，`!item.card` 判它「已填」而放行；接着
+ * checkPersonCard trim 成 `''` → 返回 null（空值不归它管）→ 整行校验**全部通过**。
+ * 但后端 `normalize_card` strip 后不匹配正则，会按 CARD_ERROR 拒掉整批提交。
+ * 于是用户看到的是一条来自后端的、说不出是哪一行的格式错误。
+ * 两个判据都以 trim 后的值为准，这个缝才补得上。
+ */
+export function isBlankCard(value) {
+  return !str(value).trim()
 }
 
 /**

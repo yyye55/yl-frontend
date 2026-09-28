@@ -48,7 +48,7 @@
       <div class="box-line-title">
         <div class="box-col">序号</div>
         <div class="box-col">姓名</div>
-        <div class="box-col">身份证号</div>
+        <div class="box-col">身份证后6位</div>
         <div class="box-col">性别</div>
         <div class="box-col">年龄</div>
         <div class="box-col">学校名称</div>
@@ -65,7 +65,7 @@
           <el-input v-model="item.name" placeholder="请输入姓名" size="mini" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证号码" size="mini" />
+          <el-input v-model="item.card" placeholder="请输入身份证后6位" size="mini" />
         </div>
         <div class="box-col">
           <el-select v-model="item.gender" placeholder="请选择" size="mini">
@@ -178,7 +178,7 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
-import { checkPersonBasics } from '@/config/personFields'
+import { checkPersonBasics, isBlankCard } from '@/config/personFields'
 
 const props = defineProps({
   /** 父组件传入的名单数组（通常是 form.person），可为 undefined / null */
@@ -248,14 +248,14 @@ function check() {
 /**
  * dist 的 checkLine 是一串嵌套三元表达式。这里改写成**顺序完全一致**的 if 链
  * （没有任何分支被合并或调换），逐项对应：
- *   姓名不能为空 → 身份证不能为空 → 年龄不能为空 → 性别需选择 → 性别格式只能是0、1
+ *   姓名不能为空 → 身份证后6位不能为空 → 年龄不能为空 → 性别需选择 → 性别格式只能是0、1
  *   → 学校名称不能为空 → 专业名称不能为空 → 电话号码不能为空
  *   → 身份需选择 → 角色需选择 → 验证成功
  * 注意「专业名称」在「电话」之前，这与 exportCheck 的顺序不同（dist 原文即如此）。
  */
 function checkLine(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
-  if (!item.card) return { flag: false, msg: '身份证不能为空' }
+  if (isBlankCard(item.card)) return { flag: false, msg: '身份证后6位不能为空' }
   if (!item.age) return { flag: false, msg: '年龄不能为空' }
   if (item.gender === undefined || item.gender === '') return { flag: false, msg: '性别需选择' }
   if (item.gender !== 0 && item.gender !== 1) return { flag: false, msg: '性别格式只能是0、1' }
@@ -280,7 +280,7 @@ function checkLine(item) {
  */
 function exportCheck(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
-  if (!item.card) return { flag: false, msg: '身份证不能为空' }
+  if (isBlankCard(item.card)) return { flag: false, msg: '身份证后6位不能为空' }
   if (!item.age) return { flag: false, msg: '年龄不能为空' }
   if (item.gender === undefined || item.gender === '') return { flag: false, msg: '性别需填写' }
   if (item.gender !== '男' && item.gender !== '女') return { flag: false, msg: '性别格式只能是男、女' }

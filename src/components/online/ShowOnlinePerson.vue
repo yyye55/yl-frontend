@@ -10,7 +10,7 @@
     <el-table :data="leaderRows" border size="mini" style="width:100%">
       <el-table-column type="index" label="序号" align="center" header-align="center" />
       <el-table-column prop="name" label="姓名" align="center" header-align="center" />
-      <el-table-column prop="card" label="身份证号" align="center" header-align="center" />
+      <el-table-column prop="card" label="身份证后6位" align="center" header-align="center" />
       <el-table-column prop="gender" label="性别" align="center" header-align="center" />
       <el-table-column prop="age" label="年龄" align="center" header-align="center" />
       <el-table-column prop="unit" label="所在单位" align="center" header-align="center" />
@@ -27,7 +27,7 @@
     <el-table :data="crewRows" border size="mini" style="width:100%">
       <el-table-column type="index" label="序号" align="center" header-align="center" />
       <el-table-column prop="name" label="姓名" align="center" header-align="center" />
-      <el-table-column prop="card" label="身份证号" align="center" header-align="center" />
+      <el-table-column prop="card" label="身份证后6位" align="center" header-align="center" />
       <el-table-column prop="age" label="年龄" align="center" header-align="center" />
       <el-table-column prop="gender" label="性别" align="center" header-align="center" />
       <el-table-column prop="school" label="学校或单位名称" align="center" header-align="center" />

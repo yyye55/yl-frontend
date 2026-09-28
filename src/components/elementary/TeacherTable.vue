@@ -32,7 +32,7 @@
           所以老列不会错位、老数据的渲染结果逐像素不变。
         -->
         <div class="box-col">署名排序</div>
-        <div class="box-col">身份证号</div>
+        <div class="box-col">身份证后6位</div>
         <div class="box-col">性别</div>
         <div class="box-col">年龄</div>
         <div class="box-col">学校名称</div>
@@ -199,7 +199,7 @@
           </el-select>
         </div>
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证号码" />
+          <el-input v-model="item.card" placeholder="请输入身份证后6位" />
         </div>
         <div class="box-col">
           <el-select v-model="item.gender" placeholder="请选择">
@@ -355,7 +355,7 @@
 // 【第十二届·第五轮】新增 computed —— 用于「署名排序已占用」的互斥判定
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { checkPersonBasics } from '@/config/personFields'
+import { checkPersonBasics, isBlankCard } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
 /* 【第十二届·第三轮】单张上传照片的零件，与参展人员表共用同一份实现
    （@/composables/usePhotoUpload）：体积上限、JPG、命名规则、OSS 通道、
@@ -791,10 +791,16 @@ function check() {
  *            : {年龄不能为空}) : {身份证不能为空}) : {姓名不能为空}
  * 下面按同一判定顺序改写成 if 链，**判定顺序、判定条件、返回文案逐条对齐**，
  * 唯一区别是可读性（等价改写，不是简化：没有合并/删除任何分支）。
+ *
+ * 【2026-09-28 起上面引的 dist 原文与实现有两处不一致，都是有意的】
+ *   ① 身份证那条的判据与文案：dist 是 `!e.card` +「身份证不能为空」；现改为
+ *      `isBlankCard(e.card)` +「身份证后6位不能为空」—— 字段语义由完整 18 位改成后 6 位，
+ *      判据改 trim 后判的理由见 personFields.isBlankCard。
+ *   ② 上面引的 dist 原文本身保持原样（它是取证记录，不跟着改）。
  */
 function checkLine(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
-  if (!item.card) return { flag: false, msg: '身份证不能为空' }
+  if (isBlankCard(item.card)) return { flag: false, msg: '身份证后6位不能为空' }
   if (!item.age) return { flag: false, msg: '年龄不能为空' }
   if (item.gender === undefined || item.gender === '') return { flag: false, msg: '性别需选择' }
   if (!item.school) return { flag: false, msg: '学校名称不能为空' }
@@ -864,7 +870,10 @@ defineExpose({ getData, getCacheData })
  *   列宽下限 = 文本宽 + .box-col 左右 padding 5×2 + 左边框 1 + 控件自身 chrome
  *   · 输入框 chrome：.el-input__wrapper 的 padding 1px 11px → 22px
  *   · 下拉框 chrome：.el-select__wrapper 的 padding 12×2 + gap 6 + 箭头 14 → 44px
- *   · 文本宽：14px 字号下中文一字 14px；18 位身份证约 145px
+ *   · 文本宽：14px 字号下中文一字 14px
+ *     【2026-09-28】身份证列原按「18 位号码约 145px」定 178px；现字段改为后 6 位，
+ *     内容与表头（「身份证后6位」84px）都远低于该下限，本列**留白变多但不动下限** ——
+ *     改权重必须与 PersonTable 同步、且这些值是逐像素量过的，收益小、风险大。
  *   例：「请输入姓名」5 字 = 70px → 70 + 11 + 22 = 103，取 105 留 2px 余量。
  *
  * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。

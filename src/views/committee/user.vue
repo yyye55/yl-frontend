@@ -13,7 +13,7 @@
 
   API:
     - list:    GET  /api/committee/user/list   → 过滤 type ∈ {0, 1, 5}
-                                                 （学校端 / 市州端 / 中小学端）
+                                                 （高校端 / 市州端 / 中小学端）
                                                  可再带 ?type= 在范围内收窄；
                                                  传 2/3/4 返回空表，不会越权
     - update:  PUT  /api/committee/user/        body { id, password } → 仅当 password 非空时改密码
@@ -46,6 +46,9 @@
       逐字一致：读列表接口本来就返回的 parent_id，再用本页额外一次 ?type=1
       查出的市州账号建对照表换成名称。不新增接口、不改后端、不新增样式。
       没有归属的账号显示「—」（两页统一）。
+    - 搜索框合并回一个：删除了旁边那个只匹配名称的独立输入框，
+      「账号 / 电话 / 名称」统一由 keyword 框搜（它本来就是这三列的 OR）。
+      后端与接口不动，只是不再发 nickname 参数。详见模板里那段注释。
     - 与 admin/user.vue 的同名函数保持同步（两处一起改，见其文件头）。
 -->
 <template>
@@ -57,6 +60,17 @@
         （yilinbei hou/apps/api/views.py:526，与 admin/user 同一个函数）里 keyword
         是一个三选一的 OR：`Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
         所以把三个列名都写出来。本页表格里的「名称 / 账号 / 修改人联系方式」正是这三列。
+
+        【本次变更：删掉了旁边那个独立的「请输入名称」框】
+        原先并排摆着两个框：这个 keyword 框 + 一个只匹配 nickname 的框。实际用起来
+        两者搜的东西高度重叠 —— 后者能搜到的，前者全都能搜到（keyword 的 OR 里本来
+        就含 nickname），区别只是前者还会带出「账号或电话里含这几个字」的行。
+        对使用者来说这不是"多一个精确选项"，而是"同一个搜索要分两次填、还得先想清楚
+        填哪个框"。现在只留这一个：账号、电话、名称都在这里搜。
+        【后端不动】user_list 的独立 nickname 参数（views.py:527-528）仍在，只是本页
+        不再发它 —— 不传即不筛，与传 null 等价。将来若要恢复"只按名称筛"，
+        把 el-input 和 getData 里的 nickname 参数一起加回来即可。
+        与 admin/user.vue 同步（两处一起改，见其文件头）。
       -->
       <el-input
         v-model="keyword"
@@ -70,17 +84,13 @@
       </el-input>
 
       <!--
-        【本次新增】后端 user_list 新增的独立 nickname 参数（views.py:527-528，icontains）。
-        【它和上面那个框的区别 —— 为什么不嫌重复】keyword 是三选一的 OR，
-        搜「实验小学」时账号或电话里含这几个字的行也会被带出来；本框只匹配名称。
-        【和 keyword / type 之间是 AND】后端几个条件都是 .filter() 叠加，
-        「名称含实验小学 + 类型=学校端」是交集，不是并集。
-        与 admin/user.vue 的同名改动保持一致（两处一起改，见其文件头）。
-      -->
-      <el-input v-model="nickname" placeholder="请输入名称" @change="getData" />
-
-      <!--
         类型筛选。与 admin/user.vue 那页是同一个东西，选项、取值、注释口径都一致。
+        【「高校端」这个叫法】type=0 的显示名本次从「学校端」改成了「高校端」，
+        理由与命名对照（后端/路由里仍叫 school/学校，是同一个 type）写在
+        src/config/accountTypes.js 的 TYPE_LABEL[0] 上方。
+        ⚠️ 下面这行的 label 是**写死的字面量**，不读 TYPE_LABEL ——
+        改显示名时这里和 admin/user.vue 那一页要一起动手，三处漏一处就会出现
+        「表格里叫高校端、下拉里叫学校端」。
         【选项为什么只有 0/1/5 三个】后端 user_list 先卡死展示范围 type__in=(0,1,5)，
         再把 type 作为 AND 条件叠加上去。所以传 2/3/4 一定返回空表 ——
         下拉里摆组委会(2)/管理员(3)/省级(4)，等于给用户一个必然筛不出东西的按钮。
@@ -92,7 +102,7 @@
       -->
       <el-select v-model="filterType" placeholder="全部类型" @change="onFilterTypeChange">
         <el-option label="全部类型" :value="''" />
-        <el-option label="学校端" :value="0" />
+        <el-option label="高校端" :value="0" />
         <el-option label="市州端" :value="1" />
         <el-option label="中小学端" :value="5" />
       </el-select>
@@ -158,7 +168,7 @@
             在后端是**同一个 user_list 函数**，行数据结构完全相同。
 
             【为什么不是每个账号都有值】归属只对中小学账号（type=5）有意义：
-            · 学校端（0）的 parent_id 没有业务含义；
+            · 高校端（0）的 parent_id 没有业务含义；
             · 市州端（1）自己就是市州，谈不上"所属市州"。
             判据因此与管理员端完全一致：row.type === 5 ? ... : '—'。
 
@@ -241,13 +251,11 @@ import { TYPE_LABEL } from '@/config/accountTypes'
  */
 const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
 
-const keyword = ref(null)
-
 /**
- * 【本次新增】对应后端 user_list 的独立 nickname 参数，只匹配名称这一列。
- * 初值 null = 不筛，见 getData()。
+ * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py:526），
+ * 所以这一个框就是「账号 / 电话 / 名称」三合一的搜索入口，见模板里那段注释。
  */
-const nickname = ref(null)
+const keyword = ref(null)
 
 /**
  * 「类型」筛选选中的值。空串 = 全部（不筛类型）。
@@ -286,7 +294,7 @@ const exporting = ref(false)
  * 所以这里不引入任何新的失败模式、不涉及任何新的权限，只是提前多发一次。
  *
  * 【为什么不能从本页的 data 里找】data 是**分页 + 筛选**过的：
- * 停在第 2 页、或筛了「学校端」时，市州账号根本不在 data 里，翻不到。
+ * 停在第 2 页、或筛了「高校端」时，市州账号根本不在 data 里，翻不到。
  *
  * 【为什么不去改后端的 user_dict 加个 parent_name】
  * user_dict 是全局共用的序列化函数，有 9 处调用方（登录接口、获取当前用户、
@@ -388,7 +396,7 @@ function handleCurrentChange(current) {
  *
  * 后端 apps/api/views.py user_list 的展示范围（admin 与 committee 走同一个函数）：
  *   qs = User.objects.filter(type__in=(0, 1, User.TYPE_PRIMARY_SECONDARY))
- *   ← 学校端(0) / 市州端(1) / 中小学端(5)
+ *   ← 高校端(0) / 市州端(1) / 中小学端(5)
  * 【这段以前写的是 (0, 4)，早就不对了】0/4 是更早的版本（学校 + 省级），
  * 后来改成 0/1/5 而注释没跟上；`user_list(committee=True)` 那个签名也是
  * 另一条分支上的旧写法，当前 master 上是 user_list(request)。
@@ -400,18 +408,17 @@ function getData() {
   const params = {
     page: page.value,
     limit: limit.value,
-    keyword: keyword.value,
-    // 【本次新增】后端 user_list 的独立 nickname 参数（icontains）。
+    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py:526）。
     // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword 的处理一致。
-    nickname: nickname.value,
+    // 也就是「框里没填」= 不传该条件。
+    keyword: keyword.value,
     parent_id: true  // 【dist 原样】后端忽略，但 dist 原文确实发了这个参数
   }
 
   // ── 类型筛选：只有选了具体类型才把 type 塞进请求 ──────────────────────
-  // 【为什么不能写 if (filterType.value)】0（学校端）在 JS 里是 falsy。
-  //   那样一选「学校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
-  //   用户报障时只会说「学校端筛不出来」，很难往这上面想。必须显式判空。
+  // 【为什么不能写 if (filterType.value)】0（高校端）在 JS 里是 falsy。
+  //   那样一选「高校端」参数就被丢掉、列表显示全部，而 1 和 5 都正常 ——
+  //   用户报障时只会说「高校端筛不出来」，很难往这上面想。必须显式判空。
   // 【没选时为什么整个 key 都不发】后端 user_list 读的是 request.GET.get("type")，
   //   它对空串是安全的（`account_type not in (None, "")`），所以传 '' 也不会错。
   //   这里仍然不发，是为了不依赖后端那一句实现 —— 后端哪天真改成「按 key 是否存在」

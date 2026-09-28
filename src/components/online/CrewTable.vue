@@ -25,9 +25,10 @@
       <br>例如：<span style="color:blue">123456.png</span> 则与身份证号后6位为
       <span style="color:blue">123456</span> 的人员对应。
       <!--
-        【本轮补的第 3 条】它是**新增**的写法，上面两条照旧有效（判据见
+        【本轮补的第 3 条，必须**常驻**】它是**新增**的写法，上面两条照旧有效（判据见
         expectedOnlinePhotoNames：本表原来认什么，改完还是认什么）。写在这里是因为
-        用户是照着这段红字命名文件的，而撞号在拖文件之前就该能预防。
+        用户是照着这段红字命名文件的，而撞号在拖文件之前就该能预防 —— 下面那条撞号
+        提示只在真的撞了之后才出现，光靠它，没撞号的用户读不到这条规则。
       -->
       <br>3、若表内有两人身份证号后6位相同，可改用「姓名+身份证号后6位」命名（例如
       <span style="color:blue">张小明123456.png</span>）加以区分。
@@ -37,7 +38,7 @@
       【本轮新增】表内撞号提示。紧跟在命名说明下面：用户读完「怎么命名」的下一行
       就是「你这份表里有两行会撞」。内容由 photoCollisionText 生成 —— 它的判据与
       批量上传那侧是同一个函数，不会出现「这里说不会撞、上传却失败」。
-      没有撞号时整段不渲染，不改变任何数据。
+      没有撞号时整段不渲染，不改变任何数据。文案里会点名行号，理由见该函数注释。
     -->
     <div v-if="photoCollisionText" class="collision-tip">{{ photoCollisionText }}</div>
 
@@ -217,6 +218,9 @@ watch(() => props.showdata, (val) => {
  * 【本表口径】不分身份：type=0 和 type=1 的行都认「后6位」与「姓名+后6位」两种
  * （这是本表原来的公开口径，本次只增不减）。所以两个学生、两个教师、或一个学生
  * 一个教师，只要后 6 位相同，就都会撞 —— 这正是本表原本就会出现的场面。
+ *
+ * 【文案为什么要点名行号】撞号在界面上看不出来，不报行号用户得自己一行行比对后 6 位。
+ * rows 因此要进文案，name 不进 —— 理由见 formatPhotoCollisions 的注释。
  */
 const photoCollisions = computed(() =>
   findPhotoNameCollisions(data.value, expectedOnlinePhotoNames)

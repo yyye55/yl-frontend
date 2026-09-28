@@ -39,14 +39,20 @@
                 写在这里是因为用户是照着这行红字命名文件的，而撞号在填表阶段就要能预防。
                 措辞里特意不写「教师请用…」——本表两种身份混排，且教师本来就只收带姓名的
                 那种（规则在 expectedPhotoNames 里，此处不重复解释，免得改一处漏一处）。
+
+                【这句必须**常驻**，不能删】下面那条红字是撞号时才冒出来的，只靠它的话，
+                没有撞号的用户从头到尾读不到「后6位会重复」这条规则 —— 而恰恰是他们需要
+                在命名文件之前就知道。所以规则本身留在这里，红字只负责「你已经撞了」这一句。
               -->
               <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="font-weight: bold">123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456 </span>的人员对应。若表内有两人身份证后6位相同，可改用「姓名+身份证号后6位」命名（例如：<span style="font-weight: bold">张小明123456.jpg</span>）加以区分。</p>
 
               <!--
                 【第九轮新增】撞号提示。位置紧跟上面那条命名规则：用户读到「怎么命名」
                 的下一行就是「你这一份表里有两行会撞」，两句话在同一次视线里。
-                内容由 photoCollisionText 生成（判据与上传路径同源，见其注释）。
+                内容由共用模块的 formatPhotoCollisions 生成（判据与上传路径同源，见其注释）。
                 没有撞号时整段不渲染 —— 它是条件渲染的一行红字，不改变任何数据。
+                文案里会点名行号（「第一行和第三行…」），因为撞号在界面上看不出来；
+                但不报那两行实际会重名的文件名，理由见该函数注释。
               -->
               <p v-if="photoCollisionText" style="color: #d80e0e; margin: 10px 0; font-weight: bold">{{ photoCollisionText }}</p>
       <el-upload
@@ -576,6 +582,10 @@ watch(rowsSignature, () => emit('rows-change'))
  * 【data.value 可能是 undefined 吗】理论上会（`props.showdata ? props.showdata : []`
  * 挡不住「真值但非数组」）—— 所以交给 findPhotoNameCollisions 内部的判型，
  * 那里对非数组按「一行都没有」处理，不在这里补第二道守卫。
+ *
+ * 【文案为什么要点名行号】撞号在界面上看不出来（两行长得完全不一样，只是后 6 位恰好相同），
+ * 不报行号用户得自己一行行比对。所以 rows 是要进文案的，而 name 不进 —— 理由见
+ * formatPhotoCollisions 的注释。
  */
 const photoCollisions = computed(() => findPhotoNameCollisions(data.value))
 

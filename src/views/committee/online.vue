@@ -56,16 +56,21 @@
       </el-input>
 
       <!--
-        【第十二届改造】同 /online/list，红头文件仅设 5 个组别。
-        【BE-02 必须后端确认】实际后端 group 字段存储值待与后端对齐。
+        【组别取值已确认：小学组 / 中学组 / 大学组】（同 /online/list，两处一起改）
+        第 12 届的 5 个组合是「乐团类别 × 参演组别」的乘积，后端拆成两列存；
+        本页下拉此前写的拼接串「管乐团-小学组」在库里任何一列都不存在 —— 选任何一项都是空表。
+        证据见 /online/list 同处的注释（migration 0007 字段注释 / registration_form.py:260 /
+        views.py:512 / export_services.py:97）。
+
+        本页接口 committeeApi.online.getList → GET /api/committee/online/list
+        （apps/api/views.py:937）→ role_error(request, 2) or live_page(request)，
+        live_page（:241）对 group 做精确 filter(group=...)，取值必须逐字相同。
       -->
       <el-select v-model="group" placeholder="组别" size="mini" @change="getData">
         <el-option label="全部" :value="null" />
-        <el-option label="管乐团-小学组" value="管乐团-小学组" />
-        <el-option label="管乐团-中学组" value="管乐团-中学组" />
-        <el-option label="管乐团-大学组" value="管乐团-大学组" />
-        <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
-        <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
+        <el-option label="小学组" value="小学组" />
+        <el-option label="中学组" value="中学组" />
+        <el-option label="大学组" value="大学组" />
       </el-select>
 
       <!-- dist 该页的按钮宽度走内联 style，本页 CSS 中没有 .menu-button 规则 -->

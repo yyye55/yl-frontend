@@ -16,18 +16,38 @@
         </template>
         <template #prepend>
           <!--
-            【第十二届改造】红头文件第十二届仅设 5 组（管乐团小学/中学/大学 + 铜管乐团小学/中学）。
+            【组别取值已确认：小学组 / 中学组 / 大学组】
+            第 12 届红头文件确实只有 5 个组合（管乐团小学/中学/大学 + 铜管乐团小学/中学），
+            但那是「乐团类别 × 参演组别」两个维度的乘积，后端把它们拆成两列存：
+              · Report.establishment / LiveReport 无此列 —— 乐团类别（管乐团 / 铜管乐团）
+              · Report.group / LiveReport.group       —— 参演组别（小学组 / 中学组 / 大学组）
+            本页下拉此前写的是拼接串「管乐团-小学组」，把两个维度压成了一个字符串，
+            而库里任何一列都不存在这个值 —— 选任何一项都是零匹配（整页空表）。
+
+            证据（本轮后端代码核对）：
+              · apps/core/migrations/0007_db_comments.py:164
+                live_report.group 字段注释：「节目组别：小学组 / 中学组 / 大学组」
+              · apps/core/migrations/0007_db_comments.py:64
+                report.group 字段注释：同上
+              · apps/core/migrations/0009_...py:9
+                「组别 report.group 存中文名（小学组/中学组/大学组，历史数据与数字串混用）」
+              · apps/api/registration_form.py:260 校验白名单 ("小学组","中学组","大学组")
+              · apps/api/views.py:512 统计按 ("小学组","中学组","大学组") 三档
+              · apps/api/export_services.py:97 映射 {"小学组":1,"中学组":2,"大学组":3}
+
+            本页接口 liveApi.getLiveReportList → GET /api/live/list → 后端 live_page()
+            （apps/api/views.py:241）对 group 做的是精确 filter(group=...)，故取值必须逐字相同。
+
             原 dist 选项「大学生甲组/大学生乙组/高校教师组/中小学教师组/中小学生组」
-            均为 11 届及更早的组别，本次活动已取消。
-            【BE-02 必须后端确认】实际后端 group 字段存储值（0-4 还是字符串）待与后端对齐。
+            是 11 届及更早的组别，本次活动已取消，不再保留。
+            「管乐团 / 铜管乐团」这一维度本次无法在本页筛（后端 live_page 只认 group，
+            没有 establishment 参数）—— 已记入 docs/ 的后续改法文档，待后端加参数后再补。
           -->
           <el-select v-model="group" placeholder="组别" size="mini" clearable @change="getData">
             <el-option label="全部" :value="null" />
-            <el-option label="管乐团-小学组" value="管乐团-小学组" />
-            <el-option label="管乐团-中学组" value="管乐团-中学组" />
-            <el-option label="管乐团-大学组" value="管乐团-大学组" />
-            <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
-            <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
+            <el-option label="小学组" value="小学组" />
+            <el-option label="中学组" value="中学组" />
+            <el-option label="大学组" value="大学组" />
           </el-select>
         </template>
       </el-input>

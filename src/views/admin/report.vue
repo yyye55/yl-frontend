@@ -61,17 +61,33 @@
 
       <el-select v-model="group" placeholder="组别" @change="getData">
         <!--
-          【第十二届改造】原 11 届下拉框为「中小学组/大学组/中小学教师组/高校教师组」，
-          第十二届按红头文件调整为五个正式组别（管乐团小学/中学/大学 + 铜管乐团小学/中学）。
-          后端 Report.group 为 CharField，存字符串（如 "管乐团-小学组"），
-          filter 参数用字符串值以匹配 scoped_total / report_queryset 的字符串过滤逻辑。
+          【组别取值已修正：小学组 / 中学组 / 大学组】
+          原 11 届下拉为「中小学组/大学组/中小学教师组/高校教师组」；第十二届改造时
+          按红头文件的 5 个组合改成了「管乐团-小学组」等拼接串 —— 方向对、编码错。
+
+          第十二届的 5 个组合确实是「管乐团小学/中学/大学 + 铜管乐团小学/中学」，
+          但那是两个维度的乘积，后端是拆成两列存的：
+            · establishment —— 乐团类别（"管乐团" / "铜管乐团"）
+            · group         —— 参演组别（"小学组" / "中学组" / "大学组"）
+          report_queryset（apps/api/views.py:95）对 group 做的是精确 Q(group=...)，
+          「管乐团-小学组」在 group 列里不存在 —— 选任何一项都是整页空表。
+
+          证据：
+            · apps/core/migrations/0007_db_comments.py:64
+              report.group 字段注释：「节目组别：小学组 / 中学组 / 大学组」
+            · apps/core/migrations/0009_...py:9
+              「组别 report.group 存中文名（小学组/中学组/大学组，历史数据与数字串混用）」
+            · apps/api/registration_form.py:260 校验白名单 ("小学组","中学组","大学组")
+            · apps/api/views.py:512 统计按 ("小学组","中学组","大学组") 三档
+            · apps/api/export_services.py:97 映射 {"小学组":1,"中学组":2,"大学组":3}
+
+          「管乐团 / 铜管乐团」这一维度本页暂时筛不了 —— report_queryset 没有
+          establishment 参数；已记入 docs/ 的后续改法文档，待后端加参数后再补一个下拉。
         -->
         <el-option label="全部" :value="null" />
-        <el-option label="管乐团-小学组" value="管乐团-小学组" />
-        <el-option label="管乐团-中学组" value="管乐团-中学组" />
-        <el-option label="管乐团-大学组" value="管乐团-大学组" />
-        <el-option label="铜管乐团-小学组" value="铜管乐团-小学组" />
-        <el-option label="铜管乐团-中学组" value="铜管乐团-中学组" />
+        <el-option label="小学组" value="小学组" />
+        <el-option label="中学组" value="中学组" />
+        <el-option label="大学组" value="大学组" />
       </el-select>
 
       <el-button class="menu-button" type="primary" @click="refresh"> 刷新</el-button>

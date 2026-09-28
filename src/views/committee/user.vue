@@ -7,6 +7,14 @@
   业务说明：
     - 父路由：/committee (meta.role = 2 → type=2 组委会)
     - 后端 apps/api/views.py committee_report_list / user_list / user_update_admin / user_export_admin
+      ⚠️ 这四个函数与管理员侧 /admin/* 是**同一批函数**，但两侧的行为已经被
+      **按账号类型分开了**（2026-09-28 两批改动的结果），不能默认对称：
+                  管理员侧          组委会侧（本页）
+        list      (0,1,2,5)         (0,1,5)
+        export    (0,1,2,5)         (0,1,5)
+        update    不限（含组委会）    只能 0/1/5
+        create    支持 type=2       强制 type=0
+      本文件下方凡涉及这几个接口的说明，一律以本表为最新口径。
 
   表格列（dist 原文）：
     序号 / 名称 / 账号 / 修改人姓名 / 修改人联系方式 / 其他信息 / 操作(重置密码)
@@ -16,8 +24,18 @@
                                                  （高校端 / 市州端 / 中小学端）
                                                  可再带 ?type= 在范围内收窄；
                                                  传 2/3/4 返回空表，不会越权
-    - update:  PUT  /api/committee/user/        body { id, password } → 仅当 password 非空时改密码
-    - export:  GET  /api/committee/user/export  → Blob xlsx（committee 看到所有 user，admin 只看到 type=0）
+    - update:  PUT  /api/committee/user/        body { id, password }
+                                                 → 请求体里**只要出现 password 这个键**就重置为
+                                                   默认密码（值是发来的什么都不看，见下方
+                                                   resetPassword() 那段；原注释「仅当非空时改密码」
+                                                   已不成立）
+                                                 → 且**只能改 0/1/5 的账号**：id 指向管理员或其他
+                                                   组委会账号时返回 {"code":1,"msg":"用户不存在"}
+                                                 → 本页只用它做「重置密码」，见 resetPassword()
+    - export:  GET  /api/committee/user/export  → Blob xlsx，导出范围 **(0,1,5)**
+                                                 （2026-09-28 起收窄：此前是整表导出，连管理员
+                                                   账号都会出现在导出的 Excel 里；管理员侧同期改为
+                                                   (0,1,2,5)。详见下方 download() 那段）
                                                  后端会写 log (write_log action_type=6)
 
   dist 已知缺陷/死代码（保持原行为，不擅自修复）：
@@ -474,8 +492,17 @@ function getData() {
  *
  * 注意：dist 这里是直接调用 committee.user.update 而不是 admin 路由。
  * 后端 apps/api/views.py register_user_routes("/committee", 2) 的 PUT /api/committee/user/
- * 调用的是 user_update_admin —— 它会接受任意 user_id 修改（不像 /api/user 那样限制自己），
+ * 调用的是 user_update_admin —— 与 /api/user（只能改自己）不同，它能改**别人**的账号，
  * 这是 committee 域特有的管理能力。
+ *
+ * 【2026-09-28 收窄：不再是"任意 user_id"】组委会侧的 user_update_admin 现在只认
+ * 0/1/5 的账号；id 指向管理员(3) 或别的组委会(2) 账号时，返回
+ * {"code": 1, "msg": "用户不存在"}。管理员侧仍是"不限"，含组委会账号。
+ *   · 本页**不受影响**：row 来自本页列表，而列表只有 0/1/5，界面上点不到越界的行。
+ *   · 但别再把上面那句旧说法当依据 —— 将来若给本页加"按 id 操作"的功能
+ *     （例如启用 dist 那套死代码 modify(row)，见文件头第 2 条），前端不能假设
+ *     "后端什么都能改"：越界的 id 会静默变成一句「用户不存在」，
+ *     看着像账号被删了，极难查。
  *
  * 【本次变更：prompt → confirm，重置为默认密码】
  *  后端不再接受调用方指定的新密码：user_update_admin 里
@@ -539,8 +566,15 @@ function resetPassword(id) {
  * 【本仓库增强，dist 无】exporting 防重复点击 + 按钮 :loading。
  *
  * 后端：GET /api/committee/user/export → xlsx
- * committee 用户看到所有 user；admin 用户只看到 type=0
- * （apps/api/views.py:596 user_export_admin；行号随后端文件变动，对不上时按函数名搜）
+ * 导出范围 **(0,1,5)**：只有学校端 / 市州端 / 中小学端。
+ * 【2026-09-28 收窄 —— 这句以前写的是「committee 看到所有 user，admin 只看到 type=0」，
+ *   两侧的口径**都**过期了】
+ *   · 组委会侧：以前是**整表导出**（连管理员账号都会出现在导出的 Excel 里），
+ *     现在收窄到 0/1/5；
+ *   · 管理员侧：同期改为 (0,1,2,5) —— 含组委会账号，但**不含市州端(1)**。
+ *     旧说法「admin 只看到 type=0」连市州端都没提到。
+ * （apps/api/views.py user_export_admin，两侧共用这一个函数；
+ *   行号随后端文件变动，对不上时按函数名搜）
  */
 function download(name) {
   if (exporting.value) return

@@ -2,13 +2,14 @@
   <div class="bg">
     <div class="options">
       <!--
-        【本次变更：placeholder 不再写「请输入内容」】
+        【本次变更：一个框搜三个字段，placeholder 写全三个列名】
         「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。
-        后端 report_queryset（yilinbei hou/apps/api/views.py:102-118）里 keyword 的匹配范围
-        **取决于调用方**：只有 current_user / user_ids 都是 None 时才落在
-        `Q(name__icontains) | Q(choir_name__icontains)` 那一支（上面「其他说明」里已记录
-        超管匹配 name 与 choir_name）。管理员正在这一支上，所以两个列名都写进框里，
-        与本页表格表头（合唱团名称 / 节目名称）一致。
+        后端 report_queryset（yilinbei hou/apps/api/views.py）里 keyword 原先的匹配范围
+        **取决于调用方**：管理员这一支是 `Q(name) | Q(choir_name)`，
+        而市州/学校/中小学端只匹配 name（见 components/elementary/ReportList.vue）——
+        同一个框在不同身份的页面上搜的范围不一样，且谁也搜不到 school_name。
+        本次后端把 keyword 统一扩成「name | choir_name | school_name」，
+        三处对齐成同一套口径，所以 placeholder 也把三个列名一起写出来。
       -->
       <el-input
         v-model="keyword"
@@ -24,13 +25,15 @@
       </el-input>
 
       <!--
-        【本次新增】后端 report_queryset 新增的两个模糊查询参数（icontains，可与 keyword 组合）。
-        keyword 虽然也能命中合唱团名，但**搜不到学校名**（school_name 从不参与 keyword）；
-        而且用 keyword 搜合唱团名时它会同时扫节目名，容易带出不相干的行。
-        想精确定位时用这两个框。
+        【本次变更：两个框收掉了】
+        这里原先还有合唱团名、学校名两个独立输入框，走的是后端 report_queryset 的
+        choir_name / school_name 参数。那两个参数与 keyword 是 **AND** 关系，
+        解决的是「再叠一层筛选」，而不是「一个框搜更多字段」——
+        本页的 keyword 当时能命中 name 与 choir_name、唯独搜不到 school_name，
+        才需要单摆一个学校名框。
+        现在后端已把 keyword 扩成「曲目名 | 乐团名 | 学校名」（见 report_queryset
+        里 keyword 那段注释），再用单独的框去叠关键词只会越筛越少，故收回。
       -->
-      <el-input v-model="choirName" placeholder="请输入合唱团名称" @change="getData" />
-      <el-input v-model="schoolName" placeholder="请输入学校名称" @change="getData" />
 
       <!--
         placeholder 写「全部」而不是「审核状态」：
@@ -209,15 +212,13 @@ import ShowContent from '@/components/common/ShowContent.vue'
 import ShowPerson from '@/components/common/ShowPerson.vue'
 
 /**
- * 【本次新增】keyword 输入框的 placeholder 文本。
- * 本页 keyword 同时匹配 name 与 choir_name（见模板中的说明），故两个列名都写出来。
+ * 【本次变更】keyword 输入框的 placeholder 文本。
+ * 本页 keyword 现在匹配 name / choir_name / school_name 三个字段（见模板中的说明），
+ * 故三个列名都写出来 —— 不写全，用户会以为这个框还是只管节目名与合唱团名。
  */
-const KEYWORD_PLACEHOLDER = '请输入节目/合唱团名称'
+const KEYWORD_PLACEHOLDER = '请输入节目/合唱团/学校名称'
 
 const keyword = ref(null)
-// 【本次新增】对应后端 report_queryset 的 choir_name / school_name 两个参数
-const choirName = ref(null)
-const schoolName = ref(null)
 const group = ref(null)
 // dist 原文声明但全程未使用的遗留字段，保留以对齐原文
 const isDelete = ref(null)
@@ -234,12 +235,10 @@ function getData() {
     limit: limit.value,
     keyword: keyword.value,
     group: group.value,
-    status: status.value,
-    // 【本次新增】后端 report_queryset 的另外两个 icontains 参数。
-    // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
-    // 也就是「框里没填」= 不传该条件 —— 与上面 keyword / group / status 的处理一致。
-    choir_name: choirName.value,
-    school_name: schoolName.value
+    status: status.value
+    // 【本次变更】原先这里还带 choir_name / school_name 两个参数（对应上面被收掉的两个框）。
+    // 现在 keyword 一个就覆盖三个字段。值为 null 时无需剔除的写法保持不变
+    // —— axios 的默认序列化器会丢弃 null/undefined，即「框里没填」= 不传该条件。
   }
   adminApi.report.getList(params).then(({ data: res }) => {
     // 分页契约：{ data:[...], count:N, code:0, msg:'' }

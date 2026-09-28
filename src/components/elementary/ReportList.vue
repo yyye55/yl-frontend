@@ -567,7 +567,9 @@ onMounted(() => {
  * 约 182px），而 220px 扣掉右侧后置按钮（约 40px）与 .el-input__wrapper 左右内边距
  * （22px）只剩约 158px —— 右半句直接被裁掉，用户看不全。
  * 300px 下留给文字约 238px，13 个字有富余；再长就换行，.options 本来就是 flex-wrap。
- * 四个页面（本文件 / committee 两个 / admin/report.vue）用的是同一个值，改要一起改。
+ * 三个页面（本文件 / committee 两个）用的是同一个值，改要一起改。
+ * 【2026-09-29】原第 4 处 admin/report.vue 已随仓库清理删除（该页路由更早已摘除，属打不开的死代码），
+ * 所以现在是「三处一起改」，不要再去找那个文件。
  */
 .options > .el-input {
   width: 300px !important;

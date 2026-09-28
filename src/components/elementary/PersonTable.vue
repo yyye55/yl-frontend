@@ -1309,9 +1309,21 @@ defineExpose({ getData, getCacheData })
  *   · 下拉框 chrome：.el-select__wrapper 的 padding 12×2 + gap 6 + 箭头 14 → 44px
  *   · 文本宽：14px 字号下中文一字 14px；使用乐器「次中音萨克斯」84px
  *     【2026-09-28】身份证列原按「18 位号码约 145px」定 178px；现字段改为后 6 位，
- *     内容与表头（「身份证后6位」84px）都远低于该下限，本列**留白变多但不动下限** ——
- *     改权重必须与 TeacherTable 同步、且这些值是逐像素量过的，收益小、风险大。
+ *     内容与表头（「身份证后6位」84px）都远低于该下限，本列留白变多。
+ *     【2026-09-28 第二次】这份留白本次借给年龄列 14px，见下一段「年龄列为什么加宽」。
  *   12 列下限合计 1376px ≤ 旧值 1382px，窄屏不会比改动前更容易横向滚动。
+ *
+ * 【年龄列为什么加宽：105 → 119px】
+ *   按上面的公式，年龄列下限 = 「请输入年龄」5 字 70px + 11 + 22 = 103，取 105 ——
+ *   与姓名列同值，理论上恰好放下（该列留 2px 余量）。但年龄这一格是
+ *   `<el-input type="number">`：Chrome 在获得焦点/悬停时会画出原生数字微调箭头，
+ *   那约 15px 是**从输入框内容区里扣的**，于是聚焦时留给 placeholder 的只剩
+ *   72 − 15 ≈ 57px，装不下 70px，右半截被裁 —— 用户报的就是「点进去输入年龄，
+ *   里面的字看不全」。姓名列同为 105px 却没有箭头，所以不受影响。
+ *   加宽到 119px 后，聚焦时仍有 86 − 15 = 71px ≥ 70px。
+ *   这 14px 从身份证列借（178 → 164），身份证列仍远超它实际需要的 117px（84 + 11 + 22）。
+ *   **12 列下限合计仍是 1376px**，窄屏横向滚动范围与改动前完全一致。
+ *   TeacherTable.vue 有一列同名、同值、同症状，两表必须同步改，否则总宽不再相等。
  *
  * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。
  *   1660px 是目前最常见的 1920 屏下 .box 的实宽（1440 视口同式得 1180）。
@@ -1330,9 +1342,10 @@ defineExpose({ getData, getCacheData })
 .box-line {
   display: grid;
   /*                     序号        姓名         身份证号      性别        年龄         学校名称      联系电话      身份        角色         使用乐器      电子照片      操作 */
+  /* 身份证 178 → 164、年龄 105 → 119：借 14px，合计仍是 1376px。见上方「年龄列为什么加宽」 */
   grid-template-columns:
-    minmax(30px, 1.00fr) minmax(105px, 1.45fr) minmax(178px, 1.95fr) minmax(99px, 1.12fr)
-    minmax(105px, 1.20fr) minmax(133px, 2.40fr) minmax(133px, 1.55fr) minmax(99px, 1.12fr)
+    minmax(30px, 1.00fr) minmax(105px, 1.45fr) minmax(164px, 1.95fr) minmax(99px, 1.12fr)
+    minmax(119px, 1.20fr) minmax(133px, 2.40fr) minmax(133px, 1.55fr) minmax(99px, 1.12fr)
     minmax(113px, 1.22fr) minmax(141px, 1.65fr) minmax(72px, 0.78fr) minmax(168px, 1.61fr);
   justify-content: stretch;
 }

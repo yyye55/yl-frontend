@@ -946,8 +946,17 @@ defineExpose({ getData, getCacheData })
  *   那个文案是 7 字 98px，会把这一列的下限顶到 155px、合计 1178px，
  *   于是 **1440 视口从「不滚」变成「滚 38px」**（已实测确认）。
  *   整张表的宽度预算是零和的 —— 其它 9 列的下限都是按「恰好放下 + 2px 余量」
- *   算出来的，没有一列有余量可让。列头本来就写着「署名排序」，
+ *   算出来的（唯一例外是身份证列，见下面「年龄列为什么加宽」）。列头本来就写着「署名排序」，
  *   占位写「请选择」不产生歧义，而且与本表「性别」列的 placeholder 写法一致。
+ *
+ * 【年龄列为什么加宽：105 → 119px（与 PersonTable.vue 同步，两表总宽才相等）】
+ *   年龄列下限 = 「请输入年龄」5 字 70px + 11 + 22 = 103，取 105，理论上恰好放下。
+ *   但这一格是 `<el-input type="number">`：Chrome 聚焦/悬停时会画出原生数字微调箭头，
+ *   那约 15px 是**从输入框内容区里扣的**，于是聚焦时只剩 72 − 15 ≈ 57px，
+ *   装不下 70px，右半截被裁。加宽到 119px 后聚焦时仍有 86 − 15 = 71px ≥ 70px。
+ *   这 14px 从身份证列借（178 → 164）：该列自字段改成「后 6 位」后实际只需 117px
+ *   （表头 84 + 11 + 22），164 仍有富余。
+ *   **下限合计仍是 1122px**，1440 / 1366 / 1920 三个视口的横滚情况与改动前完全一致。
  *
  * 【fr 权重仍留 0.85，没有跟着放大】下限 99px 已经恒大于
  *   0.85/19.94 分到的份额，实际宽度由下限决定，权重在这里已经不生效；
@@ -956,9 +965,10 @@ defineExpose({ getData, getCacheData })
 .box-line {
   display: grid;
   /*                     序号        姓名         署名排序      身份证号      性别        年龄         学校名称      联系电话      电子照片      操作 */
+  /* 身份证 178 → 164、年龄 105 → 119：借 14px，合计仍是 1122px。见上方「年龄列为什么加宽」 */
   grid-template-columns:
-    minmax(30px, 1.00fr) minmax(105px, 2.40fr) minmax(99px, 0.85fr) minmax(178px, 3.00fr)
-    minmax(99px, 1.60fr) minmax(105px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr)
+    minmax(30px, 1.00fr) minmax(105px, 2.40fr) minmax(99px, 0.85fr) minmax(164px, 3.00fr)
+    minmax(99px, 1.60fr) minmax(119px, 1.70fr) minmax(133px, 3.40fr) minmax(133px, 2.60fr)
     minmax(72px, 0.78fr) minmax(168px, 1.61fr);
   justify-content: stretch;
 }

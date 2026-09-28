@@ -13,14 +13,33 @@
         「曲目名 | 乐团名 | 学校名」（见 report_queryset 里 keyword 那段注释），
         前端据此收回成下面这一个框。
       -->
+      <!--
+        【本次变更：搜索框补上三个缺口】
+        ① 文字被裁。placeholder 是「请输入曲目/乐团/学校名称」共 13 个字，
+           约 182px；而 .options > .el-input 的宽度被样式钉在 220px，扣掉右侧
+           后置按钮（约 40px）与输入框内边距（22px）只剩约 158px —— 右半句
+           直接被裁掉，用户根本看不全这个框能搜哪三列。宽度已在样式里放宽到 300px。
+        ② 放大镜按钮是死的。此前是 `<el-button :icon="Search" />`，没有任何点击
+           事件；能搜出结果只是因为「点击会让输入框失焦、顺带触发 @change」，
+           属于蒙对的。现在显式绑上 @click。
+        ③ 不能一键清空。加了 clearable；点「×」是程序赋值，不会触发 change，
+           所以必须另外接 @clear，否则清空后列表不跟着刷新。
+
+        @mousedown.prevent 是为了不让按钮抢走输入框焦点：失焦会先触发一次
+        @change，紧接着 @click 再触发一次，同一组参数会发两条请求。阻止默认
+        行为后点击不再失焦，一次点击正好一条请求；真正失焦（如 Tab 走开）
+       仍然按 change 搜索一次。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
         :placeholder="KEYWORD_PLACEHOLDER"
+        clearable
         @change="getData"
+        @clear="getData"
       >
         <template #append>
-          <el-button><el-icon><Search /></el-icon></el-button>
+          <el-button :icon="Search" @mousedown.prevent @click="getData" />
         </template>
       </el-input>
 
@@ -388,7 +407,8 @@ const { canEditReport } = usePermission()
  * 本次把三个框收成一个，所以三个字段都要写进 placeholder：不写全，用户就不知道
  * 乐团名/学校名也搜得出来，会以为这个框还是只管曲目名。
  * 带「请输入」前缀是因为 el-input 的 placeholder 只在空值时显示；
- * 长度也要克制（.options > .el-input 的宽度被样式钉死在 220px，太长会截断）。
+ * 长度也要克制 —— 输入框宽度是定了值的（本次由 220px 放宽到 300px，见样式里那段说明），
+ * 文字超出就只会在右侧被裁掉，用户看不到后半句。
  */
 const KEYWORD_PLACEHOLDER =
   cfg.columns === 'I' ? '请输入节目/合唱团/学校名称' : '请输入曲目/乐团/学校名称'
@@ -540,14 +560,24 @@ onMounted(() => {
 }
 
 /* 子组件（el-input / el-select）的根元素会继承父作用域 id，故该规则在 Vue 3 下同样命中 */
+/*
+ * 【本次变更：220px → 300px】
+ * 220px 是照搬 dist 的值，但 dist 时代这个框的 placeholder 是「请输入内容」4 个字，
+ * 220px 够用。现在框里写的是一行要搜三列的名字（「请输入曲目/乐团/学校名称」13 个字，
+ * 约 182px），而 220px 扣掉右侧后置按钮（约 40px）与 .el-input__wrapper 左右内边距
+ * （22px）只剩约 158px —— 右半句直接被裁掉，用户看不全。
+ * 300px 下留给文字约 238px，13 个字有富余；再长就换行，.options 本来就是 flex-wrap。
+ * 四个页面（本文件 / committee 两个 / admin/report.vue）用的是同一个值，改要一起改。
+ */
 .options > .el-input {
-  width: 220px !important;
+  width: 300px !important;
 }
 
 /* 状态下拉必须给固定宽度，否则它占满整行、把刷新按钮挤到第三行。
    Element Plus 定义了 --el-select-width:100%，而 .el-select 的 width 就是取这个变量，
    于是下拉一旦成为 flex item，基准宽度就是 .options 的整个内容宽：第一行放完输入框
-   （220+10）后剩余空间放不下它，换行；独占一行后又与自身 margin-right:10px 抢空间，
+   （当时是 220+10，本次已加宽到 300+10，下面那组视口实测是加宽前做的）后剩余空间放不下
+   它，换行；独占一行后又与自身 margin-right:10px 抢空间，
    被迫收缩 10px，刷新按钮再被挤到下一行 —— 实测 1920/1600/1366/1280/1024 五个视口
    全是 3 行（下拉宽 = 容器内容宽 − 10，正好印证 width:100%）。
    同款写法见上面的 .el-input 规则；权重上 .options > .el-select[data-v-x] 已高于 .el-select，

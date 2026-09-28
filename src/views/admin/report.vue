@@ -11,16 +11,27 @@
         本次后端把 keyword 统一扩成「name | choir_name | school_name」，
         三处对齐成同一套口径，所以 placeholder 也把三个列名一起写出来。
       -->
+      <!--
+        【本次变更：搜索框补上三个缺口】
+        ① 文字被裁。placeholder 是「请输入节目/合唱团/学校名称」共 13 个字，约 182px；
+           而 .options > .el-input 的宽度被样式钉在 220px，扣掉右侧后置按钮（约 40px）
+           与输入框内边距（22px）只剩约 158px —— 右半句直接被裁掉。宽度已放宽到 300px。
+        ② 放大镜按钮是死的。此前那个 el-button 没有任何点击事件；能搜出结果只是因为
+           「点击会让输入框失焦、顺带触发 @change」，属于蒙对的。现在显式绑上 @click。
+        ③ 不能一键清空。加了 clearable；点「×」是程序赋值，不会触发 change，
+           所以必须另外接 @clear。
+        @mousedown.prevent 见 ReportList.vue 同处的说明（避免失焦与点击各发一条请求）。
+      -->
       <el-input
         v-model="keyword"
         class="input-with-select"
         :placeholder="KEYWORD_PLACEHOLDER"
+        clearable
         @change="getData"
+        @clear="getData"
       >
         <template #append>
-          <el-button>
-            <el-icon><Search /></el-icon>
-          </el-button>
+          <el-button :icon="Search" @mousedown.prevent @click="getData" />
         </template>
       </el-input>
 
@@ -337,8 +348,12 @@ onMounted(getData)
   }
 }
 
+/* 【本次变更：220px → 300px】220px 是 dist 的值，当时 placeholder 只有「请输入内容」4 个字；
+   现在框里写的是「请输入节目/合唱团/学校名称」13 个字（约 182px），220px 扣掉后置按钮（约 40px）
+   与输入框内边距（22px）只剩约 158px，右半句会被裁掉。300px 下留给文字约 238px。
+   四个页面（ReportList / committee 两个 / 本文件）共用同一个值，要改一起改。 */
 .options > .el-input {
-  width: 220px !important;
+  width: 300px !important;
 }
 
 .content {

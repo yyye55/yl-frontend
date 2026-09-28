@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') }
   },
-  base: mode === 'production' ? '/ylbxt/' : '/',
+  base: mode === 'production' ? '/ylbbm/' : '/',
   server: {
     port: 8080,
     strictPort: true,

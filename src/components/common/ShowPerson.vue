@@ -110,7 +110,7 @@
             {{ (row && row.signature_order) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="person_info.card" label="身份证号" width="200" align="center" header-align="center" />
+        <el-table-column prop="person_info.card" label="身份证后6位" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.gender" label="性别" align="center" header-align="center" />
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
         <el-table-column prop="person_info.school" label="学校名称" width="200" align="center" header-align="center" />
@@ -178,7 +178,7 @@
       >
         <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
         <el-table-column prop="person_info.name" label="姓名" width="100" align="center" header-align="center" />
-        <el-table-column prop="person_info.card" label="身份证号" width="200" align="center" header-align="center" />
+        <el-table-column prop="person_info.card" label="身份证后6位" width="200" align="center" header-align="center" />
         <el-table-column prop="person_info.gender" label="性别" align="center" header-align="center" />
         <el-table-column prop="person_info.age" label="年龄" align="center" header-align="center" />
         <el-table-column prop="person_info.school" label="学校名称" width="200" align="center" header-align="center" />

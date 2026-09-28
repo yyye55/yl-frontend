@@ -211,7 +211,11 @@ function personToPayload(row) {
      */
     id: has(r.id) ? String(r.id) : null,
     name: str(r.name),
-    // 身份证号必须字符串：Number() 会丢掉 18 位里的有效精度（§十七）
+    // 身份证必须原样字符串，不要转数字。§十七立这条规矩时 card 是 18 位、理由是
+    // Number() 丢精度；2026-09-28 起 card 只剩后 6 位，精度不再是问题，但**仍然发字符串**：
+    //   ① 末位可能是 X，转数字会变成 NaN；
+    //   ② 前导 0 会被吃掉（`012345` → `12345`），后 6 位里首位是 0 完全正常；
+    //   ③ 后端 normalize_card 要求 str 类型，收到 number 会判非法。
     card: str(r.card),
     age: intOrNull(r.age),
     gender: nullStr(r.gender),

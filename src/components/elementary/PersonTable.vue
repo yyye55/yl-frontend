@@ -33,7 +33,22 @@
         与 Element UI 2 的 index.vue 渲染函数 `this.$slots.trigger ? [o, this.$slots.default] : o`
         **产出完全相同的 DOM 顺序与点击行为**，不是行为变更。
       -->
-              <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="font-weight: bold">123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456 </span>的人员对应。</p>
+              <!--
+                【第九轮补的第二种写法】「姓名+后6位」是**新增**的消歧写法，不是替换：
+                红头文件规定的纯后 6 位照旧有效（expectedPhotoNames 里两种都收）。
+                写在这里是因为用户是照着这行红字命名文件的，而撞号在填表阶段就要能预防。
+                措辞里特意不写「教师请用…」——本表两种身份混排，且教师本来就只收带姓名的
+                那种（规则在 expectedPhotoNames 里，此处不重复解释，免得改一处漏一处）。
+              -->
+              <p style="color: black; margin: 10px 0">注：电子照片要求为蓝底免冠证件照，JPG格式，每张不超过100KB；上传文件名格式为：学生照片以学生身份证号后6位命名，例如：<span style="font-weight: bold">123456.jpg</span>则与身份证号码后六位为 <span style="font-weight: bold">123456 </span>的人员对应。若表内有两人身份证后6位相同，可改用「姓名+身份证号后6位」命名（例如：<span style="font-weight: bold">张小明123456.jpg</span>）加以区分。</p>
+
+              <!--
+                【第九轮新增】撞号提示。位置紧跟上面那条命名规则：用户读到「怎么命名」
+                的下一行就是「你这一份表里有两行会撞」，两句话在同一次视线里。
+                内容由 photoCollisionText 生成（判据与上传路径同源，见其注释）。
+                没有撞号时整段不渲染 —— 它是条件渲染的一行红字，不改变任何数据。
+              -->
+              <p v-if="photoCollisionText" style="color: #d80e0e; margin: 10px 0; font-weight: bold">{{ photoCollisionText }}</p>
       <el-upload
         class="import-bar"
         style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px"
@@ -113,7 +128,7 @@
       <div class="box-line-title">
         <div class="box-col">序号</div>
         <div class="box-col">姓名</div>
-        <div class="box-col">身份证号</div>
+        <div class="box-col">身份证后6位</div>
         <div class="box-col">性别</div>
         <div class="box-col">年龄</div>
         <div class="box-col">学校名称</div>
@@ -131,7 +146,7 @@
           <el-input v-model="item.name" placeholder="请输入姓名" />
         </div>
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证号码" />
+          <el-input v-model="item.card" placeholder="请输入身份证后6位" />
         </div>
         <div class="box-col">
           <el-select v-model="item.gender" placeholder="请选择">
@@ -288,6 +303,12 @@
  *      本项目 vite.config.js 明确「部署前缀唯一来源是 base，代码里一律用
  *      import.meta.env.BASE_URL 读取」，且模板文件确实放在 frontend/public/static/
  *      （已比对 md5，与 dist/static/参演人员导入模板.xlsx 完全一致）。
+ *      【2026-09-28 起 md5 不再一致，是有意为之】模板第 2 行「身份证」一格改为
+ *      「身份证后6位」（字段语义由完整 18 位改成后 6 位）。改动方式是把包里
+ *      xl/sharedStrings.xml 的那一处 <si><t>…</t></si> 换掉、其余条目按原压缩方式
+ *      逐字节回写 —— styles.xml、冻结窗格 ySplit=2、列宽、phoneticPr 全部保留，
+ *      已逐条目比对确认只有 sharedStrings.xml 不同（未压缩长度 +7 字节）。
+ *      `参演人员导入模板1.xlsx`（PersonTableMajor 用）同步改了同一格。
  *      故改为 `BASE + 'static/参演人员导入模板.xlsx'`：生产环境 base='/ylbxt/' 拼出的
  *      字符串与 dist 逐字相同，开发环境 base='/' 才能命中 Vite 的 public 目录
  *      （否则开发时点「下载模板」必然 404）。做法与 src/views/test/index.vue 的
@@ -369,13 +390,13 @@
  *      父组件只调用 getData/getCacheData（已全量检索 $refs.person.* 确认）。
  */
 
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/misc'
 import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
-import { checkPersonBasics } from '@/config/personFields'
+import { checkPersonBasics, isBlankCard } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
 /* 【第十二届·第三轮】照片上传的零件（parsePhotoName / beforeUpload /
    beforeUploadSingle / uploadFileSingle / upAvatar）已搬到共用模块，
@@ -387,11 +408,18 @@ import { useDragScroll } from '@/composables/useDragScroll'
      · checkPhotoBasic  —— 体积/格式的「不弹提示」版，供批量汇总收集结论（原 beforeUpload 仍照旧使用）
      · matchPhotoToRows —— 「算每行期望名再全等比较」的匹配算法，把匹配从上传后提到上传前
    parsePhotoName 不再由本文件使用：批量路径改走 matchPhotoToRows 之后，
-   「先按正则猜是学生还是教师」这一步被彻底去掉了（见 beforeUploadBatch 的说明）。 */
+   「先按正则猜是学生还是教师」这一步被彻底去掉了（见 beforeUploadBatch 的说明）。
+
+   【第九轮再引入两个】都服务于「撞号要在填表阶段就看得见」：
+     · findPhotoNameCollisions —— 表内有几行会接受同一个文件名（判据同 matchPhotoToRows）
+     · formatPhotoCollisions   —— 把上面的结果拼成给用户看的那句话（三张表共用一份说法）
+   两者都是**纯函数**，不碰 usePhotoUpload 返回的那套状态。 */
 import {
   usePhotoUpload,
   checkPhotoBasic,
-  matchPhotoToRows
+  matchPhotoToRows,
+  findPhotoNameCollisions,
+  formatPhotoCollisions
 } from '@/composables/usePhotoUpload'
 
 // 12 列下限合计 1376px，1366/1440 乃至 1600/1680 屏都放不下，只能横向滚。
@@ -525,6 +553,35 @@ function rowsSignature() {
  */
 watch(rowsSignature, () => emit('rows-change'))
 
+/*
+ * 【第十二届·第九轮】表内撞号 —— 在**填表阶段**就把批量上传注定失败的那几行指出来。
+ *
+ * 【为什么会撞】后端把 card 从 18 位改成后 6 位之后，后 6 位不再唯一：两个人恰好
+ * 尾号相同（同校同届很常见），照片文件名就一模一样。而批量上传是**按文件名找行**的，
+ * 一个名字同时命中两行，它就不知道该给谁 —— 在本次改造之前，这件事的表现是
+ * 「文件传上去了、OSS 里也有、但表里的照片位还是空的」，用户根本看不出发生过什么。
+ *
+ * 【为什么不另写一份判据】用共用模块的 findPhotoNameCollisions，它和批量上传那侧的
+ * matchPhotoToRows 建立在同一个 expectedPhotoNames 上，所以「这里提示会撞」与
+ * 「上传时真的撞」不可能各说各话。同一句提醒在别处重算一遍，迟早会漂移。
+ *
+ * 【只在真的会撞时才报】学生收「后6位」和「姓名+后6位」两种，教师只收后者，于是
+ * 「学生张三」与「教师李四」尾号相同时**不算撞**（两人文件名不会重名），两个同尾号的
+ * 学生才算。这个分流是 expectedPhotoNames 按 type 做的，这里不再判第二遍。
+ *
+ * 【为什么它不用 watch 缓存】data.value 是父页面传进来的响应式数组，行内容一变
+ * computed 自然重算；撞号本来就会随用户边填边出现/消失（填到第二行才出现），
+ * 这正是我们要的时机。
+ *
+ * 【data.value 可能是 undefined 吗】理论上会（`props.showdata ? props.showdata : []`
+ * 挡不住「真值但非数组」）—— 所以交给 findPhotoNameCollisions 内部的判型，
+ * 那里对非数组按「一行都没有」处理，不在这里补第二道守卫。
+ */
+const photoCollisions = computed(() => findPhotoNameCollisions(data.value))
+
+/** 撞号提示的整句文案；没有撞号时是空串，模板直接 v-if。行内按钮在本表叫「上传照片」 */
+const photoCollisionText = computed(() => formatPhotoCollisions(photoCollisions.value, '上传照片'))
+
 onMounted(() => {
   nextTick(() => {
     data.value = props.showdata ? props.showdata : []
@@ -586,7 +643,7 @@ function check() {
  */
 function checkLine(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
-  if (!item.card) return { flag: false, msg: '身份证不能为空' }
+  if (isBlankCard(item.card)) return { flag: false, msg: '身份证后6位不能为空' }
   if (!item.age) return { flag: false, msg: '年龄不能为空' }
   if (item.gender === undefined || item.gender === '') return { flag: false, msg: '性别需选择' }
   if (!item.school) return { flag: false, msg: '学校名称不能为空' }
@@ -597,10 +654,11 @@ function checkLine(item) {
     return { flag: false, msg: '使用乐器需选择' }
   }
   // 【第十二届·补格式校验】以上全是 dist 原判定 —— 它们只回答"填没填"，
-  // 于是姓名填「123」、身份证少两位、年龄填 -5、学校填「12345」、电话填 10 位
-  // 都能一路提交到后端（后端 card 是 CharField，也没有格式约束）。
+  // 于是姓名填「123」、年龄填 -5、学校填「12345」、电话填 10 位都能一路提交到后端。
   // 规则集中在 config/personFields.js，与 Excel 导入那条路径共用同一份。
   // 放在**最后**是为了不改动上面任何一条的优先级：先报"缺了什么"，再报"填错了什么"。
+  // 【2026-09-28】上面那条必填改用 isBlankCard：dist 的 `!item.card` 把纯空格当已填，
+  // 与后端 normalize_card 的 strip 后判不一致，见 personFields.isBlankCard 的说明。
   const formatErr = checkPersonBasics(item)
   if (formatErr) return { flag: false, msg: formatErr }
   return { flag: true, msg: '验证成功' }
@@ -614,7 +672,7 @@ function checkLine(item) {
  */
 function exportCheck(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
-  if (!item.card) return { flag: false, msg: '身份证不能为空' }
+  if (isBlankCard(item.card)) return { flag: false, msg: '身份证后6位不能为空' }
   if (!item.age) return { flag: false, msg: '年龄不能为空' }
   if (item.gender === undefined || item.gender === '') return { flag: false, msg: '性别需填写' }
   if (item.gender !== '男' && item.gender !== '女') {
@@ -712,10 +770,33 @@ function importExcel(file) {
       // 编辑页回填的照片、以及上一轮已经上传的头像，重新导入后会全部消失。
       // 用 card 而不是行序：改完 Excel 重导时行序经常变，按序会张冠李戴；card 也是
       // uploadFileBatch 匹配用的同一个键，口径一致。
+      //
+      // 【第十二届·第九轮】加一道「唯一性」闸：card 改成后 6 位之后它**不再唯一**，
+      // 而这里是拿 card 当对象键存的 —— 同 card 的两行后写覆盖先写，重建时两行都会被
+      // 回填成**同一个** head，也就是把甲的照片挂到了乙的头上。
+      //
+      // 【为什么宁可两边都留空，也不要错挂】照片位空着是**看得见**的，用户会重新传；
+      // 挂错了是**看不见**的，只会一路提交上去。两者不等价，所以取舍很明确：
+      // 只要 card 在**旧表**或**新表**里不是恰好出现一次，就不带这张照片。
+      //
+      // 同 card 的行仍然可以走行内「上传照片」逐张传 —— 那条路按行定位，不经过 card。
+      const oldCardCount = {}
+      data.value.forEach((item) => {
+        if (item.card) oldCardCount[item.card] = (oldCardCount[item.card] || 0) + 1
+      })
       const oldHeads = {}
       data.value.forEach((item) => {
-        if (item.head && item.card) oldHeads[item.card] = item.head
+        if (item.head && item.card && oldCardCount[item.card] === 1) oldHeads[item.card] = item.head
       })
+
+      // 新表这侧同样统计一次：旧表里唯一、但新表里出现了两行，仍然不该带（回填哪一行都不对）。
+      // 统计的是 sheet 里的原始值，与下面建 row 时取的 sheet[i].card 是同一个来源，
+      // 所以不会出现「统计用的键」与「回填时查的键」对不上的情况。
+      const newCardCount = {}
+      for (let i = 1; i < sheet.length; i++) {
+        const c = sheet[i].card
+        if (c) newCardCount[c] = (newCardCount[c] || 0) + 1
+      }
 
       /*
        * 【第十二届·第七轮】原地清空，**不要**写回 `data.value = []`。
@@ -742,8 +823,11 @@ function importExcel(file) {
           type: sheet[i].type === '学生' ? 0 : 1,
           position: getPosition(sheet[i].position)
         }
-        // 身份证号对得上才带回旧头像；不带这个 key 时行对象与原来完全同构
-        if (row.card && oldHeads[row.card]) row.head = oldHeads[row.card]
+        // 身份证号对得上、且**两侧都唯一**才带回旧头像；不带这个 key 时行对象与原来完全同构
+        // （新表这侧的条件 = newCardCount[row.card] === 1，理由见上面那段注释）
+        if (row.card && oldHeads[row.card] && newCardCount[row.card] === 1) {
+          row.head = oldHeads[row.card]
+        }
         data.value.push(row)
       }
 
@@ -1213,7 +1297,10 @@ defineExpose({ getData, getCacheData })
  *   列宽下限 = 文本宽 + .box-col 左右 padding 5×2 + 左边框 1 + 控件自身 chrome
  *   · 输入框 chrome：.el-input__wrapper 的 padding 1px 11px → 22px
  *   · 下拉框 chrome：.el-select__wrapper 的 padding 12×2 + gap 6 + 箭头 14 → 44px
- *   · 文本宽：14px 字号下中文一字 14px；18 位身份证约 145px；使用乐器「次中音萨克斯」84px
+ *   · 文本宽：14px 字号下中文一字 14px；使用乐器「次中音萨克斯」84px
+ *     【2026-09-28】身份证列原按「18 位号码约 145px」定 178px；现字段改为后 6 位，
+ *     内容与表头（「身份证后6位」84px）都远低于该下限，本列**留白变多但不动下限** ——
+ *     改权重必须与 TeacherTable 同步、且这些值是逐像素量过的，收益小、风险大。
  *   12 列下限合计 1376px ≤ 旧值 1382px，窄屏不会比改动前更容易横向滚动。
  *
  * fr 权重怎么定：**数值 = 参照容器 1660px 时希望该列得到的像素宽 ÷ 100**。

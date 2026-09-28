@@ -7,9 +7,18 @@
  * 两张表的照片功能是同一套规则，一个字都不该有第二份副本：
  *
  *   · 体积上限 100KB、格式 JPG、命名规则「学生=身份证后6位 / 教师=姓名+身份证后6位」
- *     来自红头文件；这三条**改一次就要两张表同时生效**，否则会出现
- *     「人员表收 100KB、教师表收 1MB」这种漂移。
+ *     来自红头文件（原文：「学生照片以学生身份证号后6位命名，教师照片命名规则由
+ *     系统另行要求」）。注意这两半的授权不同 —— 学生的写法是文件**规定**的，
+ *     教师的写法是文件**授权系统自定**的。所以 2026-09-28 加消歧写法时，
+ *     学生只能**增**不能改：红头文件那种纯 6 位写法继续有效，另加「姓名+后6位」。
+ *     详见 expectedPhotoNames。
+ *     这几条**改一次就要两张表同时生效**，否则会出现「人员表收 100KB、教师表收 1MB」这种漂移。
  *   · 上传通道（OSS 代传 + /api/file/create 落库）两张表也完全相同。
+ *
+ * 【线上展演两表也来取命名判据】CrewTable / LeaderTable（`/live/`）虽有自己的上传实现，
+ * 但命名规则收在本文件的 expectedOnlinePhotoNames —— 它们与报名端**口径确实不同**
+ * （原因写在该函数里），放在一起是为了让"两端口径不同"这件事看得见，
+ * 而不是各自藏一份、下次核对时才发现分叉。
  *
  * 这是本仓库既有的做法：校验规则收在 @/config/personFields.js、时长规则收在
  * personRules.js，都是「一份实现、多处引用」。本文件同理，只是这次连 UI 行为
@@ -77,6 +86,131 @@ export function parsePhotoName(nameNoExt) {
 }
 
 /**
+ * 一行**可以接受的照片文件名**（去扩展名）—— 报名端的唯一命名判据。
+ *
+ * 【为什么要有这个函数】在它之前，「这一行期望什么文件名」写在两处
+ * （matchPhotoToRows 与 beforeUploadSingle），各带一份「取后 6 位」的算法，
+ * 靠注释互相提醒"改动必须同步"。本次要新增一种可接受的写法，正是那种容易漂移的时刻，
+ * 所以先把它收成一份，其余全部调它。
+ *
+ * 【口径来自红头文件，注意它两半的授权不同】原文：
+ *   「学生照片以学生身份证号后6位命名，教师照片命名规则由系统另行要求」
+ * 学生的写法是文件**规定**的；教师的写法是文件**授权系统自定**的（本系统定为「姓名+后6位」）。
+ * 所以下面两条分支不是随手写的：
+ *
+ *   · 学生（type 0）：**两种都收**。红头文件那种（纯后 6 位）必须继续有效 ——
+ *     不能因为本次改动就让它失效；「姓名+后6位」是**新增的消歧写法**：
+ *     同表两行后 6 位相同时，纯 6 位的文件名会同时命中两行，带上姓名才能区分。
+ *   · 教师（type 1）：**只收带姓名的那种**。教师若也收纯 6 位，同队里一个学生和一个
+ *     教师尾号相同时，`123456.jpg` 会同时命中两行变成撞号 —— 反而比现在更容易失败。
+ *     教师名称本来就由系统自定，收窄不违背红头文件。
+ *
+ * 【身份没选的行不参与匹配】返回空数组，语义与改动前的 `return` 逐字一致。
+ *
+ * @param {{name?: string, card?: string, type?: number}} item
+ * @returns {string[]} 可接受的文件名（去扩展名），可能为空。**顺序有意义**：
+ *   报错时先举红头文件那种写法，用户更容易对上他手里的文件
+ */
+export function expectedPhotoNames(item) {
+  if (!item || !item.card) return []
+  // 取后 6 位；历史数据短于 6 位时按整串 —— 与改动前同一处口径
+  const card = String(item.card)
+  const tail = card.length >= 6 ? card.substring(card.length - 6) : card
+  const named = item.name ? [item.name + tail] : []
+  if (item.type === 0) return [tail, ...named]
+  if (item.type === 1) return named
+  return []
+}
+
+/**
+ * 一行可以接受的照片文件名 —— **线上展演**（`/live/`）的口径，与报名端**确实不同**。
+ *
+ * 【为什么不复用 expectedPhotoNames】两条都是核实过的事实，任一条都足以否决复用：
+ *   ① LeaderTable（带队教师）的行**没有 `type` 字段**（该文件里没有任何 `row.type`）。
+ *      套报名端那套，每行都会因 type 不是 0/1 而算不出期望名 → 照片**一张都传不上去**。
+ *   ② CrewTable 的行**有** `type`（0=学生/1=教师），但它现在的公开口径是
+ *      **所有人一视同仁按「后6位」**。照搬报名端规则会让 type=1 的行突然只认
+ *      带姓名的写法，把用户手里现在能用的文件名全部打哑。
+ *
+ * 所以这里是**只增不减**：原来认的「后6位」一个不少，另外多认一种「姓名+后6位」
+ * 作为撞号时的消歧写法。两端口径本就不同，写在同一文件里、各自注明理由，
+ * 好过为了让它们"看起来统一"而把某一端打哑。
+ *
+ * @param {{name?: string, card?: string}} item
+ * @returns {string[]}
+ */
+export function expectedOnlinePhotoNames(item) {
+  if (!item || !item.card) return []
+  const card = String(item.card)
+  const tail = card.length >= 6 ? card.substring(card.length - 6) : card
+  return item.name ? [tail, item.name + tail] : [tail]
+}
+
+/**
+ * 找出「同一张表里有多行会接受同一个文件名」的情况 —— 也就是撞号。
+ *
+ * 【为什么要提前算】撞号以前只在拖照片那一刻、以「匹配到多行」的形式暴露，
+ * 那时用户已经在批量上传了，只能停下来一个个改。填表阶段就能算出来，不必等到那一步。
+ *
+ * 【与 matchPhotoToRows 同源】两者建立在同一个 `namesOf` 上，所以「提示说会撞」
+ * 与「上传时真的撞」不可能各说各话 —— 这正是把它放进同一个文件的理由。
+ *
+ * @param {Array<object>} rows
+ * @param {(item: object) => string[]} [namesOf] 默认报名端口径；线上端传 expectedOnlinePhotoNames
+ * @returns {Array<{name: string, rows: number[]}>} name = 撞到的文件名，rows = 行下标（升序）
+ */
+export function findPhotoNameCollisions(rows, namesOf = expectedPhotoNames) {
+  const byName = new Map()
+  const list = Array.isArray(rows) ? rows : []
+  list.forEach((item, i) => {
+    namesOf(item).forEach((name) => {
+      const hit = byName.get(name)
+      if (hit) hit.push(i)
+      else byName.set(name, [i])
+    })
+  })
+  const out = []
+  byName.forEach((indices, name) => {
+    if (indices.length > 1) out.push({ name, rows: indices })
+  })
+  return out
+}
+
+/**
+ * 把 findPhotoNameCollisions 的结果拼成**给用户看的一句话** —— 三张表共用同一份说法。
+ *
+ * 【为什么连文案也收进来】判据收成一份、文案却各写各的，仍会分叉：A 表说「改用姓名+后6位」，
+ * B 表说「请重命名文件」，用户在两页之间来回切就得重新理解一遍。更糟的是三处提示会
+ * 各自跟着判据漂移，而后改的那两处没人会回头对齐。
+ *
+ * 【为什么把按钮名当参数】三张表的行内按钮本来就不叫同一个名字（报名端是「上传照片」、
+ * 线上两表是「上传头像」）。这是既有的界面事实，不改；只把它作为参数传进来。
+ *
+ * 【为什么提示里要报行号】撞号这件事本身在界面上看不出来 —— 两行长得完全不一样，
+ * 只是后 6 位恰好相同。不报行号，用户得自己一行行去比身份证后 6 位。
+ *
+ * @param {Array<{name: string, rows: number[]}>} collisions findPhotoNameCollisions 的返回值
+ * @param {string} perRowButton 行内那个「传单张」按钮的文字，如 '上传照片'
+ * @returns {string} 没有撞号时返回空串，调用方直接 v-if 即可
+ */
+export function formatPhotoCollisions(collisions, perRowButton) {
+  const list = Array.isArray(collisions) ? collisions : []
+  if (!list.length) return ''
+  const parts = list.map((c) => {
+    // rows 是下标（0 起），用户看的是行号（1 起）
+    const rows = c.rows.map((i) => i + 1).join('、')
+    return `第 ${rows} 行（都能命名为 ${c.name}.jpg）`
+  })
+  return (
+    '注意：' +
+    parts.join('；') +
+    ' 的照片文件名会撞在一起，批量上传时认不出该传给哪一行。' +
+    `请改用行内「${perRowButton}」按钮逐张上传，` +
+    '或把文件名写成「姓名+后6位」（例如 张小明123456.jpg），这样两行就分得开了。'
+  )
+}
+
+/**
  * 【批量路径专用】把「去掉扩展名的文件名」匹配到表格的某一行 —— **全等比较，不做分类猜测**。
  *
  * 【为什么是"算期望名再比"，而不是"先判断像学生还是像教师"】
@@ -92,24 +226,27 @@ export function parsePhotoName(nameNoExt) {
  *   · 与单张上传的判据完全一致（beforeUploadSingle 本来就是"算期望名再比"）
  *   · 将来只维护这一处规则，不会再出现两份口径漂移
  *
- * 【期望名的算法 —— 与 beforeUploadSingle 逐字一致，改动必须同步】
- *   · 学生行（type === 0）：该行身份证后 6 位
- *   · 教师行（type === 1）：该行姓名 + 该行身份证后 6 位
- *   身份证短于 6 位时按整串（同一处口径）。
+ * 【期望名的算法**只有一份**】就是上面的 expectedPhotoNames —— 本函数与
+ * beforeUploadSingle、与各表的撞号提示都调它。原先这里写着「与 beforeUploadSingle
+ * 逐字一致，改动必须同步」，那种靠注释维系的约定正是本次要消灭的东西：
+ * 2026-09-28 新增「姓名+后6位」这一种写法时，若还按老办法，就得记得同时改三处。
  * 下列行算不出期望名，**直接不参与匹配**（保持与老逻辑「匹配不上」的语义一致）：
  *   · 没填身份证的行
- *   · 身份没选的行（type 既不是 0 也不是 1）
+ *   · 身份没选的行（type 既不是 0 也不是 1）—— 但线上端走 expectedOnlinePhotoNames，不分身份
  *   · 教师行但姓名没填
  *
  * @param {string} nameNoExt 去掉扩展名的文件名（取法与调用方一致）
  * @param {Array<{name?: string, card?: string, type?: number}>} rows 当前表格的行数组
+ * @param {(item: object) => string[]} [namesOf] 命名口径。默认报名端；
+ *   线上展演两表传 expectedOnlinePhotoNames（原因见该函数）
  * @returns {{status: 'ok'|'none'|'multi', hits: number[], expected: string[]}}
  *   ok    → 恰好命中一行，`hits[0]` 即行下标
  *   none  → 一行都没命中
- *   multi → 命中多行（多行身份证后6位相同且身份相同），`hits` 是全部行下标
+ *   multi → 命中多行（通常是两行身份证后6位相同），`hits` 是全部行下标。
+ *           此时用户可以用「姓名+后6位」这种消歧写法让文件名只命中一行
  *   expected → 本次参与比较的全部期望名（去重），供报错时告诉用户"表里期望的是什么名"
  */
-export function matchPhotoToRows(nameNoExt, rows) {
+export function matchPhotoToRows(nameNoExt, rows, namesOf = expectedPhotoNames) {
   const hits = []
   const expected = []
 
@@ -124,24 +261,16 @@ export function matchPhotoToRows(nameNoExt, rows) {
      数组走的仍是同一个 .forEach，行为逐字未变。 */
   const list = Array.isArray(rows) ? rows : []
   list.forEach((item, i) => {
-    if (!item || !item.card) return // 身份证没填 → 算不出期望名
-
-    // 身份证短于 6 位时按整串 —— 与 beforeUploadSingle 及老的 uploadFileBatch 同口径
-    const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-
-    let want
-    if (item.type === 0) {
-      want = tail
-    } else if (item.type === 1) {
-      if (!item.name) return // 教师行姓名没填 → 算不出期望名
-      want = item.name + tail
-    } else {
-      return // 身份没选（undefined / '' / 异常值）→ 算不出期望名
-    }
+    const wants = namesOf(item)
 
     // expected 收集**全部**期望名（含没命中的）：报错时能告诉用户"表里期望的是这些"
-    if (expected.indexOf(want) === -1) expected.push(want)
-    if (want === nameNoExt) hits.push(i)
+    wants.forEach((w) => {
+      if (expected.indexOf(w) === -1) expected.push(w)
+    })
+
+    // 一行最多命中一次：tail 是 6 位、「姓名+tail」必然更长，两者不可能同时等于同一个
+    // 文件名（姓名为空时只产出 tail，也不会重复），所以这里不用去重
+    if (wants.indexOf(nameNoExt) !== -1) hits.push(i)
   })
 
   const status = hits.length === 0 ? 'none' : hits.length > 1 ? 'multi' : 'ok'
@@ -164,11 +293,15 @@ export function matchPhotoToRows(nameNoExt, rows) {
  * 所以 100KB / JPG 这两条依旧是全仓库唯一一处实现，不会出现
  * 「教师表改了、人员表没改」这种漂移。
  *
- * 【命名规则为什么不在这里】命名的判据有**两种口径**，而且都要用到「行」的信息：
- *   · 单张路径：必须全等于「该行的期望文件名」→ beforeUploadSingle 里做
- *   · 批量路径：必须全等于「某一行的期望文件名」→ matchPhotoToRows 里做
- * 至于 beforeUpload 里那条宽松命名正则（parsePhotoName 是否返回非空），它只服务于
- * **教师表的批量路径** —— 教师表没有「按行匹配」的能力，只能做文件名形状判断。
+ * 【命名规则为什么不在这里】判据是「算出期望名、再全等比较」，而期望名要用到「行」的
+ * 信息（该行的 card / name / type），本函数只看得到文件、看不到行：
+ *   · 单张路径：必须命中「该行」的可接受名之一 → beforeUploadSingle（调 expectedPhotoNames）
+ *   · 批量路径：必须命中「某一行」的可接受名 → matchPhotoToRows
+ * 所以本函数里的 parsePhotoName 只剩**形状闸**：它不找人，只判文件名长得像不像照片名。
+ * （原先这里写着它「只服务于**教师表的批量路径** —— 教师表没有『按行匹配』的能力」，
+ *  两半都已不成立：TeacherTable 根本没有批量上传（见其 293-295 行），且它传了 getRows、
+ *  resolvePhotoTarget 是有按行匹配能力的。PersonTable.vue 那边的同源注释已先改过一轮，
+ *  这里跟着更正。）
  *
  * @param {File} file
  * @returns {{ok: true} | {ok: false, reason: string}} reason 可直接展示给用户
@@ -204,7 +337,8 @@ export function beforeUpload(file) {
   const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
   if (!parsePhotoName(nameNoExt)) {
     ElMessage.error(
-      '文件名格式错误：' + file.name + '（学生照片：身份证号后6位；教师照片：姓名+身份证号后6位）'
+      '文件名格式错误：' + file.name +
+        '（学生照片：身份证号后6位，或姓名+身份证号后6位；教师照片：姓名+身份证号后6位）'
     )
     return false
   }
@@ -223,9 +357,9 @@ export function beforeUpload(file) {
  * 才落到最后那句「请改为 xxx.jpg」。单张不靠文件名定位（靠 upAvatar 存下的行下标），
  * 这里的校验只为让入库的 Files.filename 与批量上传同一口径。
  *
- * 规则与批量的匹配算法完全一致：
- *   - 学生行：去扩展名后 === 该行身份证号后 6 位
- *   - 教师行：去扩展名后 === 该行姓名 + 该行身份证号后 6 位
+ * 规则与批量的匹配算法**同一份**：两者都调 expectedPhotoNames（见该函数）。
+ * 学生因此有两种可接受写法（红头文件的纯后 6 位 + 消歧用的「姓名+后6位」），
+ * 教师只有一种。
  *
  * @param {File} file
  * @param {object|undefined} item 目标行；undefined 表示没定位到行
@@ -253,12 +387,17 @@ export function beforeUploadSingle(file, item) {
     return false
   }
 
-  // 身份证短于 6 位时按整串比对，与 uploadFileBatch 的取法保持一致
-  const tail = item.card.length >= 6 ? item.card.substring(item.card.length - 6) : item.card
-  const expected = isTeacher ? item.name + tail : tail
+  const accepts = expectedPhotoNames(item)
   const actual = file.name.substring(0, file.name.lastIndexOf('.'))
-  if (actual !== expected) {
-    ElMessage.error('文件名不符合命名规则，请改为：' + expected + '.jpg 后再上传')
+  if (accepts.indexOf(actual) === -1) {
+    /* 把**全部**可接受名都举出来（学生有两种）。只举一种的话，撞号那张表里的用户
+       照着改完还是对不上 —— 而撞号正是他来点单张上传的原因。上面的三个前置判断
+       已保证 accepts 非空，这里不用再兜底。 */
+    ElMessage.error(
+      '文件名不符合命名规则，请改为：' +
+        accepts.map((n) => n + '.jpg').join(' 或 ') +
+        ' 后再上传'
+    )
     return false
   }
   return true

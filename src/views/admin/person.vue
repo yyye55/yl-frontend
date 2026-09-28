@@ -11,6 +11,10 @@
       ↑ 【2026-09-23 起本条不再逐字等于 dist】第 4 列列头「学校名称」已改为「填报单位」。
         只改 label，prop="school" 与取值一律未动 —— 改的是文案，不是数据。
         起因：该列的值是各校在人员表里手填的单位名（Person.school），大学组等场景下未必是学校。
+      ↑ 【2026-09-28 起第 3 列同理】列头「身份证号码」改为「身份证后6位」，触发原因是
+        **字段语义本身变了**：后端把 Person.card 从完整 18 位改成后 6 位（迁移 0008/0013 +
+        models.normalize_card），PUT /api/admin/person 已按新规则校验。同样只改 label，
+        prop="card" 与取值一律未动。修改 dialog 的 label 与校验规则同步改（见 editRules）。
         ✅ 本列**现在搜得到**（2026-09-24 起）：唯一的搜索框走 keyword，后端一个 Q 同时匹配
            name / card / school，命中任一即返回。契约与实测见
            docs/后端协助问题清单-人员管理按填报单位搜索与筛选.md。
@@ -60,12 +64,14 @@
     - 接口空响应守卫：`if (!body) { ElMessage.error('响应为空'); return }`（dist 直接 `.then(t => ...)`，无此判断）
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 搜索框 clearable（dist 无）+ 放大镜按钮绑定 @click（dist 里是个纯装饰按钮，不触发任何事）
+    - 提交前调 validate()（dist 无，见 editSubmit 上方注释）：dist 的规则只在失焦时显示红字，
+      不拦提交；2026-09-28 card 改后 6 位时一并补上，让表单当场拦住而不是发给后端再被拒
 -->
 <template>
   <div class="bg">
     <div class="options">
       <!-- 【本仓库合并，2026-09-24】原先并排的两个框（搜索框 + 填报单位筛选框）合成一个：
-           一个词同时匹配 姓名 / 身份证号码 / 填报单位，命中任一即返回（并集，不是交集）。
+           一个词同时匹配 姓名 / 身份证后6位 / 填报单位，命中任一即返回（并集，不是交集）。
            只发 keyword 一个参数，`school` 参数不再使用 —— 依据是后端 views.py:600
              `Q(name__icontains=k) | Q(card__icontains=k) | Q(school__icontains=k)`
 
@@ -76,7 +82,7 @@
       <el-input
         v-model="keyword"
         class="input-with-select is-person-search"
-        placeholder="输入姓名 / 身份证号 / 填报单位查询"
+        placeholder="输入姓名 / 身份证后6位 / 填报单位查询"
         clearable
         @change="handleFilterChange"
       >
@@ -97,7 +103,7 @@
         <el-table :data="data" border style="width: 100%">
           <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="name" label="姓名" align="center" />
-          <el-table-column prop="card" label="身份证号码" align="center" />
+          <el-table-column prop="card" label="身份证后6位" align="center" />
           <!-- label 2026-09-23 由「学校名称」改「填报单位」；prop 不动，见文件头注释 -->
           <el-table-column prop="school" label="填报单位" align="center" />
           <el-table-column label="操作" align="center">
@@ -132,7 +138,7 @@
         <el-form-item label="姓名" prop="name">
           <el-input v-model="editForm.name" />
         </el-form-item>
-        <el-form-item label="身份证号码" prop="card">
+        <el-form-item label="身份证后6位" prop="card">
           <el-input v-model="editForm.card" />
         </el-form-item>
       </el-form>
@@ -151,6 +157,8 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 import { adminApi } from '@/api/admin'
+import { checkPersonCard } from '@/config/personFields'
+import { asElFormRule } from '@/config/formFields'
 
 /** 唯一的搜索词 → 以 ?keyword= 发给后端，后端对它做 姓名/身份证/填报单位 三选一 icontains */
 const keyword = ref(null)
@@ -166,14 +174,23 @@ const ruleEditForm = ref(null)
 // dist: data(){ ... editForm:{} } —— 初始为空对象，字段由 modify() 整行拷贝注入
 const editForm = ref({})
 
-// 【直接照搬 dist editRules】不做业务修改
+// 【照搬 dist editRules】name 那条逐字未动；card 那条 2026-09-28 改过（见其上方注释）。
 const editRules = {
   name: [
     { required: true, message: '请输入姓名', trigger: 'blur' },
     { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
   ],
+  // 【2026-09-28 起本条不再逐字等于 dist】card 的语义由「完整 18 位」改为「后 6 位」。
+  //   · 文案改「请输入身份证后6位」
+  //   · 加 whitespace: true —— 纯空格也算未填。`required` 默认把 " " 当有值放行，
+  //     而它会一路走到 PUT /api/admin/person，被后端 normalize_card 按格式拒掉；
+  //     前端该报「没填」的时候不要报成「填错了」。（已用 async-validator 实测：
+  //     whitespace 能拦 "" 与 " "，放行 " 12345X "）
+  //   · 格式 validator 复用报名端那一份，理由同 personFields.js 顶部：值一样，结论就得一样。
+  //   prop="card" 与取值一律未动，改的只是文案与校验。
   card: [
-    { required: true, message: '请输入身份证号码', trigger: 'blur' }
+    { required: true, message: '请输入身份证后6位', whitespace: true, trigger: 'blur' },
+    { validator: asElFormRule(checkPersonCard), trigger: 'blur' }
   ]
 }
 
@@ -222,13 +239,24 @@ function modify(row) {
 }
 
 // dist: editSubmit(){this.$api.admin.person.update(this.editForm).then(...)}
-// dist 无 validate()（模块内 validate 出现 0 次），提交前不做前端校验
+// 【2026-09-28 起本条不再逐字等于 dist】dist 无 validate()（模块内 validate 出现 0 次），
+// 提交前不做前端校验。补上它，因为 dist 那套规则只有 trigger:'blur' —— 靠 el-form-item
+// 在失焦时显示红字，**并不拦提交**，用户完全可以带着红字点「确定」。
+//
+// 为什么这次才补：card 改成后 6 位之后，这条缝隙会直接产出「前端说错了、却还是发出去了，
+// 后端再拒一次」的两段式体验 —— 用户先看到红字「应为6位」，点确定，再收到一条
+// 说不清来源的失败提示。让表单当场拦住、只报一次，才是「两边一致」。
+// 未通过时 return，不关弹窗（用户回去改），也不发请求。
 function editSubmit() {
-  adminApi.person.update(editForm.value).then((res) => {
-    const body = res?.data
-    if (!body) { ElMessage.error('响应为空'); return }
-    if (body.code === 0) { ElMessage.success('修改成功'); showEditInfo.value = false; getData() }
-    else ElMessage.error(body.msg || '修改失败')
+  // 回调形式：validate(cb) 内部吞掉 reject，不会产生未处理的 Promise 异常
+  ruleEditForm.value.validate((valid) => {
+    if (!valid) return
+    adminApi.person.update(editForm.value).then((res) => {
+      const body = res?.data
+      if (!body) { ElMessage.error('响应为空'); return }
+      if (body.code === 0) { ElMessage.success('修改成功'); showEditInfo.value = false; getData() }
+      else ElMessage.error(body.msg || '修改失败')
+    })
   })
 }
 
@@ -304,6 +332,9 @@ onMounted(() => { getData() })
  * 选择器多带一个 is-person-search，特异性压过 .options > .el-input，两个 !important 同源时按特异性决胜。
  * 起因：两框合一后，placeholder 要写全「姓名 / 身份证号 / 填报单位」才能被人发现，
  * 而 220px 装不下这串字，会被截断成「输入姓名 / 身份证号 / 填报…」，等于白写。
+ * 【2026-09-28】placeholder 里的「身份证号」改为「身份证后6位」（字段语义变了）。
+ * 这串比原来长 3 个字（约 35px），按 14px 字号实算约 249px，340px 减去 append 按钮
+ * 与输入框内边距后仍有余量，不会重新触发上面那个截断问题。
  */
 .options > .el-input.is-person-search {
   width: 340px !important;

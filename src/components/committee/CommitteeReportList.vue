@@ -399,7 +399,9 @@ onMounted(() => {
 /* 【本次变更：220px → 300px】220px 是 dist 的值，当时 placeholder 只有「请输入内容」4 个字；
    现在框里写的是「请输入曲目/乐团/学校名称」13 个字（约 182px），220px 扣掉后置按钮（约 40px）
    与输入框内边距（22px）只剩约 158px，右半句会被裁掉。300px 下留给文字约 238px。
-   四个页面（ReportList / 本文件 / TeacherList / admin/report.vue）共用同一个值，要改一起改。 */
+   三个页面（ReportList / 本文件 / TeacherList）共用同一个值，要改一起改。
+   【2026-09-29】原第 4 处 admin/report.vue 已随仓库清理删除（该页路由更早已摘除，属打不开的死代码），
+   所以现在是「三处一起改」，不要再去找那个文件。 */
 .options > .el-input {
   width: 300px !important;
 }

@@ -13,7 +13,7 @@ concurrency:
 
 env:
   REMOTE_ROOT: /www/wwwroot/47.108.29.34
-  REMOTE_TARGET: /www/wwwroot/47.108.29.34/ylbxt
+  REMOTE_TARGET: /www/wwwroot/47.108.29.34/ylbbm
   # 服务器上 nginx worker 以 www 运行，落盘文件必须归 www，否则面板/权限会不一致
   REMOTE_OWNER: www:www
 
@@ -138,12 +138,12 @@ jobs:
             "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<'REMOTE'
           set -eu
           H='Host: 47.108.29.34'
-          ENTRY=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbxt/)
-          echo "/ylbxt/       -> $ENTRY"
+          ENTRY=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbbm/)
+          echo "/ylbbm/       -> $ENTRY"
           test "$ENTRY" = "200"
 
-          LOGIN=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbxt/login)
-          echo "/ylbxt/login  -> $LOGIN  (history fallback)"
+          LOGIN=$(curl -s -o /dev/null -w '%{http_code}' -H "$H" http://127.0.0.1/ylbbm/login)
+          echo "/ylbbm/login  -> $LOGIN  (history fallback)"
           test "$LOGIN" = "200"
 
           # /api/ 只要不是被静态 location 截获即可；405/401/404 都算正常

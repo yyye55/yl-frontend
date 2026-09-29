@@ -66,8 +66,6 @@ import { isViewOnlyScope } from './roles'
 /** “意林杯”系列 layout 共用的品牌标题
  * 【第十二届改造】2024年改为2026年 */
 const YILINBEI_TITLE = ['“意林杯”四川省第十二届', '管乐展示活动']
-/** 西部学校音乐周系列 layout 的品牌标题 */
-const XIBU_TITLE = ['西部学校音乐周', '展演活动']
 
 export const LAYOUT_MENUS = {
   /* ---------- 管理员 (type=3) ---------- */
@@ -164,18 +162,6 @@ export const LAYOUT_MENUS = {
       { index: '/primary/elementary/create', text: '赛事报名', label: '赛事报名', icon: 'el-icon-s-flag' },
       { type: 'line', text: '—— 报名信息 ——' },
       { index: '/primary/elementary/list', text: '报名汇总', label: '报名汇总', icon: 'el-icon-help' }
-    ]
-  },
-
-  /* ---------- 在线展演 (无角色限制) ---------- */
-  online: {
-    title: XIBU_TITLE,
-    activeTextColor: '#db3399',
-    keepAlive: true,
-    items: [
-      { index: '/online/index', text: '首页', label: '首页', icon: 'el-icon-s-home' },
-      { type: 'line', text: '—— 现场展演信息 ——' },
-      { index: '/online/list', text: '展演节目列表', label: '展演节目列表', icon: 'el-icon-s-flag' }
     ]
   }
 }

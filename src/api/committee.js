@@ -21,15 +21,9 @@
 import request, { HOST } from '@/utils/request'
 
 export const committeeApi = {
-  recommend: {
-    getList: (params) => request.get(HOST + '/api/committee/recommend/list', { params })
-  },
   report: {
     getList: (params) => request.get(HOST + '/api/committee/report/list', { params }),
     check:   (data)   => request.put(HOST + '/api/committee/report/check', data)
-  },
-  online: {
-    getList: (params) => request.get(HOST + '/api/committee/online/list', { params })
   },
   user: {
     list:     (params) => request.get(HOST + '/api/committee/user/list', { params }),

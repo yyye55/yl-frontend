@@ -137,6 +137,8 @@
  *   /committee/elementary1|2|3（CommitteeReportList.vue）
  * 另有 3 处调用方（admin/report.vue、committee/colleges.vue、TeacherList.vue）
  * 对应路由已在第十二届摘除，无菜单入口。
+ * 【2026-09-29】其中 admin/report.vue 与 committee/colleges.vue **连文件本身也已删除**
+ * （仓库清理，见提交「删除不必要的文件」）；TeacherList.vue 仍在，只是路由被摘。
  * .fall-info 的 3 列 grid、h2 居中、两个文件块的 border 均未改动。
  */
 import { onMounted, ref } from 'vue'

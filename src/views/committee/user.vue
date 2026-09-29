@@ -54,8 +54,8 @@
     - 错误文案兜底：`body.msg || '...'`（dist 直接用 `t.msg`，为 undefined 时提示为空）
     - 导出按钮 loading：`:loading="exporting"` + 防重复点击（dist 的按钮无 loading 属性）
     - 重置密码从 prompt 改成 confirm：弹「是否重置为默认密码？」，没有输入框。
-      原因：后端 user_update_admin 现在 `if "password" in data` 就无条件重置为默认口令
-      （yilinbei hou/apps/api/views.py:559），请求体里 password 的值被忽略 ——
+      原因：后端 user_update_admin 现在 `if "password" in data` 就无条件重置为默认口令，
+      请求体里 password 的值被忽略 ——
       留着输入框只会骗人。dist 时代的 inputValidator / inputType:'password' 随之删除。
     - 表格标题「账号列表」下方新增一行提示：重置密码后恢复为默认密码。
       值取自 src/config/defaultPassword.js；这句话现在描述的是系统实际行为 ——
@@ -75,7 +75,7 @@
       <!--
         【本次变更：placeholder 不再写「请输入内容」】
         「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 user_list
-        （yilinbei hou/apps/api/views.py:526，与 admin/user 同一个函数）里 keyword
+        （apps/api/views.py，与 admin/user 同一个函数）里 keyword
         是一个三选一的 OR：`Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
         所以把三个列名都写出来。本页表格里的「名称 / 账号 / 修改人联系方式」正是这三列。
 
@@ -85,7 +85,7 @@
         就含 nickname），区别只是前者还会带出「账号或电话里含这几个字」的行。
         对使用者来说这不是"多一个精确选项"，而是"同一个搜索要分两次填、还得先想清楚
         填哪个框"。现在只留这一个：账号、电话、名称都在这里搜。
-        【后端不动】user_list 的独立 nickname 参数（views.py:527-528）仍在，只是本页
+        【后端不动】user_list 的独立 nickname 参数仍在，只是本页
         不再发它 —— 不传即不筛，与传 null 等价。将来若要恢复"只按名称筛"，
         把 el-input 和 getData 里的 nickname 参数一起加回来即可。
         与 admin/user.vue 同步（两处一起改，见其文件头）。
@@ -145,7 +145,7 @@
           【本仓库新增，dist 无】重置密码的默认口径提示。
           ⚠️ 这句话的性质变了：原先它是一条**操作约定**（后端当时不套用默认密码，
           靠操作者在弹窗里手填这个值，填了才生效），现在它**就是系统行为** ——
-          user_update_admin 无条件重置为 RESET_PASSWORD_DEFAULT（yilinbei hou/apps/api/views.py:559）。
+          user_update_admin 无条件重置为 RESET_PASSWORD_DEFAULT。
           值本身来自 src/config/defaultPassword.js，别在这里写死字面量：
           提示里显示的口令必须与实际生效的是同一个，否则用户拿着提示语登不进去。
         -->
@@ -264,13 +264,13 @@ import { TYPE_LABEL } from '@/config/accountTypes'
 
 /**
  * 【本次新增】keyword 输入框的 placeholder 文本。
- * 后端 keyword 同时匹配 username / tel / nickname（views.py:526），三个列名都写出来。
+ * 后端 keyword 同时匹配 username / tel / nickname（views.py 的 user_list），三个列名都写出来。
  * 与 admin/user.vue 用同一个字符串 —— 两页搜的是同一个接口，说法不该有出入。
  */
 const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
 
 /**
- * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py:526），
+ * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py 的 user_list），
  * 所以这一个框就是「账号 / 电话 / 名称」三合一的搜索入口，见模板里那段注释。
  */
 const keyword = ref(null)
@@ -426,7 +426,7 @@ function getData() {
   const params = {
     page: page.value,
     limit: limit.value,
-    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py:526）。
+    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py 的 user_list）。
     // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
     // 也就是「框里没填」= 不传该条件。
     keyword: keyword.value,
@@ -507,7 +507,7 @@ function getData() {
  * 【本次变更：prompt → confirm，重置为默认密码】
  *  后端不再接受调用方指定的新密码：user_update_admin 里
  *    `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- *  （yilinbei hou/apps/api/views.py:559，常量在同文件 :537）——
+ *  （常量 RESET_PASSWORD_DEFAULT）——
  *  只要请求体里出现 password 键，它的值被忽略，一律重置为 scylb@2026。
  *  于是 dist 时代的「请输入新密码」输入框成了骗人的控件：填什么都会被丢弃，
  *  用户按自己填的去登录必然失败。改用 confirm 后弹窗里问的就是将要发生的事。

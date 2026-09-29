@@ -955,13 +955,19 @@ function flushBatchSummary() {
 
   // 全绿：只报一句，够确认"点了有反应"就行
   if (rejected.length === 0 && ignored === 0) {
-    return ElMessage.success(`已开始上传 ${accepted} 张照片`)
+    return ElMessage.success(`本次共接收 ${accepted} 张照片，已开始上传`)
   }
 
-  const lines = [`本次共 ${total} 个文件，${accepted} 张已开始上传`]
+  const lines = [
+    `本次共接收 ${total} 个文件，其中 ${accepted} 张照片已通过校验并开始上传`
+  ]
   rejected.slice(0, 3).forEach((r) => lines.push(`· ${r.name} —— ${r.reason}`))
-  if (rejected.length > 3) lines.push(`· …另有 ${rejected.length - 3} 个文件未通过校验`)
-  if (ignored > 0) lines.push(`· 另有 ${ignored} 个非照片文件已跳过（如 .DS_Store、.xlsx）`)
+  if (rejected.length > 3) {
+    lines.push(`· 另有 ${rejected.length - 3} 个文件未通过校验，不予上传`)
+  }
+  if (ignored > 0) {
+    lines.push(`· 另有 ${ignored} 个非照片文件已自动跳过（如 .DS_Store、.xlsx 等）`)
+  }
 
   ElMessage.warning({
     message: lines.join('\n'),
@@ -999,7 +1005,7 @@ function settleUpload() {
  * 这条报的是「已经开传的那些结果如何」。两条互斥、不重复：
  * 一条消息里的名字，不会在另一条里再出现。
  *
- * 【全成功且没有覆盖时一声不吭】校验那条已经报过「已开始上传 N 张照片」了，
+ * 【全成功且没有覆盖时一声不吭】校验那条已经报过「本次共接收 N 张照片，已开始上传」了，
  * 成功再报一遍是噪音 —— 所以这里没有"值得说的事"就直接返回。
  *
  * 【为什么失败用 error、覆盖用 success】两件事性质相反，混在一条里会让人以为
@@ -1019,11 +1025,11 @@ function flushUploadSettle() {
   /* 有失败 → 一条 error。覆盖重传不再单独弹，只在末尾带一句数量，
      否则一次重传几十张又是几十条。 */
   if (failed.length > 0) {
-    const lines = [`有 ${failed.length} 张照片上传失败`]
+    const lines = [`本次有 ${failed.length} 张照片上传失败，请重新上传`]
     // 与校验汇总同一个节流口径：最多列 3 条，剩下的报个数。太多没人读、也超出屏高。
     failed.slice(0, 3).forEach((r) => lines.push(`· ${r.name} —— ${r.reason}`))
-    if (failed.length > 3) lines.push(`· …另有 ${failed.length - 3} 张失败，请重试`)
-    if (replaced.length > 0) lines.push(`· 另有 ${replaced.length} 张是覆盖重传，已替换原照片`)
+    if (failed.length > 3) lines.push(`· 另有 ${failed.length - 3} 张上传失败，请重新上传`)
+    if (replaced.length > 0) lines.push(`· 另有 ${replaced.length} 张为覆盖重传，原照片已被替换`)
 
     return ElMessage.error({
       message: lines.join('\n'),
@@ -1043,7 +1049,7 @@ function flushUploadSettle() {
      「第 1、2、3 等 50 行 行」。（这个重复是拿真值跑出来才看见的，不是推理出来的。） */
   const tail = replaced.length > 3 ? ` 等 ${replaced.length} 行` : ' 行'
   ElMessage.success({
-    message: `已覆盖重传 ${replaced.length} 张照片（第 ${shown}${tail}）`,
+    message: `本次已覆盖重传 ${replaced.length} 张照片（涉及第 ${shown}${tail}）`,
     customClass: PHOTO_BATCH_TOAST_CLASS,
     duration: 8000,
     showClose: true
@@ -1113,20 +1119,21 @@ function beforeUploadBatch(file) {
   const m = matchPhotoToRows(nameNoExt, data.value)
 
   if (m.status === 'none') {
-    // 报错时把"表里期望的文件名"举几个例子 —— 比一句"未找到匹配"有用得多。
+    // 报错时把"名单中有效的文件名"举几个例子 —— 比一句"未找到匹配"有用得多。
     // 最多举 3 个：60 人的队伍全列出来会把提示撑爆。
     const sample = m.expected.slice(0, 3).join('、')
     const hint = m.expected.length
-      ? `表里期望的文件名如：${sample}${m.expected.length > 3 ? ' 等' : ''}`
-      : '名单里还没有填好身份证号'
-    rejectInBatch(file, `文件名对不上任何人（${hint}）`)
+      ? `名单中有效的文件名格式为：${sample}${m.expected.length > 3 ? ' 等' : ''}`
+      : '名单中尚未填写身份证号，暂无法匹配'
+    rejectInBatch(file, `文件名与名单不匹配（${hint}）`)
     return false
   }
 
   if (m.status === 'multi') {
     rejectInBatch(
       file,
-      `有 ${m.hits.length} 行都匹配到（第 ${m.hits.map((i) => i + 1).join('、')} 行），请改用「上传照片」按行单独上传`
+      `该文件名同时匹配到 ${m.hits.length} 行（第 ${m.hits.map((i) => i + 1).join('、')} 行），` +
+        '无法确定所属行次，请使用行内「上传照片」按钮逐张上传'
     )
     return false
   }
@@ -1160,7 +1167,7 @@ function onFileInputChange(e) {
   if (!input || input.type !== 'file') return
   if (input.webkitdirectory !== true && !input.hasAttribute('webkitdirectory')) return
   if (input.files && input.files.length > 0) return
-  ElMessage.warning('文件夹里没有找到照片，请确认选中的文件夹里有照片')
+  ElMessage.warning('所选文件夹中未找到照片文件，请确认文件夹内容后重新选择')
 }
 
 /*
@@ -1222,7 +1229,7 @@ function uploadFileBatch(options) {
       return fileApi.saveFileInfo(info).then(({ data: body }) => {
         /* 落库失败。以前这里是 ElMessage.error('文件上传失败') 逐张弹；
            改成 throw 交给统一的 .catch 收进汇总 —— 文案不变，只是不再刷屏。 */
-        if (body.code !== 0) throw new Error('文件上传失败（落库未通过）')
+        if (body.code !== 0) throw new Error('文件上传失败（服务端保存未通过）')
 
         const nameNoExt = file.name.substring(0, file.name.lastIndexOf('.'))
         const m = matchPhotoToRows(nameNoExt, data.value)
@@ -1232,8 +1239,8 @@ function uploadFileBatch(options) {
         if (m.status !== 'ok') {
           throw new Error(
             m.status === 'multi'
-              ? '已上传但表里有多行与它同名，请改用「上传照片」按行单独上传'
-              : '已上传但表里没有与它对应的行了（可能被删除或改过姓名/身份证）'
+              ? '照片已上传，但名单中有多行与之同名，无法确定所属行次，请使用行内「上传照片」按钮逐张上传'
+              : '照片已上传，但名单中已无与之对应的行次（该行可能已被删除，或姓名/身份证号已变更），照片未写入'
           )
         }
 

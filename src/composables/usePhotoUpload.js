@@ -292,7 +292,7 @@ export function matchPhotoToRows(nameNoExt, rows, namesOf = expectedPhotoNames) 
      而不是一条能看懂的提示。
 
      换成显式判型：非数组按「一行都没有」处理，于是每张照片都会得到
-     「文件名对不上任何人（名单里还没有填好身份证号）」，可读、不崩。
+     「文件名与名单不匹配（名单中尚未填写身份证号，暂无法匹配）」，可读、不崩。
      数组走的仍是同一个 .forEach，行为逐字未变。 */
   const list = Array.isArray(rows) ? rows : []
   list.forEach((item, i) => {

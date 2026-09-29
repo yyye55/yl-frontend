@@ -164,8 +164,36 @@
         <div class="box-col">
           <el-input v-model="item.name" placeholder="请输入姓名" />
         </div>
+        <!--
+          【第十二届·第十一轮】身份证后6位：失焦即在该格下方出一行红字。
+
+          原先填错只会在点「暂存 / 提交」时由 checkLine() 报一句 ElMessage
+          （「参演人员名单第N行身份证后6位应为6位…」）。提示本身没错，但**离出错的值太远**：
+          几十行的表里，用户得自己数到第 N 行、再比对是哪一位不对。
+          现在红字就出在出错的那一格下方，不用数行号。
+
+          【判据是共用的】@blur 里调用的 checkPersonCard 与后端 models.normalize_card
+          逐字同源（见 config/personFields.js 的文件头），这里不新增第二套规则；
+          提交时 checkLine() 那条**原样保留**，两条路互为兜底 ——
+          绕开界面（改 DOM / 直接调接口）时后端仍是最后一道闸。
+
+          【为什么外面要套一层 div】.box-col 是横排的 flex（justify-content:center），
+          红字直接放进去会与输入框并排、把这一列挤成两栏。竖排容器与红字的样式
+          抽在 styles/cell-tip.css，与指导教师表共用一份。
+
+          【@input 只做一件事：撤掉已有的红字】不在这里判 —— 刚敲第一个字符就弹红字
+          是噪声。等用户离开这一格，@blur 再对"他填完了的那个值"下结论。
+        -->
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证后6位" />
+          <div class="cell-tip-wrap">
+            <el-input
+              v-model="item.card"
+              placeholder="请输入身份证后6位"
+              @blur="onCardBlur(item)"
+              @input="onCardInput(item)"
+            />
+            <p v-if="cardTip(item)" class="cell-tip">{{ cardTip(item) }}</p>
+          </div>
         </div>
         <div class="box-col">
           <el-select v-model="item.gender" placeholder="请选择">
@@ -417,6 +445,10 @@ import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
 import { checkPersonBasics, isBlankCard } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
+/* 【第十二届·第十一轮】身份证后6位「失焦即红字」的状态与处理函数，与指导教师表
+   共用一份实现（@/composables/useCardTip）。判据仍在 config/personFields 里，
+   这里只是"什么时候显示"的那一半 —— 为什么两张表必须共用，见该文件头。 */
+import { useCardTip } from '@/composables/useCardTip'
 /* 【第十二届·第三轮】照片上传的零件（parsePhotoName / beforeUpload /
    beforeUploadSingle / uploadFileSingle / upAvatar）已搬到共用模块，
    与指导教师表用同一份实现 —— 体积上限、命名规则、OSS 通道都不再有第二份副本。
@@ -467,6 +499,14 @@ const props = defineProps({
 const emit = defineEmits(['rows-change', 'imported'])
 
 const data = ref([])
+
+/* 【第十二届·第十一轮】身份证后6位那一格的红字状态。
+   解释器是共享的（useCardTip），本表不持有自己的判据；方法与模板的对应关系见
+   useCardTip.js 的文件头与模板里那一格的注释。
+   clearCardTips 只在「整批换数据」时用：清空表格、Excel 重建数据之后，
+   旧行已经不在表里，留着的条目没有消费者。 */
+const { cardTip, onCardBlur, onCardInput, clearCardTips } = useCardTip()
+
 // 【第十二届改造·第二轮】QiniuData / domain / host / filename 已移除：
 // 上传改走阿里云 OSS（biz: image，小文件由后端代传），key 由后端生成、
 // url 由上传服务返回，前端不再硬编码七牛域名。
@@ -538,6 +578,9 @@ watch(
   () => props.showdata,
   (val) => {
     data.value = val ? val : []
+    // 【第十一轮】父组件换了一整份名单（编辑页回填 / 切换报表）→ 上一份的红字全部作废。
+    // 清的是「显示」不是「数据」，且只有整份替换这个时点才清，见 useCardTip.js 的说明。
+    clearCardTips()
   }
 )
 
@@ -642,6 +685,9 @@ function remove(index) {
  */
 function flush() {
   data.value.splice(0, data.value.length)
+  // 【第十一轮】表都清空了，附在行上的红字没有存在的地方，一并清掉。
+  // 只多这一句，splice 的原地清空语义与父子共用一个数组的前提都没动。
+  clearCardTips()
 }
 
 /** dist: check(){ ... Message.error("参演人员名单第"+(e+1)+"行"+t.msg) ... } —— 与 TeacherTable 同构 */
@@ -833,6 +879,9 @@ function importExcel(file) {
        * form.person 依旧只有 [原有同学]，带入行 0 行。
        */
       data.value.splice(0, data.value.length)
+      // 【第十一轮】导入把整批行换成了 Excel 里的新行，旧行上的红字随之作废。
+      // 位置就在清表之后、建行之前，读起来就是「旧的全没了，接下来建新的」。
+      clearCardTips()
       for (let i = 1; i < sheet.length; i++) {
         const row = {
           name: sheet[i].name,
@@ -1294,6 +1343,9 @@ defineExpose({ getData, getCacheData })
 /* 【第十二届·第三轮】@use 必须是 style 块里的第一条语句（Sass 语法要求），
    所以它排在下面那条 dist 注释之前。引用的是与指导教师表共用的占位块样式。 */
 @use '../../styles/photo-cell.css';
+/* 【第十二届·第十一轮】身份证后6位那一格的红字（.cell-tip-wrap / .cell-tip），
+   同样与指导教师表共用一份 —— 两张表上下并排，同一件事的红字必须逐像素一致。 */
+@use '../../styles/cell-tip.css';
 
 /* dist/css/chunk-0294a80a.260c9e35.css 中 [data-v-5568d648] 的全部 10 条规则 */
 .container {

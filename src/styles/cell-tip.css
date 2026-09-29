@@ -1,0 +1,68 @@
+/**
+ * 「输入框下方的一行红字」单元格 —— 参演人员表 / 指导教师表 **共用的一份样式**
+ *
+ * 【怎么用】在两个组件的 <style lang="scss" scoped> 里 @use 进来（与 photo-cell.css
+ * 并列），模板里那一格的写法固定为：
+ *
+ *     <div class="box-col">
+ *       <div class="cell-tip-wrap">
+ *         <el-input v-model="item.card" ... @blur="onCardBlur(item)" @input="onCardInput(item)" />
+ *         <p v-if="cardTip(item)" class="cell-tip">{{ cardTip(item) }}</p>
+ *       </div>
+ *     </div>
+ *
+ * 【为什么要抽出来】两张表上下并排，同一件事的红字必须字号/颜色/行距完全一致，
+ * 否则一眼就能看出是两套东西。规则只有一份，改这里两张表同时生效 ——
+ * 这也是 styles/photo-cell.css 已经立过的规矩。
+ *
+ * 【scoped 说明】与 photo-cell.css 同理：@use 进来的规则同样会被 Vue 的 scoped
+ * 转换加上 data-v 属性，不会泄漏到组件外。
+ */
+
+/* 输入框 + 红字的竖排容器。
+ *
+ * 【为什么要有这一层】.box-col 是 `display:flex; align-items:center`（横排居中），
+ * 直接把 <p> 放进去会与输入框并排、把这一列挤成两栏。
+ *
+ * 【width:100% 不能省】.box-col 是 flex 容器，交叉轴上的子项默认按内容收缩；
+ * 不给满宽，el-input 就不再等于列宽，而会缩成 placeholder 那么宽。
+ *
+ * 【gap 4px】输入框与红字之间留一口气，红字才像是"属于上面这一格"的注解，
+ * 而不是飘在行间的一段说明文字。 */
+.cell-tip-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 红字本身。
+ *
+ * 【红色为什么是 #d80e0e】本表工具栏里「两人照片会重名」那条红字用的就是这个值
+ * （PersonTable.vue 的 photoCollisionText），两处红字取同一个红，用户不会以为是
+ * 两种不同严重程度的问题。
+ *
+ * 【12px / 不加深】这一行是格子里的注解，不是标题：字号比正文（14px）小一档，
+ * 与占位遮罩里的文字同号。也不加粗 —— 一列 60 行里同时出现十条加粗红字会很吵。
+ *
+ * 【line-height:1.3 + 居中】文案最长的一条是「身份证后6位应为6位，前5位为数字，
+ * 末位为数字或X」（与后端 CARD_ERROR 逐字相同），在 164px 的列宽下正好折成两行。
+ *
+ * 【user-select: none 的理由同 photo-cell.css】这一格在出红字之前是块空白，
+ * 用户横向拖动表格时常常就按在这儿（12 列放不下，按住空白处拖是既有的横滚方式）。
+ * 红字一出现，这块地方变成了文字 —— 不禁选的话，按在这里会变成「选中文字」，
+ * 原生选区会朝 useDragScroll 抛 pointercancel，正在进行的平移被打断（该文件头有完整说明）。
+ *
+ * 【不占行高】两张表的行高都由「电子照片」那一格撑开（59×82 的照片 / 同尺寸占位块
+ * + 上下各 5px padding = 92px），而本格满打满算只有
+ * 输入框 32px + gap 4px + 两行红字约 32px = 68px，仍在 92px 以内 ——
+ * 所以红字出现/消失时**整行高度不变**，表不会跟着跳一下。
+ * 若将来把文案改长、或把字号调大，这条前提就要重新算。 */
+.cell-tip {
+  margin: 0;
+  color: #d80e0e;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  user-select: none;
+}

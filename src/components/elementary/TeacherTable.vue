@@ -198,8 +198,26 @@
             <el-option label="2" :value="2" :disabled="isSignatureTaken(2, 'row-' + index)" />
           </el-select>
         </div>
+        <!--
+          【第十二届·第十一轮】身份证后6位：失焦即在该格下方出一行红字，
+          与参展人员表逐字同款（同一套判据、同一份样式）。
+          原先这两张表都只在提交时用一行 ElMessage 报「第N行…」，提示离出错的值太远。
+          判据、时机、以及为什么外面要套一层 .cell-tip-wrap，见
+          @/composables/useCardTip 与 @/styles/cell-tip.css 的文件头。
+
+          注意带入行那一格不走这里：它是只读展示（`{{ conductor.card || '-' }}`），
+          值来自参展人员表，要改也是在那边改 —— 红字跟着出现在参展人员表对应的行上。
+        -->
         <div class="box-col">
-          <el-input v-model="item.card" placeholder="请输入身份证后6位" />
+          <div class="cell-tip-wrap">
+            <el-input
+              v-model="item.card"
+              placeholder="请输入身份证后6位"
+              @blur="onCardBlur(item)"
+              @input="onCardInput(item)"
+            />
+            <p v-if="cardTip(item)" class="cell-tip">{{ cardTip(item) }}</p>
+          </div>
         </div>
         <div class="box-col">
           <el-select v-model="item.gender" placeholder="请选择">
@@ -357,6 +375,10 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { checkPersonBasics, isBlankCard } from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
+/* 【第十二届·第十一轮】身份证后6位「失焦即红字」的状态与处理函数，与参展人员表
+   共用一份实现（@/composables/useCardTip）。判据仍在 config/personFields 里，
+   这里只是"什么时候显示"的那一半 —— 为什么两张表必须共用，见该文件头。 */
+import { useCardTip } from '@/composables/useCardTip'
 /* 【第十二届·第三轮】单张上传照片的零件，与参展人员表共用同一份实现
    （@/composables/usePhotoUpload）：体积上限、JPG、命名规则、OSS 通道、
    占位块尺寸都不再有第二份副本。
@@ -416,6 +438,12 @@ const props = defineProps({
 const emit = defineEmits(['rows-change', 'conductor-signature', 'conductor-slot-change'])
 
 const data = ref([])
+
+/* 【第十二届·第十一轮】身份证后6位那一格的红字状态。
+   解释器是共享的（useCardTip），本表不持有自己的判据；方法与模板的对应关系见
+   useCardTip.js 的文件头与模板里那一格的注释。
+   clearCardTips 只在「整份名单被换掉」的时点用（见下面 watch / flush）。 */
+const { cardTip, onCardBlur, onCardInput, clearCardTips } = useCardTip()
 
 /*
  * 【第十二届·第三轮】接上单张上传照片的三个零件：
@@ -478,6 +506,9 @@ watch(
   () => props.showdata,
   (val) => {
     data.value = val ? val : []
+    // 【第十一轮】父组件换了一整份名单（编辑页回填 / 切换报表）→ 上一份的红字全部作废。
+    // 清的是「显示」不是「数据」，且只有整份替换这个时点才清，见 useCardTip.js 的说明。
+    clearCardTips()
   }
 )
 
@@ -715,6 +746,11 @@ function remove(index) {
 /** dist: flush(){ this.data=[] } */
 function flush() {
   data.value = []
+  // 【第十一轮】表都清空了，附在行上的红字没有存在的地方。
+  // 这一句同时兜住了一个本表特有的情形：本表的 flush 是「换引用」而不是原地清空
+  // （dist 原样如此），父页面 form.teacher 里那批旧行随时可能被再送回来 ——
+  // 不清的话，它们会带着上一次的红字一起回来。
+  clearCardTips()
 }
 
 /**
@@ -834,6 +870,9 @@ defineExpose({ getData, getCacheData })
 /* 【第十二届·第三轮】@use 必须是 style 块里的第一条语句（Sass 语法要求）。
    占位块样式与参展人员表共用同一份，两表逐像素一致。 */
 @use '../../styles/photo-cell.css';
+/* 【第十二届·第十一轮】身份证后6位那一格的红字（.cell-tip-wrap / .cell-tip），
+   同样与参展人员表共用一份 —— 同理，两表逐像素一致。 */
+@use '../../styles/cell-tip.css';
 
 /* dist/css/chunk-0294a80a.260c9e35.css 中 [data-v-12e40084] 的全部 9 条规则 */
 .container {

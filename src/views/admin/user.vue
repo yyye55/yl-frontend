@@ -4,7 +4,7 @@
       <!--
         【本次变更：placeholder 不再写「请输入内容」】
         「请输入内容」等于没说 —— 用户不知道这个框到底搜哪一列。后端 user_list
-        （apps/api/views.py:554）里 keyword 是一个三选一的 OR：
+        （apps/api/views.py 的 user_list）里 keyword 是一个三选一的 OR：
         `Q(username__icontains) | Q(tel__icontains) | Q(nickname__icontains)`，
         所以把三个列名都写出来，与表格里的「账号 / 修改人电话号码 / 名称」三列对应。
 
@@ -14,7 +14,7 @@
         就含 nickname），区别只是前者还会带出「账号或电话里含这几个字」的行。
         对使用者来说这不是"多一个精确选项"，而是"同一个搜索要分两次填、还得先想清楚
         填哪个框"。现在只留这一个：账号、电话、名称都在这里搜。
-        【后端不动】user_list 的独立 nickname 参数（views.py:555-556）仍在，只是本页
+        【后端不动】user_list 的独立 nickname 参数仍在，只是本页
         不再发它 —— 不传即不筛，与传 null 等价。将来若要恢复"只按名称筛"，
         把 el-input 和 getData 里的 nickname 参数一起加回来即可。
         与 committee/user.vue 同步（两处一起改，见其文件头）。
@@ -128,7 +128,7 @@
           <!--
             「可报两支」列（本次新增），紧跟在「类型」列后面。
             【数据从哪来】列表接口 GET /api/admin/user/list 走的是后端的 user_dict
-            （apps/api/views.py:561 的 list_page 第三个参数），而 user_dict 里就有
+            （apps/api/views.py 里 list_page 的第三个参数），而 user_dict 里就有
             can_report_twice（apps/core/services.py:62）—— 所以行数据里本来就有，
             不需要额外请求。
             【为什么 type!==5 要显示「—」而不是「否」】特许只对中小学端有意义，
@@ -189,12 +189,12 @@
                 【本次变更：管理员端不再提供「修改」入口，先注释、不删除】
 
                 为什么停用：本按钮打开的「修改用户」弹窗走 PUT /api/admin/user/，与「重置密码」
-                是同一个接口、后端同一个处理函数 user_update_admin（views.py:579）。该函数里：
+                是同一个接口、后端同一个处理函数 user_update_admin（apps/api/views.py）。该函数里：
 
                     if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)
 
                 即请求体里只要出现 password 键，**值被忽略**，一律重置为默认密码 scylb@2026
-                （常量在 views.py:565）。弹窗里恰好有密码框，于是填 123456、界面弹「修改成功」、
+                （常量是 RESET_PASSWORD_DEFAULT）。弹窗里恰好有密码框，于是填 123456、界面弹「修改成功」、
                 库里却变成默认密码，页面上毫无提示 —— 填得越认真错得越离谱。故整条入口停掉。
                 停用后改密码只剩「重置密码」一个入口，语义唯一。
 
@@ -202,7 +202,8 @@
                   ① 本按钮；② 下方 el-dialog 上的 v-if="false"；
                   ③ editSubmit 末尾被块注释包住的 adminApi.user.update。
                   只放开①②、忘了③ → 弹窗能开能填，点「确定」毫无反应也不报错，比原 bug 更难查。
-                  三处都放开后仍需**后端先改** views.py:587，否则密码框会重新变回骗人控件。
+                  三处都放开后仍需**后端先改** user_update_admin 里那句 if "password" in data，
+                  否则密码框会重新变回骗人控件。
 
                 ⚠️ 已确认接受的损失：已有账号的「账号 / 名称 / 可报两支 / 所属市州」界面上再也改不了。
                 ⚠️ 存量数据：此前被静默改成默认密码的账号**无法复原**（原密码从未记录），需告知使用者。
@@ -317,7 +318,7 @@
 
           【为什么 clearable】允许不指定归属（对应 parent_id 为空）。
           后端 user_create_admin 对空值的处理是默认 values["parent_id"] = 0
-          （apps/api/views.py:594），传空 = 没有归属，不会报错。
+          （apps/api/views.py），传空 = 没有归属，不会报错。
 
           【不设为必填】后端允许 parent_id = 0，现存账号也大多没有归属，
           与现状保持一致，不在这里卡住用户。若将来要强制必填，
@@ -397,11 +398,13 @@
                `user.type !== to.meta.role`，类型一改，那个人浏览器里存的 type
                立刻对不上，下次跳路由就被踢回 /middle 并看到「该账号类型无可用后台」。
 
-          【另需知道】"只有中小学端才能有这个特许"这条规则**只由前端的
-          v-if="type === 5" 保证**。后端 user_update_admin / user_create_admin
-          读该字段时只做 _as_bool 归一化、不判 type（apps/api/views.py:585-586 与 :604-605），
-          所以直接打接口可以给任何类型的账号置上它，界面看不出来。
-          后端唯一的守备是：学校自助改资料的接口白名单里没有这个字段。
+          【另需知道：这条规则后端现在也守了 —— 结论已变，别再照旧版理解】
+          本条原先只由前端的 v-if="type === 5" 保证，后端只做 _as_bool 归一化、不判 type，
+          直接打接口能给任何类型置上它。**2026-09-29 核实后端已补上**：
+          user_create_admin 对非中小学直接报错「只有中小学账号可以报送两支队伍」；
+          user_update_admin 走 _apply_can_report_twice，把非中小学的该字段归 false 自愈。
+          所以这个 v-if 现在的意义是「别让界面看起来能改」，不再是唯一的防线。
+          （另外：学校自助改资料的接口 user_update 的白名单里本来就没有这个字段。）
         -->
         <el-form-item v-if="editForm.type === 5" label="可报两支">
           <div class="quota-box">
@@ -534,7 +537,7 @@
  *
  *  1) 后端不再接受调用方指定的新密码。user_update_admin 现在是
  *     `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- *     （apps/api/views.py:587，常量在同文件 :565）——
+ *     （user_update_admin 里那句 if "password" in data，常量是 RESET_PASSWORD_DEFAULT）——
  *     请求体里只要出现 password 这个键，**值被忽略**，一律重置为 scylb@2026。
  *     于是原先那个「请输入新密码」的输入框只会骗人：填什么都进不了库。
  *     现改为 ElMessageBox.confirm('是否重置为默认密码？')，没有输入框。
@@ -544,15 +547,16 @@
  *     注意这条提示的性质变了：它现在是**如实的系统行为**，不再是「提醒操作者自己填那个值」的约定。
  *
  *  3) 默认口令收敛到 src/config/defaultPassword.js（原先 login/index.vue 里另有一份硬编码）。
- *     后端那份在 apps/api/views.py:565，改一处要连它一起改。
+ *     后端那份在 apps/api/views.py 的 RESET_PASSWORD_DEFAULT，改一处要连它一起改。
  *
  *  4) 【本次最新变更】管理员端「修改」入口整体停用（先停用、不删除）——
  *     停用三处：「修改」按钮、el-dialog「修改用户」（v-if="false"）、
  *     editSubmit 末尾那段 adminApi.user.update（已整段注释）。
  *
  *     原因一句话：该入口与「重置密码」共用 PUT /api/admin/user/ → user_update_admin，
- *     而后端对请求里的 password 只看键在不在、不看值（apps/api/views.py:587），
- *     弹窗里填的密码会被静默丢弃并改成默认口令 scylb@2026（常量同文件 :565）。
+ *     而后端对请求里的 password 只看键在不在、不看值（user_update_admin 里那句
+ *     if "password" in data），弹窗里填的密码会被静默丢弃并改成默认口令
+ *     scylb@2026（常量 RESET_PASSWORD_DEFAULT）。
  *     ⚠️ 恢复清单、能力损失、存量数据说明 —— 全部写在模板上方「修改」按钮那段注释里，
  *        恢复前务必先读那一段（三处必须一起放开，缺一处会静默失灵）。
  *     ⚠️ 对「重置密码」零影响：resetPassword 里的 adminApi.user.update 仍在调用，
@@ -591,12 +595,12 @@ import { TYPE_LABEL } from '@/config/accountTypes'
 
 /**
  * 【本次新增】keyword 输入框的 placeholder 文本。
- * 后端 keyword 同时匹配 username / tel / nickname（views.py:554），三个列名都写出来。
+ * 后端 keyword 同时匹配 username / tel / nickname（views.py 的 user_list），三个列名都写出来。
  */
 const KEYWORD_PLACEHOLDER = '请输入账号/电话/名称'
 
 /**
- * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py:554），
+ * 搜索关键字。后端按 OR 同时匹配 username / tel / nickname（views.py 的 user_list），
  * 所以这一个框就是「账号 / 电话 / 名称」三合一的搜索入口，见模板里那段注释。
  */
 const keyword = ref(null)
@@ -770,7 +774,7 @@ function getData() {
   const params = {
     page: page.value,
     limit: limit.value,
-    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py:554）。
+    // 「账号 / 电话 / 名称」三合一，后端 keyword 是这三个字段的 OR（views.py 的 user_list）。
     // 值为 null 时无需剔除：axios 的默认序列化器会丢弃 null/undefined 的参数，
     // 也就是「框里没填」= 不传该条件。
     keyword: keyword.value
@@ -855,7 +859,7 @@ function modify(row) {
    * 【本次新增：把「没有归属」统一成 undefined】
    *
    * 后端有两种"没有归属"的写法：null（早期数据）和 0（user_create_admin 的默认值，
-   * 见 apps/api/views.py:594 的 values["parent_id"] = 0）。
+   * 见 apps/api/views.py 的 user_create_admin 里 values["parent_id"] = 0）。
    *
    * 【为什么必须归一化 —— 这是实测出来的，不是推测】
    * el-select（本项目装的 Element Plus 2.14.6）判空用的 emptyValues 是
@@ -869,7 +873,8 @@ function modify(row) {
    * 【为什么归一成 undefined，而不是 null 或 ''】
    * 提交时 editForm 是整个对象发出去的，JSON.stringify 会**丢掉值为 undefined 的键**，
    * 而后端 user_update_admin 是 `if k in data: setattr(user, k, data[k])`
-   * （apps/api/views.py:583-584）—— 键不存在 = 不改动。
+   * （apps/api/views.py 的 user_update_admin 里 for k in (...) / if k in data 那两行）
+   * —— 键不存在 = 不改动。
    * 所以用户没碰这个字段时，数据库里那个 0 原样保留，**零副作用**。
    *   · 归一成 null：会把 0 改写成 NULL。语义相同，但白白动了数据，没必要。
    *   · 归一成 ''：后端 setattr(user, 'parent_id', '') 往 IntegerField 里写空串会直接报错。
@@ -940,7 +945,7 @@ function onTypeChange(target) {
    * 但 form.parent_id 这个值**还留在对象里**，提交时发的是整个 form
    * （submit() 里 adminApi.user.create(form.value)）。
    *
-   * 而后端 user_create_admin 的校验是（apps/api/views.py:596-603）：
+   * 而后端 user_create_admin 的校验是（apps/api/views.py 里 requested_parent 那一段）：
    *     if parent.type != User.TYPE_CITY:
    *         return response(failure("上级账号必须是市州账号"))
    * 它**只检查"父账号是不是市州"，不检查"新账号是不是 type=5"**。
@@ -967,7 +972,7 @@ function onTypeChange(target) {
  * 这一处历史上是 ElMessageBox.prompt('请输入新密码')，让操作者把口令打进去。
  * 后端现在不再接受调用方指定的新密码：user_update_admin 里
  * `if "password" in data: user.set_password(RESET_PASSWORD_DEFAULT)`
- * （apps/api/views.py:587）—— 带不带值、带什么值都一样。
+ * （user_update_admin 里那句 if "password" in data）—— 带不带值、带什么值都一样。
  * 于是输入框成了一个纯骗人的控件：填进去的任何东西都被丢弃，用户按自己填的去登录必然失败。
  * 换成 confirm 后，弹窗里问的就是将要发生的事，不再有可填的地方。
  *
@@ -1013,7 +1018,7 @@ function resetPassword(id) {
  *
  * ⚠️ 恢复弹窗时必须连末尾那段 adminApi.user.update 一起放开，否则点「确定」静默失灵。
  * 注意现在挡住"密码被静默重置"的**不是"请求里没有 password 键"，而是"弹窗根本打不开"**——
- * 后端 apps/api/views.py:587 那一句一个字都没改，恢复时别以为坑已经不存在了。
+ * 后端 user_update_admin 里那句 if "password" in data 一个字都没改，恢复时别以为坑已经不存在了。
  */
 async function editSubmit() {
   const valid = await ruleEditFormRef.value.validate().catch(() => false)
@@ -1026,7 +1031,7 @@ async function editSubmit() {
    * 提交时这个键被 JSON.stringify 丢掉，后端判定为"不改动" —— 于是这个 × 是个静默空操作。
    *
    * 【为什么是 0 不是 null】与后端 user_create_admin 的既有写法
-   * （apps/api/views.py:594 的 values["parent_id"] = 0）保持一致，
+   * （apps/api/views.py 的 user_create_admin 里 values["parent_id"] = 0）保持一致，
    * 免得一个库里并存 NULL 和 0 两种"没有归属"。后端 user_update_admin 的
    * `requested_parent in (None, "", 0, "0")` 那一支两种都收，效果相同。
    *

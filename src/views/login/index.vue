@@ -335,7 +335,7 @@ const loginFormRules = {
 
 /**
  * 初始/默认口令 —— 值来自 src/config/defaultPassword.js，不要在这里写死字面量。
- * 它必须与「重置密码」实际写进库里的那个口令一致（后端 apps/api/views.py:537
+ * 它必须与「重置密码」实际写进库里的那个口令一致（后端 apps/api/views.py 的
  * RESET_PASSWORD_DEFAULT），否则下面那条提醒永远不弹，且不会报任何错。
  */
 const INITIAL_PASSWORD = DEFAULT_PASSWORD

@@ -38,12 +38,23 @@ if (!HOST && import.meta.env.DEV) {
 
 // 创建 axios 实例
 //
-// 【baseURL 是兜底，不是开关】决定接口地址的是各调用点里拼的 HOST
-// （一律写成 HOST + '/api/…'，属于绝对地址）；axios 遇到绝对地址会直接
-// 跳过 baseURL，所以这里的 baseURL 正常情况下不生效，只在「万一有人写成
-// 相对路径」时兜底。⇒ 要换后端地址，只改 .env 里的 VITE_API_BASE_URL。
+// 【这里没有 baseURL —— 不是漏了，是 2026-09-30 特意去掉的，别加回来】
+// 决定接口地址的始终是各调用点里拼的 HOST（一律写成 HOST + '/api/…'）。
+// 原先这里写着 `baseURL: HOST`，本意是「万一有人写成相对路径」时兜底；
+// 生产改成子路径部署后，这个兜底会**帮倒忙**，而且是全站级的：
+//
+//   生产 HOST = '/ylbbm'（是路径，不再是域名），某个调用的 URL 就成了
+//   '/ylbbm/api/login'。axios 1.20 的 isAbsoluteURL（helpers/isAbsoluteURL.js）
+//   判据是「开头有 //」，'/ylbbm/api/login' 在它眼里**是相对路径**，
+//   于是 buildFullPath 会把 baseURL 再拼一次：
+//       combineURLs('/ylbbm', '/ylbbm/api/login') = '/ylbbm/ylbbm/api/login'
+//   结果每一个接口都 404，而调用点看起来完全正确 —— 极难排查。
+//
+// 去掉之后，万一有人真的写了相对路径（如 request.get('/api/x')），请求会打到
+// 当前源站的根路径、当场 404，而不是被静默改写成一个错的地址。
+// ⇒ 要换后端地址，只改 .env 里的 VITE_API_BASE_URL（开发 .env.development、
+//   生产 .env.production 里的含义与取值见那两个文件的注释），代码里不动。
 const request = axios.create({
-  baseURL: HOST,
   timeout: 12000
 })
 
@@ -123,7 +134,7 @@ function gotoLogin() {
   clearUser()
   setTimeout(() => {
     // 跳登录页。BASE_URL 由 vite.config.js 的 base 派生，恒带尾部 '/'，
-    // 生产为 /ylbxt/login，开发为 /login
+    // 生产为 /ylbbm/login，开发为 /login
     window.location.href = import.meta.env.BASE_URL + 'login'
   }, 1000)
 }

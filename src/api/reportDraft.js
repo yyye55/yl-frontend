@@ -11,8 +11,8 @@
  * request.js 是给「一次性页面动作」设计的，它有两个设定会和暂存天然冲突
  * （逐行核对过，不是推测）：
  *
- *   request.js:160  case 404: window.location.href = BASE_URL + '404'
- *   request.js:163  case 500: window.location.href = BASE_URL + '500'
+ *   request.js:170  case 404: window.location.href = BASE_URL + '404'
+ *   request.js:173  case 500: window.location.href = BASE_URL + '500'
  *
  *   这两条是**整页跳转**，业务代码 catch 不到。后果：
  *     · 后端草稿接口尚未部署时，用户点一次「暂存」就会被从填了一半的表单里
@@ -20,11 +20,11 @@
  *     · 规范 §二十六 要求前端区分并处理 DRAFT_NOT_FOUND（草稿不存在 → 回列表页）。
  *       若后端用 HTTP 404 表达它，上面的跳转会把这个语义整个吞掉，前端**永远收不到**。
  *
- *   request.js:47   timeout: 12000
+ *   request.js:58   timeout: 12000
  *   65 人满编名单的完整快照在弱网下可能超过 12 秒；超时后走的是
  *   「网络异常，请检查您的网络连接」分支，文案对暂存是误导的。
  *
- *   request.js:146-149  无响应时弹全局 ElMessage
+ *   request.js:157-160  无响应时弹全局 ElMessage
  *   会与页面自己的「暂存失败，请重试」状态文案重复弹两遍。
  *
  * ⇒ 本实例：timeout: 0（不设总超时，由调用方与浏览器决定）、不挂全局拦截器、
@@ -33,7 +33,7 @@
  *
  * 【Content-Type 刻意不改】与 request.js 同款做法：头仍是 post 默认的
  * application/x-www-form-urlencoded，但请求拦截器里先把对象 JSON.stringify 成字符串，
- * 于是 body 是 JSON 文本、头不变。原因见 request.js:79-86 ——
+ * 于是 body 是 JSON 文本、头不变。原因见 request.js:90-97 ——
  * application/json 不在 CORS 安全列表内，改头会让跨域部署下每个 POST/PUT
  * 都先发一次 OPTIONS 预检，是否放行取决于别处的 CORS 配置，属于不应引入的变量。
  * 后端 apps/core/services.py:parse_body 是先 json.loads(request.body)、
@@ -87,16 +87,19 @@ function prefixOf(scope) {
   return seg
 }
 
-const draftRequest = axios.create({ baseURL: HOST, timeout: 0 })
+// 【不挂 baseURL，理由同 request.js:39-56】生产 HOST 是路径 '/ylbbm'，
+// 而下面的 PATHS 已各自拼好了完整地址（'${HOST}/api/…'），这些地址在 axios 1.20
+// 眼里算相对路径，再挂 baseURL 会被 combineURLs 拼成 '/ylbbm/ylbbm/api/…'。
+const draftRequest = axios.create({ timeout: 0 })
 
-// 与 request.js:51 一致：POST 默认表单头（实际 body 是 JSON 文本，见文件头说明）
+// 与 request.js:62 一致：POST 默认表单头（实际 body 是 JSON 文本，见文件头说明）
 draftRequest.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded'
 
 draftRequest.interceptors.request.use(
   (config) => {
     const token = getToken()
     if (token) config.headers['Authorization'] = token
-    // 先 stringify 成字符串，绕开 axios 1.x 的 toURLEncodedForm（理由同 request.js:107-111）
+    // 先 stringify 成字符串，绕开 axios 1.x 的 toURLEncodedForm（理由同 request.js:118-122）
     if (config.data !== null && typeof config.data === 'object') {
       config.data = JSON.stringify(config.data)
     }

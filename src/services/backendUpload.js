@@ -11,12 +11,12 @@
  * 【为什么必须自建 axios 实例，不能直接用 @/utils/request】
  * src/utils/request.js 有两个设定会把代传上传搞死，两条都踩实了：
  *
- *   1) request.js:47 `timeout: 12000`
+ *   1) request.js:58 `timeout: 12000`
  *      20MB 的 PDF 在校园网下基本必超 12 秒。而且超时走的是拦截器里 `!response`
  *      那个分支，弹出来的是「网络异常，请检查您的网络连接」——把「传得慢」说成
  *      「断网」，用户会去反复重试。这里 timeout: 0 表示不限时。
  *
- *   2) request.js:108 `case 404: window.location.href = BASE_URL + '404'`
+ *   2) request.js:170 `case 404: window.location.href = BASE_URL + '404'`
  *      整页跳转，且发生在拦截器里、业务代码 catch 不到。后端 /api/oss/upload
  *      上线前，任何一次小文件上传都会把用户从表单里踢到 404 页，已填内容全丢。
  *      这里自己处理 404，退化成一条可读的提示。
@@ -33,9 +33,12 @@ import { getToken } from '@/utils/auth'
  * 专用实例：不限时 + 自动带 token，但没有全局的 NProgress 与错误弹窗。
  * NProgress 不加是因为上传自带进度反馈（有的点有 FileCover，有的点没有），
  * 顶栏再跑一条会打架。
+ *
+ * 【不挂 baseURL，理由同 request.js:39-56】上传地址在本文件里已经拼成
+ * `HOST + '/api/oss/upload'`；生产 HOST 是路径 '/ylbbm'，该地址在 axios 1.20
+ * 眼里算相对路径，再挂 baseURL 会被 combineURLs 拼成 '/ylbbm/ylbbm/api/oss/upload'。
  */
 const uploadClient = axios.create({
-  baseURL: HOST,
   timeout: 0
 })
 
@@ -82,7 +85,7 @@ function toError(message) {
 export async function uploadViaBackend({ file, biz, onProgress }) {
   // 【不要手写 Content-Type】手写 multipart/form-data 会把 boundary 一起写死，
   // 后端解析不出分段。本仓库的 axios 是 1.20.0，遇到 FormData 会自动把
-  // request.js:51 设的 application/x-www-form-urlencoded 默认头清掉，
+  // request.js:62 设的 application/x-www-form-urlencoded 默认头清掉，
   // 交给浏览器自己带 boundary，所以这里什么都不用管。
   const form = new FormData()
   form.append('file', file)

@@ -117,6 +117,11 @@ yl-frontend/
 
 所有路径以 `VITE_API_BASE_URL` 为前缀。
 
+生产环境该前缀是 `/ylbbm`，所以线上实际请求的是 `/ylbbm/api/login` 这样的地址
+（系统整体挂在 `https://bigapp.scbdc.edu.cn/ylbbm/` 子路径下，前端在 `/ylbbm/`、
+后端在 `/ylbbm/api/`）。下表中的路径是**后端内部**的路由，nginx 会把 `/ylbbm` 剥掉，
+所以两边写法不同但指的是同一批接口。详见 [.env.production](.env.production) 的注释。
+
 ### 通用
 - `POST /api/login` 登录
 - `POST /api/logout` 登出
@@ -194,11 +199,14 @@ yl-frontend/
 
 | 变量 | 说明 |
 |------|------|
-| `VITE_API_BASE_URL` | API 基础地址，唯一来源。分别在 `.env.development` / `.env.production` 中配置 |
+| `VITE_API_BASE_URL` | API 基础地址（`/api` 之前的那一段），唯一来源。分别在 `.env.development` / `.env.production` 中配置 |
 | `VITE_APP_TITLE` | 页面标题 |
 
-**部署前缀只有一个来源**：`vite.config.js` 的 `base`（production 下为 `/ylbxt/`）。
+**前端路由前缀只有一个来源**：`vite.config.js` 的 `base`（production 下为 `/ylbbm/`）。
 代码中一律用 `import.meta.env.BASE_URL` 读取，不要再新增 `VITE_BASE` 之类的自定义变量——两套来源必然漂移。
+注意接口前缀**不**走这个 `base`，而是走上面那个 `VITE_API_BASE_URL`：生产 `/ylbbm`（线上请求
+`/ylbbm/api/…`），开发留空到域名一级（`http://47.108.29.34`，请求 `/api/…`）。两者取值故意不同，
+原因（开发机 `/ylbbm/api/*` 会被 fallback 成 index.html）写在这两个 env 文件的注释里。
 
 ## ⚠️ 已知问题
 

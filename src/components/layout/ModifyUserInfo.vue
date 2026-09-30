@@ -632,7 +632,7 @@ async function submit() {
     /**
      * 【为什么这里也要 catch】改造前这个 PUT 没有 catch：一旦走到拦截器的 default 分支
      * （405/422 等静默状态码）就是一条 unhandled rejection，用户侧表现是"点了没反应"。
-     * showApiError 正是为此存在的（见 request.js:174 的注释）：对 401/403/404/500/网络异常
+     * showApiError 正是为此存在的（见 request.js:220-235 的注释）：对 401/403/404/500/网络异常
      * 返回 null（拦截器已提示或已跳转），不会重复弹提示，只对静默状态码弹一句可读文案。
      */
     showApiError(err, '修改失败')

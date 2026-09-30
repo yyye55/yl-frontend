@@ -356,8 +356,8 @@
  *      逐字节回写 —— styles.xml、冻结窗格 ySplit=2、列宽、phoneticPr 全部保留，
  *      已逐条目比对确认只有 sharedStrings.xml 不同（未压缩长度 +7 字节）。
  *      `参演人员导入模板1.xlsx`（PersonTableMajor 用）同步改了同一格。
- *      故改为 `BASE + 'static/参演人员导入模板.xlsx'`：生产环境 base='/ylbxt/' 拼出的
- *      字符串与 dist 逐字相同，开发环境 base='/' 才能命中 Vite 的 public 目录
+ *      故改为 `BASE + 'static/参演人员导入模板.xlsx'`：生产环境 base='/ylbbm/' 拼出来的
+ *      才是线上真实路径（部署前缀 2026-09-28 由 /ylbxt/ 改为 /ylbbm/），开发环境 base='/' 才能命中 Vite 的 public 目录
  *      （否则开发时点「下载模板」必然 404）。做法与 src/views/test/index.vue 的
  *      MODEL_URL 一致。除该常量拼接外，downloadStaticFile 的第二个参数（下载文件名）
  *      与整个调用形式均保持 dist 原样。

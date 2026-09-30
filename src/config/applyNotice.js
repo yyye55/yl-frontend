@@ -48,7 +48,7 @@ export const APPLY_NOTICE = {
   // 【当前状态】不再调用后端接口，直接下载随前端一起部署的静态文件。
   // 文件实体在 public/static/账号申请表（附件4）.docx，构建时原样拷进 dist/static/，
   // 与「参演人员导入模板.xlsx」是同一套做法（见 PersonTable.vue 的下载模板按钮）。
-  // 【为什么必须拼 BASE_URL】生产环境 base 是 '/ylbxt/'（vite.config.js），
+  // 【为什么必须拼 BASE_URL】生产环境 base 是 '/ylbbm/'（vite.config.js；2026-09-28 前是 '/ylbxt/'），
   // 写死 '/static/...' 线上会 404。BASE_URL 由 base 派生、恒带尾部 '/'，
   // 所以这里直接接 'static/...' 即可。
   // 【换文件时改两处】本行路径 + 下面的 fileName。

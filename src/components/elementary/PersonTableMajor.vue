@@ -163,7 +163,7 @@
  *    （该项目内实现与 dist 逐字节相同，故直接复用而非另写一份）。
  * 3) 模板里写死的 `"/ylbxt/static/…"` → `BASE + 'static/…'`（BASE = import.meta.env.BASE_URL）。
  *    这是本文件对 dist 常量的**唯一**有意改动：文件实体在 `frontend/public/static/`，
- *    生产环境下 BASE 就是 `/ylbxt/`，解析结果与 dist 完全一致；写死则开发环境会 404。
+ *    生产环境下 BASE 就是 `/ylbbm/`，解析结果与线上实际路径一致；写死则开发环境会 404。
  *    与 PersonTable.vue 的处理保持一致，遵循项目「部署前缀单一来源」的既有约定。
  * 4) `this.$set(item,"k",v)` → 直接赋值（`data` 是 ref 数组，其元素在 Vue 3 中已是深层响应式）。
  * 5) `watch:{showdata(e){this.data=e}}` + `mounted(){this.$nextTick(...)}` → 同构的 watch + onMounted(nextTick)。

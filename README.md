@@ -6,7 +6,7 @@
 
 | 项目 | 内容 |
 |------|------|
-| **部署路径** | `/ylbxt/` |
+| **部署路径** | `/ylbbm/`（前端）+ `/ylbbm/api/`（接口），见 [.env.production](.env.production) |
 | **后端域名** | `http://47.108.29.34` |
 | **技术栈** | Vue 3 + Element Plus + Pinia + vue-router 4 + axios + Vite |
 | **Node 版本** | 18+ |

@@ -76,7 +76,7 @@ export function logout() {
   clearUser()
   // 【修复】原实现用 window.location.href 整页跳转，会绕过 Vue Router：
   //   1) 触发一次完整页面重载，路由守卫 / NProgress / 标签页状态全部丢失；
-  //   2) 生产环境 base 是 /ylbxt/，而 window.location.href 是绝对路径赋值，
+  //   2) 生产环境 base 是 /ylbbm/，而 window.location.href 是绝对路径赋值，
   //      与 P0-1 统一用 import.meta.env.BASE_URL 的做法不一致。
   // 现改为走 Router。导入是安全的：router/index.js 只依赖 vue-router，不反向依赖本文件，
   // 不会形成循环依赖（guard.js 是 main.js 里单独 import 的副作用模块）。

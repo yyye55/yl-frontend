@@ -7,12 +7,14 @@
       当成那个 prop 消化掉，**不会**有原生监听挂到根元素上；而 EP 内部只在「文件状态
       变化」时调用它 —— 选中空文件夹时 uploadFiles 在 `if (files.length === 0) return`
       就返回了，一次状态变化都没有，那个 prop 从头到尾不会被调用。
-      原生 change 事件**本身是触发的**（只是被 EP 吞了），而它会冒泡，所以挂在
-      这个普通 div 上就能收到，用来补「文件夹里没有照片」那条提示。
+      原生 change 事件**本身是触发的**（只是被 EP 吞了），所以挂在这个普通 div 上
+      就能收到，用来补「文件夹里没有照片」那条提示。
+      【必须是 .capture，不能是冒泡】EP 会在同一个事件里、冒泡到我们之前把
+      input.files 清空 —— 理由与实测见下面 onFileInputChange 的注释。
       三个文件 input（Excel 导入 / 批量照片 / 隐藏的单张）里只有批量照片那个开了
       目录选择，处理函数按 webkitdirectory 认人（见 onFileInputChange）。
     -->
-    <div class="options" @change="onFileInputChange">
+    <div class="options" @change.capture="onFileInputChange">
       <!--
         dist 原文（模块 db6d 渲染函数）：
 
@@ -1221,6 +1223,18 @@ function beforeUploadBatch(file) {
  * 隐藏的单张上传），只有「批量上传照片」那个开了目录选择，所以用 webkitdirectory 判别。
  * 属性与 DOM 属性两种写法都判，是因为 Vue 在浏览器认识这个属性时把它设成 DOM 属性
  * （此时 hasAttribute 可能为 false），不认识时退化成设 HTML 属性。
+ *
+ * 【为什么监听必须写成 .capture】这条提示的判据是「此刻 input.files 是否为空」，
+ * 而 EP 会**在同一个 change 事件里、冒泡到我们之前**把 FileList 清空：
+ * upload-content 的 upload() 第一行就是 `inputRef.value.value = ""`
+ * （element-plus/es/components/upload/src/upload-content.vue_vue_type_script_setup_true_lang.mjs:50），
+ * 而 uploadFiles() 对**第一个**文件是同步调用 upload() 的（autoUpload 默认 true，
+ * 本控件没关），于是文件还没等到冒泡就已经被清掉。
+ * 挂冒泡阶段的后果是：**每选一次非空文件夹都会弹这条「未找到照片文件」**，
+ * 与同一刻那条「本次共接收 N 个文件…」正面打架（2026-09-30 报的就是这个）。
+ * 改挂捕获阶段即可 —— 祖先的捕获监听先于目标自身的监听触发，此刻 files 还在。
+ * 【实测】__debug__/probe-dir-change-order.cjs（真实 EP，两个文件的文件夹）：
+ *   捕获阶段读到 2、冒泡阶段读到 0，同时 beforeUpload 两个文件名都收到了。
  *
  * 【触发时机】空文件夹 → 只有这一条提示；非空 → 直接返回，走上面的正常批量流程。
  */

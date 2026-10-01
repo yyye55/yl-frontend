@@ -5,7 +5,7 @@
       <Sidebar :collapse="isCollapse" :active="active" />
 
       <el-container>
-        <!-- 顶部：昵称已移除 / 修改信息 / 退出登录 -->
+        <!-- 顶部：账号名称 / 修改信息 / 退出登录（三者的判据与取舍见 Header.vue） -->
         <Header @modify="openModify" />
 
         <!-- 标签页栏：dist 中为 v-if="tabs.length>0" -->
@@ -79,9 +79,11 @@
  *     dist 的 el-main 里只有裸 router-view，因此移除（移除后行为才与 dist 一致）。
  *  5. 原实现的 Header 有折叠按钮 / 面包屑 / 下拉菜单，dist 均无 —— 见 Header.vue。
  *  6. 【第十二届】按要求移除顶栏昵称栏及其「帮助」弹窗触发，故上面第 81 行那条
- *     帮助 el-dialog 已从本组件**删除**；el-header 的三个可点击 div 现为两个
- *     （修改信息 / 退出登录）。上面第 80 行的 `ModifyUserInfo` **保留不动**，
+ *     帮助 el-dialog 已从本组件**删除**。上面第 80 行的 `ModifyUserInfo` **保留不动**，
  *     「修改信息」功能照常可用。dist 骨架原文保留作为凭据，勿据此恢复帮助弹窗。
+ *  7. 【第十二届·后续】Header 内又补了「当前账号名称」只读标签（在各端顶栏显示
+ *     如「希望小学」，紧挨「修改信息」左侧）。它不可点击，与第 6 条删掉的那个
+ *     可点昵称栏不是一回事 —— 帮助弹窗与 `showHelp` 至今仍不存在。
  */
 
 import { ref, computed } from 'vue'

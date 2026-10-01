@@ -52,10 +52,20 @@
             <!-- 账号是登录凭证，不开放修改（后端 user_update 虽认 username，但不放开的理由见文件头） -->
             <el-form-item label="账号" prop="username">
               <el-input v-model="form.username" disabled />
+              <div class="field-hint">账号为登录凭证，登录后不可修改。</div>
             </el-form-item>
 
-            <el-form-item label="名称" prop="nickname">
-              <el-input v-model="form.nickname" maxlength="20" placeholder="请输入名称" />
+            <!--
+              【名称：只读，不给输入框】理由见文件头「名称为什么不开放自助修改」。
+              这里刻意用一段文本而不是 disabled 的 el-input，也不写 prop：
+              prop 一旦写上，Element Plus 就会拿它去套 rules；而名称的取值来自
+              建号端（那边没有长度限制），任何长度规则都可能拦住一个**本来就合法**
+              的名称 —— 见文件头「长度规则的坑」。不写 prop，这一项就完全不参与校验。
+            -->
+            <el-form-item label="名称">
+              <div class="field-value">{{ form.nickname || '—' }}</div>
+              <!-- 写成一行：这里的 {{ }} 两侧一旦折行，Vue 会把缩进并进文本，说明中间就会多出空格 -->
+              <div class="field-hint">本项由主办方统一维护，如需变更请联系组委会（联系人：{{ ORGANIZER_CONTACT.name }}，联系电话：<span class="field-hint__nowrap">{{ ORGANIZER_CONTACT.tel }}</span>）。</div>
             </el-form-item>
 
             <el-form-item label="修改人姓名" prop="leader">
@@ -64,6 +74,10 @@
 
             <el-form-item label="修改人联系方式" prop="tel">
               <el-input v-model="form.tel" placeholder="请输入联系电话" />
+              <!-- 这两项是全表单仅有的必填项，原先零说明 —— 用户不知道该填谁，见文件头「补的两处说明」 -->
+              <div class="field-hint">
+                请填写本单位本次报名工作的经办人及可直接接通的电话，主办方将据此联系报名事宜。
+              </div>
             </el-form-item>
 
             <el-form-item label="其他信息" prop="description">
@@ -73,8 +87,9 @@
                 :rows="3"
                 maxlength="200"
                 show-word-limit
-                placeholder="可填写关于本账号的介绍"
+                placeholder="可填写需要主办方知悉的情况"
               />
+              <div class="field-hint">本项由主办方在账号管理中查看，供报名期间联络与核对时参考。</div>
             </el-form-item>
           </div>
 
@@ -97,13 +112,16 @@
               （与 admin/committee 两处的「重置密码」不同：那两处走 user_update_admin，
                 后端把值忽略掉、一律写成 RESET_PASSWORD_DEFAULT。）
 
-              【原密码校验的现状——重要，别误读】下面「当前密码」这一项是**按市场标准
-              加的二次确认**，但后端 user_update 目前**不校验** old_password，
-              它只认 password。也就是说：后端改造上线前，这一项填错也照样能改成新密码，
-              它是个"摆设"；改造上线后才真正拦得住。
-              这是与使用者确认后**有意保留的中间状态**，交接需求见
-              docs/后端协助问题清单-自助修改密码校验原密码.md。
-              措辞上刻意没有在界面上写"待后端支持"之类的话——那对终端用户没有意义。
+              【原密码校验：后端已经上线了，这一项真的拦得住】
+              这里原先写着「后端不校验 old_password，这一项是个摆设」——**那句话已经过期**。
+              后端 2026-09-29 的提交（yilinbei hou，分支 jy，8d6b105，apps/api/views.py:342-343）
+              已改为：请求里带了 old_password 就核对，对不上返回「当前密码不正确」，
+              且校验发生在 user.save() 之前（不会出现"密码没改成、资料却写进去了"的半截落库）。
+              本组件在改密码时**总是**带上 old_password（见 submit()），
+              与 validateOldPassword 的必填互为呼应 —— 所以这一项现在是有效的二次确认。
+              ⚠️ 别据旧注释把它当摆设删掉。
+              据此，docs/后端协助问题清单-自助修改密码校验原密码.md 上的诉求也已由后端完成。
+              界面上刻意不写"已校验"之类的话——对终端用户没有意义。
             -->
             <el-form-item label="当前密码" prop="oldPassword">
               <el-input
@@ -191,6 +209,51 @@
  * 【本文件的一句话现状】
  *   一个弹窗干两件事：改资料（基本信息）和改密码（安全设置）。
  *   两件事共用同一个「确定」按钮、同一次 PUT /api/user、同一次强制重新登录。
+ *   基本信息区里，**只有「修改人姓名 / 修改人联系方式 / 其他信息」三项可填**，
+ *   账号与名称都是只读的（理由见下）。
+ *
+ * ==========================================================================
+ * 【名称为什么不开放自助修改】
+ *
+ *   【一句话】名称由主办方（管理员/组委会建号时）给定，学校端只能看、不能改。
+ *
+ *   【不是"名字是后端给的所以别改"这么软的理由，有三条硬依据】
+ *     ① 它不只是显示。生成《报名信息表》（Word）时，学校名称那一格取的是
+ *        `report.school_name or user.nickname`（apps/api/registration_form.py:237）
+ *        —— 报名记录里没填学校名时，**账号名称就是打印出来、要盖公章、要扫描
+ *        上传的那份材料上的单位名**。放开自助改名 = 能改掉官方材料上的单位名。
+ *     ② 主办方的账号台账导出里 nickname 是一列（apps/api/views.py:749），
+ *        与建号端给的名称对账。学校能改，这一列就失去对账意义。
+ *     ③ 建号端（admin / committee 的「添加账号」）才是名称的权威来源。
+ *        用户端留一个可写口，等于给权威源开了个后门。
+ *
+ *   【那学校真需要更名怎么办】给一条明路，别让人只能挨个打电话问：
+ *     界面上写明"联系组委会（联系人：黄婷婷，联系电话：028-86269727）"。
+ *     出处是红头文件原文（__debug__/hongtou.txt:10），不是编的。
+ *
+ *   【模板上的实现要点】用一段文本而不是 disabled 的 el-input，
+ *     且 **不写 prop**（写了 prop，EP 就会拿它套 rules）—— 见下面「长度规则的坑」。
+ *
+ * ==========================================================================
+ * 【长度规则的坑：名称那条 2~20 字规则已删除，不要再加回来】
+ *
+ *   原来的 rules.nickname 是 required + 2~20 字。名称改只读之后它只剩害处：
+ *     建号端「名称」输入框**没有长度限制**（views/admin/user.vue:245），
+ *     后端字段是 255 字符（apps/core/models.py:119）—— 2~20 是这里凭空收窄的。
+ *   后果是硬的：名称超过 20 字的学校打开弹窗，**回填进来的值本身就违规**，
+ *   点确定被这条红字拦住，连改密码、改联系方式都做不了（不是假设，
+ *   四川的学校全称普遍 15~25 字）。
+ *   ⇒ 规则删掉、模板上也不写 prop，两道保证它不参与校验。
+ *
+ * ==========================================================================
+ * 【补的两处说明（原先这两项零说明）】
+ *   ① 「修改人姓名 / 修改人联系方式」是全表单仅有的两个必填项 —— 它们是主办方
+ *      唯一能联系到报名单位的渠道（也是新账号首次使用必须先补全的两项，
+ *      为什么前端刻意比后端严见下面 rules 上方的注释）。原界面只有一个
+ *      「请输入修改人姓名」的 placeholder，用户不知道该填校长还是经办人。
+ *   ② 「其他信息」实际是**给主办方看的备注**（admin/user.vue:184 有这一列、
+ *      建号表单也有这一栏、导出也带），但原文案写的是「可填写关于本账号的介绍」，
+ *      学校会读成自我介绍，甚至当成给组委会的留言板 —— 补上"谁在看"就名副其实了。
  *
  * ==========================================================================
  * 【本次变更 · 密码：从"只有重置"补齐为"能改也能重置"】
@@ -222,10 +285,11 @@
  *   **发什么就设成什么**，与 admin/committee 两处的重置（后端把值忽略、一律写默认口令）不同。
  *   所以自助改密**不需要后端配合就能生效**。
  *
- *   ⚠️ 唯一的缺口：后端**不校验 old_password**。本次仍按标准做法在界面上收了原密码
- *   并随请求发过去，但后端上线前它不产生任何拦截作用（payload 里多一个未知键，
- *   user_update 白名单式读取，直接忽略）。交接文档：
- *   docs/后端协助问题清单-自助修改密码校验原密码.md
+ *   【old_password 已由后端校验】原先这里写着"后端不校验、这一项是摆设"，
+ *   那句话在 2026-09-29 之后**已不成立**：后端提交 8d6b105（分支 jy，
+ *   apps/api/views.py:342-343）改为「带了 old_password 就核对，不对就拒」，
+ *   且校验在 user.save() 之前。本组件改密码时总是带上它，所以「当前密码」这一项
+ *   现在是真正有效的二次确认，**不是摆设**。别再按旧注释处理它。
  *
  * ==========================================================================
  * 【保留自上一版的关键修复，别当成多余代码删掉】
@@ -267,6 +331,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { userApi } from '@/api'
 import { DEFAULT_PASSWORD } from '@/config/defaultPassword'
+import { ORGANIZER_CONTACT } from '@/config/organizerContact'
 import {
   PASSWORD_MIN,
   PASSWORD_MAX,
@@ -342,10 +407,15 @@ const form = reactive({
  *   ⇒ 不要把这两条改成非必填：它们不是前后端不一致，是前端有意更严。
  */
 const rules = {
-  nickname: [
-    { required: true, message: '请输入名称', trigger: 'blur' },
-    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
-  ],
+  /* 【nickname 的规则已删除，不要再加回来】
+     它原来是 required + 2~20 字。名称改为只读（由主办方维护）之后，这条规则
+     只剩害处：建号端的「名称」输入框**没有长度限制**（views/admin/user.vue:245），
+     后端 nickname 是 255 字符（apps/core/models.py:119），而这里的 2~20 是凭空
+     收窄的。名称超过 20 字的学校一打开弹窗，**回填进来的值本身就违规**，
+     点确定直接被这条红字拦住 —— 连改密码、改联系方式都做不了。
+     （不是假设：四川的学校全称普遍在 15~25 字，「四川省绵阳市涪城区××实验学校
+       附属小学」就有 21 字。）
+     模板上那一项也不再写 prop，双重保证它不参与校验。 */
   leader: [
     { required: true, message: '请输入负责人名称', trigger: 'blur' },
     { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
@@ -603,8 +673,9 @@ async function submit() {
    * 改密码是**条件性**的：三个框全空就整个不发，后端 `if data.get("password")`
    * 不成立 ⇒ 不动密码。这正是"只改昵称不影响密码"要的语义。
    *
-   * ⚠️ old_password 后端目前不认（见文件头）。发过去是"后端改造后立即生效"的预留，
-   * 不影响当前行为 —— user_update 是按 key 逐个取的，多一个未知键会被忽略。
+   * old_password 后端**已经认了**（见文件头）。它现在不是预留字段 ——
+   * 后端「带了就核对、对不上返回『当前密码不正确』」，而下面的 validator 保证了
+   * 一旦进入这条分支 oldPassword 必然非空，所以这一对必然成对发出、也必然被核对。
    */
   if (changingPassword.value) {
     payload.old_password = form.oldPassword
@@ -819,6 +890,37 @@ defineExpose({ show })
   margin-top: -7px;
   border-radius: 2px;
   background: var(--primary-color);
+}
+
+/* ---------- 字段补充说明 ----------
+ * 放在 el-form-item__content 内部、输入框之后，靠 `flex: 0 0 100%` 折到下一行 ——
+ * 与下面的密码强度条是同一套办法（content 是 display:flex; flex-wrap:wrap）。
+ * 【为什么不写在 form-item 外面】写在外面就得手算一个 label-width 的左边距，
+ * 改一次标签宽度就错位；放里面则天然与输入框左对齐。
+ */
+.field-hint {
+  flex: 0 0 100%;
+  margin-top: 4px;
+  font-size: var(--font-size-extra-small);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* 【为什么要单独一个类】组委会电话落在说明的折行处会被断成「028- ⏎ 86269727」，
+   而这是一串要被人照着拨的号码 —— 断在中间既难读也容易拨错。整串不许折。
+   （只 nowrap 号码本身，不 nowrap 整句：整句不折会在窄屏上撑出去。） */
+.field-hint__nowrap {
+  white-space: nowrap;
+}
+
+/* ---------- 只读字段的取值（目前只有「名称」）----------
+ * 【为什么不用 disabled 的 el-input】灰色输入框看着像个坏掉的控件，用户仍会去点；
+ * 而这本来就不是个输入项。给一段文本，读起来像内容而不像控件。
+ */
+.field-value {
+  flex: 0 0 100%;
+  line-height: 1.6;
+  color: var(--text-primary);
 }
 
 /* ---------- 密码强度条 ----------

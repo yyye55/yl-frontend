@@ -1,5 +1,13 @@
 <template>
   <el-header class="main-header">
+    <!--
+      【当前账号「名称」】常驻显示，让用户一眼看清登的是哪个账号 ——
+      各端（管理/组委会/市州/学校/中小学）共用这一个 Header，改这里即全端生效。
+      它不是可点区域（没有 @click），样式上也要把继承来的 cursor:pointer 改掉，
+      否则用户会以为点了能展开什么。数据来源与兜底见下面 accountName 的注释。
+    -->
+    <div v-if="accountName" class="account-name" :title="accountName">{{ accountName }}</div>
+
     <!-- 点击 -> 打开"修改信息"弹窗（dist: on:{click:()=>e.$refs.modify.show()}） -->
     <div @click="$emit('modify')">
       <el-icon><User /></el-icon>
@@ -47,12 +55,19 @@
  *
  * 【第十二届改动】按要求移除昵称那一栏，故 dist 原文中的**第 1 个 div**
  * （上面第 23 行那条 `t("div",{on:{click:()=>{e.showHelp=!0}}},[…nickname…])`）
- * 及其 `showHelp` 触发**已不再实现**。el-header 下现为两个 div：
- * 修改信息（`$emit('modify')`）/ 退出登录（本地 logout）。
+ * 及其 `showHelp` 触发**已不再实现**。
  *
- * 上面那段 dist 原文记录予以保留，作为「照证据修正」的凭据；**勿据此把昵称栏恢复回来**。
+ * 【第十二届·后续】按新要求补回「当前账号名称」，位置在“修改信息”左侧，
+ * el-header 下现为三个元素：账号名称（只读标签）/ 修改信息 / 退出登录。
+ * **它不是上面那个 div 的复活**，两处区别是实质性的，别把它们混为一谈：
+ *   · 上面那个是**可点击**的，点开「帮助」弹窗（`showHelp`）—— 那个弹窗连同
+ *     `showHelp` 状态**仍然不存在**，本次没有恢复；
+ *   · 现在这个是纯标签（无 @click、cursor:default），只负责显示名称。
+ * 上面那段 dist 原文记录予以保留，作为「照证据修正」的凭据；
+ * **勿据此把帮助弹窗或昵称的点击行为恢复回来**。
  */
 
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Bottom } from '@element-plus/icons-vue'
@@ -66,6 +81,28 @@ defineEmits(['modify'])
 const router = useRouter()
 const tabsStore = useTabsStore()
 const userStore = useUserStore()
+
+/**
+ * 顶栏左侧显示的「当前账号名称」。
+ *
+ * 【字段来源】后端 User.nickname（"yilinbei hou/apps/core/models.py:119），
+ * 也就是「修改信息」弹窗里标签写作「名称」的那一栏 —— 学校账号即校名（如「希望小学」）。
+ * 顶栏与「修改信息」读的是同一个字段，所以不存在"两处显示不一致"。
+ *
+ * 【为什么要兜底到 username】该字段模型里 `default=" "`（一个空格），
+ * 建号后从没填过「名称」的账号 trim 完就是空串。那时退到「账号」：
+ * 顶栏显示一个账号名仍然能起到"这是哪个账号"的作用，比这一格空着强。
+ * 两者都为空则整格不渲染（模板上的 v-if），不留一个空白占位把顶栏顶歪。
+ *
+ * 【为什么不会出现"改完名字顶栏没变"】保存「修改信息」会强制重新登录
+ * （ModifyUserInfo.forceRelogin），重新登录后拿到的 user 自然带新名称；
+ * 会话期间这个值不会变，也就不需要额外的同步逻辑。
+ */
+const accountName = computed(() => {
+  const u = userStore.user
+  if (!u) return ''
+  return (u.nickname || '').trim() || (u.username || '').trim()
+})
 
 function logout() {
   apiLogout().then(({ data: res }) => {
@@ -112,6 +149,23 @@ function logout() {
 
     span {
       margin-left: 10px;
+    }
+
+    /* 当前账号「名称」：是个标签，不是按钮 —— 覆盖上面继承来的 pointer，
+       否则鼠标移上去会显示手型，用户会以为点了能展开（模板里那段注释有说明）。 */
+    &.account-name {
+      cursor: default;
+      /* 覆盖上面的 flex：text-overflow 只在块级盒子里对文本生效 */
+      display: block;
+      font-weight: 600;
+      font-size: 15px;
+      /* 【为什么要截断】后端 nickname 放宽到 255 字符（apps/core/models.py:119），
+         超长名称会把右侧的「修改信息 / 退出登录」整个顶出屏幕。
+         全名挂在 title 上，悬停仍能看到完整内容。 */
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 }

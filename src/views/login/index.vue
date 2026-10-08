@@ -53,9 +53,11 @@
           "button"，不是 "submit"。
           【为什么不用 el-form-item 包】包了就得挂 prop，会平白多出一条校验规则。
         -->
+        <!-- 【2026-10-08 停用】入口整块注释（连外层 div 一起，否则空 div 会多出 4px 间距）；恢复时删掉这对标记。
         <div class="apply_entry">
           <el-button type="text" @click="showApply = true">报名账号申请</el-button>
         </div>
+        -->
       </el-form>
     </div>
 
@@ -235,7 +237,8 @@ function shouldAutoOpenApply() {
  * 判断逻辑全在 shouldAutoOpenApply 里，见上面那段注释。
  * 入口还有登录表单最后那行「报名账号申请」，任何时候点它都能打开。
  */
-const showApply = ref(shouldAutoOpenApply())
+// 【2026-10-08 停用自动弹出】原为 ref(shouldAutoOpenApply())，现写死 false；恢复时改回原写法。
+const showApply = ref(false)
 
 /**
  * 把一段纯文字切成一段段「文字 + 这段要不要标红」，给模板里的 v-for 用。
@@ -520,6 +523,7 @@ async function submit() {
     color: #333333;
     line-height: 1.6;
     margin-top: 18px;
+    white-space: pre-line; /* 让 formContent 里的 \n 真的换行 */
   }
   :deep(.el-input__wrapper) {
     box-shadow: 0 0 0 1px #dde0e8 !important;
@@ -606,22 +610,12 @@ async function submit() {
 }
 
 /*
-  「要强调的那个词」（当前是邮箱）的样式：红色 + 加粗。
-  【用在哪两处】① 弹窗正文里的 <span>；② 登录表单那段 <p> 里的 <span>。
-  两处共用这一条 CSS、共用同一个类名 —— 改颜色只改这里。
-  【红色为什么用 #d80e0e】项目里已有同款用法的先例：
-  src/components/elementary/PersonTable.vue:51 就是
-  `color: #d80e0e; font-weight: bold` 的「红色加粗提示」。
-  没跟着用 var(--danger-color)（= #f56c6c），因为那个红偏浅，
-  混在 14px 黑色正文里不够抢眼，起不到「让人一眼看到邮箱」的作用。
-  【为什么不用行内 style】样式统一收在 CSS 里；行内样式权重还高，
-  以后想微调（比如加下划线）会改不动。
-  【要不要 !important】不要。这条规则编译出来是
-  `.apply_email[data-v-x]`，权重 (0,2,0)。两处的颜色都只是从父级
-  <p> 继承来的（继承的东西权重最低），所以压得住，两处表现一致。
+  强调片段（当前是日期）的样式：只加粗。
+  用在两处 —— ① 弹窗正文的 <span>；② 登录表单那段 <p> 的 <span>，共用这条 CSS，改样式只改这里。
+  不用行内 style / !important：行内权重高不好改；这条编译为 `.apply_email[data-v-x]`（权重 0,2,0），
+  压得住从父级 <p> 继承来的样式。
 */
 .apply_email {
-  color: #d80e0e;
   font-weight: bold;
 }
 

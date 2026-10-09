@@ -239,6 +239,7 @@
             <el-option label="小号" value="小号" />
             <el-option label="长号" value="长号" />
             <el-option label="圆号" value="圆号" />
+            <el-option label="次中音号" value="次中音号" />
             <el-option label="上低音号" value="上低音号" />
             <el-option label="大号" value="大号" />
             <el-option label="打击乐" value="打击乐" />

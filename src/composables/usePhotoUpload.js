@@ -69,17 +69,38 @@ import { fileApi } from '@/api/misc'
 import { uploadToOss } from '@/services/ossUpload'
 
 /**
+ * 归一「照片名比较用的键」：把**末位**的小写 x 收成大写 X，其余字符一个不动。
+ *
+ * 【为什么需要它】身份证第 18 位是校验位，为 X 的人约占 1/11。后端 models.normalize_card
+ * 会把末位小写 x 归一成大写 X，而前端 config/personFields.js **有意不归一**（归一交给后端）。
+ * 于是"保存之前"表里的 card 可能是 `12345x`，用户手里的照片却按身份证原样命名成
+ * `12345X.jpg` —— 意思完全一样，只差一个大小写。比较前两边都过一遍即可对上。
+ *
+ * 【为什么只动末位、不整个 toUpperCase】姓名里可能有英文字母（如「Lee」），
+ * 大小写必须保持敏感，否则「Lee」和「LEE」会被当成同一个人。后 6 位里可能出现 x 的
+ * 位置只有末位（与后端 CARD_PATTERN 同源），所以 /x$/ 恰好覆盖、不会误伤姓名中间的字母。
+ */
+function photoKey(name) {
+  return String(name).replace(/x$/, 'X')
+}
+
+/**
  * 从「去掉扩展名的文件名」里解析出身份证后 6 位 + 姓名（仅教师）。
  * 解析不出来返回 null。beforeUpload 与 uploadFileBatch 共用这一份判据，
  * 避免两处正则各写一遍后漂移。
- *   学生：`123456`      → { cardTail: '123456', personName: '' }
- *   教师：`张三123456`  → { cardTail: '123456', personName: '张三' }
+ *   学生：`123456` / `12345X`        → { cardTail: '12345X', personName: '' }
+ *   教师：`张三123456` / `张三12345X` → { cardTail: '12345X', personName: '张三' }
+ *
+ * 【「后 6 位」与后端 CARD_PATTERN 逐字同源】`^[0-9]{5}[0-9Xx]$`：前 5 位必须是数字，
+ * 末位可以是数字或 X/x。原先写的是 `\d{6}`（6 位纯数字），于是 `12345X.jpg` 这种
+ * **完全合法**的文件名会被判成「文件名格式错误」，行内「上传照片」对这些人永远传不上去。
+ * 改后的判定是原判定的**严格超集**（JS 里 `\d` 就等于 `[0-9]`），原来能认的一个不少。
  */
 export function parsePhotoName(nameNoExt) {
-  if (/^\d{6}$/.test(nameNoExt)) {
+  if (/^[0-9]{5}[0-9Xx]$/.test(nameNoExt)) {
     return { cardTail: nameNoExt, personName: '' }
   }
-  if (/^\D.*\d{6}$/.test(nameNoExt)) {
+  if (/^\D.*[0-9]{5}[0-9Xx]$/.test(nameNoExt)) {
     return { cardTail: nameNoExt.slice(-6), personName: nameNoExt.slice(0, -6) }
   }
   return null
@@ -113,9 +134,9 @@ export function parsePhotoName(nameNoExt) {
  */
 export function expectedPhotoNames(item) {
   if (!item || !item.card) return []
-  // 取后 6 位；历史数据短于 6 位时按整串 —— 与改动前同一处口径
+  // 取后 6 位（末位小写 x 归一大写 X，见 photoKey）；历史数据短于 6 位时按整串 —— 与改动前同一处口径
   const card = String(item.card)
-  const tail = card.length >= 6 ? card.substring(card.length - 6) : card
+  const tail = photoKey(card.length >= 6 ? card.substring(card.length - 6) : card)
   const named = item.name ? [item.name + tail] : []
   if (item.type === 0) return [tail, ...named]
   if (item.type === 1) return named
@@ -305,7 +326,8 @@ export function matchPhotoToRows(nameNoExt, rows, namesOf = expectedPhotoNames) 
 
     // 一行最多命中一次：tail 是 6 位、「姓名+tail」必然更长，两者不可能同时等于同一个
     // 文件名（姓名为空时只产出 tail，也不会重复），所以这里不用去重
-    if (wants.indexOf(nameNoExt) !== -1) hits.push(i)
+    // 【photoKey】文件名侧同样归一末位大小写，才能与上面归一过的期望名同口径比较
+    if (wants.indexOf(photoKey(nameNoExt)) !== -1) hits.push(i)
   })
 
   const status = hits.length === 0 ? 'none' : hits.length > 1 ? 'multi' : 'ok'
@@ -423,7 +445,8 @@ export function beforeUploadSingle(file, item) {
   }
 
   const accepts = expectedPhotoNames(item)
-  const actual = file.name.substring(0, file.name.lastIndexOf('.'))
+  // 【photoKey】与期望名同口径：末位小写 x 归一成大写 X，用户写哪种大小写都能对上
+  const actual = photoKey(file.name.substring(0, file.name.lastIndexOf('.')))
   if (accepts.indexOf(actual) === -1) {
     /* 把**全部**可接受名都举出来（学生有两种）。只举一种的话，撞号那张表里的用户
        照着改完还是对不上 —— 而撞号正是他来点单张上传的原因。上面的三个前置判断

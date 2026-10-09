@@ -219,14 +219,35 @@
           </el-select>
         </div>
         <div class="box-col">
-          <el-select v-model="item.position" placeholder="请选择">
+          <!--
+            @change 只做一件事：切到「指挥」时清掉已选的乐器（见 onPositionChange）。
+            【为什么不把清空写进下面 :disabled 的表达式】取值为 true 的那一刻不能改数据，
+            表达式会在渲染期被求值，那等于在渲染里写 item —— 清空必须发生在值真正变化时。
+          -->
+          <el-select v-model="item.position" placeholder="请选择" @change="onPositionChange(item)">
             <el-option label="正式队员" :value="0" />
             <el-option label="预备队员" :value="1" />
             <el-option label="指挥" :value="2" />
           </el-select>
         </div>
         <div class="box-col">
-          <el-select v-model="item.instrument" placeholder="请选择">
+          <!--
+            【第十二届·本轮改动】指挥没有「使用乐器」这件事，选到指挥时把这一格锁住、
+            提示换成一句说明 —— 与同页「指定曲目」在未选乐团类别/参展组别时的处理完全同款
+            （OrchestraForm.vue：`:disabled="!form.establishment || !form.group"` + 说明性 placeholder）。
+
+            【锁住必须与放宽校验同时生效】只锁不放宽反而更糟：框锁死了、checkLine 却仍要求非空，
+            用户没有任何办法让这一行通过校验，报名直接卡死。两处放宽见下面 checkLine / exportCheck，
+            判据共用 isConductor()。
+
+            【为什么锁而不是隐藏】隐藏会让这一列在指挥行上塌掉、与相邻行错位；锁住既保持列宽，
+            也把「为什么不给填」直接写在框里。
+          -->
+          <el-select
+            v-model="item.instrument"
+            :placeholder="isConductor(item) ? '指挥无需选择使用乐器' : '请选择'"
+            :disabled="isConductor(item)"
+          >
             <el-option label="短笛" value="短笛" />
             <el-option label="长笛" value="长笛" />
             <el-option label="单簧管" value="单簧管" />
@@ -708,10 +729,54 @@ function check() {
 }
 
 /**
+ * 该行是否为「指挥」（position === 2）。
+ *
+ * 【为什么一个判据要同时认数字和中文字符串】本表里 position 有三个来源，类型并不统一
+ * （同一问题在 config/personRules.js 的 conductorOf 里已处理过一次）：
+ *   · 界面下拉 —— `:value="2"`，是**数字 2**；
+ *   · Excel 导入校验（exportCheck）—— 判的是单元格原文，是「指挥」这个**中文字符串**，
+ *     因为 exportCheck 跑在 getPosition() 转换之前（转换只发生在建行那一步）；
+ *   · 后端回填 / 草稿回读 —— 数字 2。
+ * 「这行是不是指挥」这个问题现在有四处要问（两条校验 + 模板的 :disabled + 角色 @change），
+ * 判据集中在这里一处，将来改口径不会漏掉其中一条。
+ *
+ * 【为什么要 trim】与 personRules.isPercussion 同一考虑：导入路径把单元格文本原样透传，
+ * 「指挥 」带个尾随空格不能判成「不是指挥」。
+ */
+function isConductor(item) {
+  const position = item ? item.position : undefined
+  return typeof position === 'string' ? position.trim() === '指挥' : Number(position) === 2
+}
+
+/**
+ * 角色下拉变更 —— 切到「指挥」时清掉已选的乐器。
+ *
+ * 【为什么必须清】用户完全可能先把乐器选好、再把角色改成指挥。不清的话，那个值会留在一个
+ * 已禁用的框里，跟着暂存/提交一起入库，详情页就出现「指挥 · 使用乐器 长笛」这种自相矛盾的行
+ * （ShowPerson.vue 的「使用乐器」列照常显示该字段）。
+ *
+ * 【只清界面改动，不动 Excel 导入的数据】导入建行走 getPosition() 直接赋值，不经过本函数 ——
+ * 单元格里给指挥填了乐器的那些行按原样保留（口径：导入原样透传，见 importExcel 的说明），
+ * 且该值不影响任何导出（附件2 的乐器栏目只遍历 position=0，见 registration_form.py）。
+ *
+ * 【不用担心重复触发】EP 的单选 select 在选中值未变时不会 emit change（isEqual 短路），
+ * 所以对已是指挥的行再点一次「指挥」不会平白清掉导入进来的值。
+ */
+function onPositionChange(item) {
+  if (isConductor(item)) item.instrument = ''
+}
+
+/**
  * dist 的嵌套三元（界面校验）判定顺序：
  *   姓名 → 身份证 → 年龄 → 性别(空) → 学校 → 电话 → 身份(空) → 角色(空) → 使用乐器(空) → 通过
  * 注意：界面校验里 type/position 是**数字**（el-option 的 :value 是 0/1/2），
  * 所以只判 undefined/""，不做「值是否合法」的比对；值合法性比对在 exportCheck（字符串版）里。
+ *
+ * 【第十二届·本轮改动 —— 唯一一处偏离】上面那条「使用乐器(空)」加了一个前提：**该行不是指挥**。
+ * 指挥不占乐器（不占正式/预备名额，也不进附件2「正式队员名单」的乐器栏目，
+ * 见 personRules 的构成明细与 registration_form.py 的口径），要他选乐器本身就是错的题目 ——
+ * 甲方口径是「指挥不应该有使用乐器的选择」。除这一条外，上面的判定顺序（含它在「角色」之后的位置）
+ * 一个字没动。
  */
 function checkLine(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
@@ -722,7 +787,9 @@ function checkLine(item) {
   if (!item.phone) return { flag: false, msg: '电话号码不能为空' }
   if (item.type === undefined || item.type === '') return { flag: false, msg: '身份需选择' }
   if (item.position === undefined || item.position === '') return { flag: false, msg: '角色需选择' }
-  if (item.instrument === undefined || item.instrument === '') {
+  // 【第十二届·本轮改动】指挥不要求「使用乐器」。位置仍在「角色(空)」之后 ——
+  // 顺序与原判定一致，只是给这一条加了前提（判据见 isConductor 的说明）。
+  if (!isConductor(item) && (item.instrument === undefined || item.instrument === '')) {
     return { flag: false, msg: '使用乐器需选择' }
   }
   // 【第十二届·补格式校验】以上全是 dist 原判定 —— 它们只回答"填没填"，
@@ -741,6 +808,8 @@ function checkLine(item) {
  * 判定顺序：姓名 → 身份证 → 年龄 → 性别(空) → 性别(格式) → 学校 → 电话 → 身份(空) → 身份(格式)
  *          → 角色(空) → 使用乐器(空) → 角色(格式) → 通过
  * 注意 dist 的顺序就是「先判空、再判格式」，且**乐器为空**排在**角色格式**之前，下面逐条对齐。
+ * 【第十二届·本轮改动】上面「使用乐器(空)」这一条与 checkLine 同一处放宽：指挥行不再要求非空。
+ * 顺序仍未动，只是这一条多了「该行不是指挥」的前提。
  */
 function exportCheck(item) {
   if (!item.name) return { flag: false, msg: '姓名不能为空' }
@@ -759,7 +828,10 @@ function exportCheck(item) {
   if (item.position === undefined || item.position === '') {
     return { flag: false, msg: '角色不能为空' }
   }
-  if (item.instrument === undefined || item.instrument === '') {
+  // 【第十二届·本轮改动】与 checkLine 同步放宽：指挥行不再要求单元格里填了乐器。
+  // 这里的 position 是**中文字符串**（exportCheck 判的是单元格原文），isConductor 两种类型
+  // 都认，正是为了这两处能共用同一个判据。顺序未动（仍在「角色(空)」之后、「角色(格式)」之前）。
+  if (!isConductor(item) && (item.instrument === undefined || item.instrument === '')) {
     return { flag: false, msg: '使用乐器需选择' }
   }
   if (item.position !== '正式队员' && item.position !== '预备队员' && item.position !== '指挥') {

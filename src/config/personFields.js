@@ -179,6 +179,51 @@ export function checkPersonPhone(value) {
 }
 
 /**
+ * 使用乐器的 18 个标准名称 —— 与报名页下拉框（PersonTable.vue）和官方导入模板
+ * J 列的数据验证列表保持一致。
+ *
+ * 【只给 Excel 导入用】下拉框本身只能选出这 18 项；真正会把任意文本放进来的
+ * 只有 importExcel 的原样透传，所以校验只在 exportCheck 里调用。
+ */
+const INSTRUMENT_OPTIONS = [
+  '短笛', '长笛', '单簧管', '低音单簧管', '中音萨克斯', '次中音萨克斯',
+  '上低音萨克斯', '双簧管', '大管', '小号', '长号', '圆号', '次中音号',
+  '上低音号', '大号', '打击乐', '低音大提琴', '其他'
+]
+
+/**
+ * 去掉零宽字符和所有空白。Excel/网页复制常带这些字符，肉眼看不见，
+ * 却会让「上低音号」精确比对失败，导出时被归到「其他」。
+ * 正则里的不可见字符依次是：U+200B U+200C U+200D（零宽）、U+FEFF（BOM）、U+2060（词连接符）。
+ */
+function normalizeInstrumentText(value) {
+  return String(value ?? '')
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+    .replace(/\s+/g, '')
+}
+
+/** 导入校验通过后，写回表格行的就是归一化后的值。 */
+export function normalizePersonInstrument(value) {
+  return normalizeInstrumentText(value)
+}
+
+/**
+ * 使用乐器是否在系统支持范围内。
+ * 返回 null 表示通过，返回字符串表示给用户看的原因。
+ * 空值返回 null —— 由各表原有的「必填」分支负责（指挥行本来就允许为空）。
+ */
+export function checkPersonInstrument(value) {
+  const raw = value === null || value === undefined ? '' : String(value)
+  if (!raw) return null
+  const normalized = normalizeInstrumentText(raw)
+  if (!normalized) return '使用乐器未填写，请从模板下拉列表中选择'
+  if (!INSTRUMENT_OPTIONS.includes(normalized)) {
+    return `使用乐器「${normalized}」不可用，请从模板下拉列表中选择`
+  }
+  return null
+}
+
+/**
  * 一次性跑完五条基础字段，按**用户能看到的顺序**返回第一条错误。
  *
  * 三张表的五条规则完全一致，差别只在各自额外的字段（专业名称 / 性别格式 / 身份格式…），

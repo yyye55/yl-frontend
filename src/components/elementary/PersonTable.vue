@@ -467,7 +467,12 @@ import { fileApi } from '@/api/misc'
 import { downloadStaticFile } from '@/utils/excel'
 import { xlsx2json } from '@/utils/xlsx'
 import { uploadToOss } from '@/services/ossUpload'
-import { checkPersonBasics, isBlankCard } from '@/config/personFields'
+import {
+  checkPersonBasics,
+  checkPersonInstrument,
+  isBlankCard,
+  normalizePersonInstrument
+} from '@/config/personFields'
 import { useDragScroll } from '@/composables/useDragScroll'
 /* 【第十二届·第十一轮】身份证后6位「失焦即红字」的状态与处理函数，与指导教师表
    共用一份实现（@/composables/useCardTip）。判据仍在 config/personFields 里，
@@ -834,6 +839,19 @@ function exportCheck(item) {
   if (!isConductor(item) && (item.instrument === undefined || item.instrument === '')) {
     return { flag: false, msg: '使用乐器需选择' }
   }
+  // 【本轮改动】导入按角色分开判乐器：
+  //   · 指挥行 —— 单元格里不允许有任何内容。先清洗空格/零宽字符再判，
+  //     清洗后仍非空才算“确实填了”；只敲了空格视为没填，放行。
+  //   · 其他角色 —— 必须填，且必须是 18 个标准名称之一（判据见 personFields.checkPersonInstrument）。
+  // 页面填表不受影响：指挥行的下拉框本来就是禁用状态（见模板 :disabled），checkLine 不重复校验。
+  if (isConductor(item)) {
+    if (normalizePersonInstrument(item.instrument)) {
+      return { flag: false, msg: '指挥无需选择使用乐器' }
+    }
+  } else {
+    const instrumentErr = checkPersonInstrument(item.instrument)
+    if (instrumentErr) return { flag: false, msg: instrumentErr }
+  }
   if (item.position !== '正式队员' && item.position !== '预备队员' && item.position !== '指挥') {
     return { flag: false, msg: '角色格式只能是正式队员、预备队员、指挥' }
   }
@@ -966,7 +984,8 @@ function importExcel(file) {
           school: sheet[i].school,
           number: sheet[i].number,
           phone: sheet[i].phone,
-          instrument: sheet[i].instrument,
+          // 【本轮改动】去掉空格/零宽字符后再入库，避免导出时精确比对失败
+          instrument: normalizePersonInstrument(sheet[i].instrument),
           type: sheet[i].type === '学生' ? 0 : 1,
           position: getPosition(sheet[i].position)
         }
